@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { makeRng } from '../src/core/rng.js';
 import { randomGenome, normalizeGenome, GENE_ORDER, GENE_SPECS, toVector, fromVector, genomeId } from '../src/core/genes.js';
 import { computeStats, assertFinite, evaluate, FITNESS } from '../src/core/stats.js';
+import { ARCHETYPES, genomeFromArchetype, seededPopulation, nearestArchetype } from '../src/core/archetypes.js';
 import { breedGeneration, evolve, randomPopulation, geneDiversity, mutate, blendCrossover } from '../src/core/breeding.js';
 
 test('rng is deterministic for a seed', () => {
@@ -54,6 +55,103 @@ test('stats are finite and bounded for any legal genome', () => {
     }
     assert.ok(s.flight >= 0 && s.flight <= 100);
   }
+});
+
+test('every archetype produces a legal genome', () => {
+  const rng = makeRng(19);
+  for (const a of ARCHETYPES) {
+    for (let i = 0; i < 60; i++) {
+      const g = genomeFromArchetype(a, rng);
+      for (const k of GENE_ORDER) {
+        const spec = GENE_SPECS[k];
+        assert.ok(g[k] >= spec.min && g[k] <= spec.max, `${a.key}.${k} = ${g[k]}`);
+      }
+      assertFinite(computeStats(g));
+    }
+  }
+});
+
+test('archetypes are actually distinguishable from each other', () => {
+  const rng = makeRng(23);
+  const profiles = ARCHETYPES.map((a) => computeStats(genomeFromArchetype(a, rng)));
+  // every headline stat must vary meaningfully across the set
+  for (const k of ['speed', 'defense', 'attack', 'flight', 'venom', 'camouflage', 'grip']) {
+    const vs = profiles.map((p) => p[k]);
+    assert.ok(Math.max(...vs) - Math.min(...vs) > 25,
+      `${k} only spans ${Math.max(...vs) - Math.min(...vs)} across archetypes`);
+  }
+  // and no two archetypes should collapse onto the same profile
+  for (let i = 0; i < profiles.length; i++) {
+    for (let j = i + 1; j < profiles.length; j++) {
+      const d = ['speed','defense','attack','flight','venom','camouflage']
+        .reduce((acc, k) => acc + (profiles[i][k] - profiles[j][k]) ** 2, 0) ** 0.5;
+      assert.ok(d > 20, `${ARCHETYPES[i].key} and ${ARCHETYPES[j].key} are near-identical (d=${d.toFixed(1)})`);
+    }
+  }
+});
+
+test('a seeded population is diverse and legal', () => {
+  const pop = seededPopulation(16, makeRng(29));
+  assert.equal(pop.length, 16);
+  assert.ok(geneDiversity(pop) > 0.12, 'seeded pool is too uniform');
+  for (const g of pop) {
+    for (const k of GENE_ORDER) {
+      const spec = GENE_SPECS[k];
+      assert.ok(g[k] >= spec.min && g[k] <= spec.max);
+    }
+  }
+});
+
+test('a seeded pool beats a uniform-random pool on diversity', () => {
+  const seeded = geneDiversity(seededPopulation(24, makeRng(31)));
+  const uniform = geneDiversity(randomPopulation(24, makeRng(31)));
+  assert.ok(seeded > uniform * 0.9,
+    `seeded ${seeded.toFixed(3)} should be comparable to or better than uniform ${uniform.toFixed(3)}`);
+});
+
+test('nearestArchetype recovers the archetype it came from', () => {
+  const rng = makeRng(37);
+  let hits = 0, total = 0;
+  for (const a of ARCHETYPES) {
+    for (let i = 0; i < 25; i++) {
+      const g = genomeFromArchetype(a, rng);
+      if (nearestArchetype(g).archetype.key === a.key) hits++;
+      total++;
+    }
+  }
+  assert.ok(hits / total > 0.85, `only ${((hits / total) * 100).toFixed(0)}% classified back correctly`);
+});
+
+test('new genes drive their stats', () => {
+  const base = normalizeGenome({});
+
+  const noStinger = computeStats({ ...base, stinger_size: 0 });
+  assert.equal(noStinger.venom, 0, 'no stinger must mean no venom');
+  const stung = computeStats({ ...base, stinger_size: 0.9, tail_length: 0.8 });
+  assert.ok(stung.venom > 50, 'a big stinger must deliver venom');
+
+  const bare = computeStats({ ...base, spine_density: 0 });
+  const spiky = computeStats({ ...base, spine_density: 1 });
+  assert.ok(spiky.defense > bare.defense, 'spines must raise defense');
+
+  const hornless = computeStats({ ...base, horn_size: 0 });
+  const horned = computeStats({ ...base, horn_size: 1 });
+  assert.ok(horned.attack > hornless.attack, 'a horn must raise attack');
+
+  const smooth = computeStats({ ...base, claw_size: 0 });
+  const clawed = computeStats({ ...base, claw_size: 1 });
+  assert.ok(clawed.grip > smooth.grip, 'claws must raise grip');
+
+  const twoEyes = computeStats({ ...base, eye_count: 2 });
+  const eightEyes = computeStats({ ...base, eye_count: 8 });
+  assert.ok(eightEyes.vision > twoEyes.vision, 'more eyes must widen vision');
+
+  const wingless = computeStats({ ...base, wing_count: 0, wing_area: 0.9 });
+  assert.equal(wingless.flight, 0, 'no wings must mean no flight');
+
+  const shiny = computeStats({ ...base, iridescence: 1 });
+  const dull = computeStats({ ...base, iridescence: 0 });
+  assert.ok(dull.camouflage > shiny.camouflage, 'iridescence must cost camouflage');
 });
 
 test('stat formulas respond monotonically to their driving gene', () => {

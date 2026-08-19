@@ -1,0 +1,10 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({executablePath:'/opt/pw-browsers/chromium',args:['--headless=new','--no-sandbox'],ignoreDefaultArgs:['--headless=old']});
+const p = await b.newPage({viewport:{width:1200,height:360},deviceScaleFactor:2});
+p.on('pageerror',e=>console.log('ERR',e.message));
+await p.goto('http://localhost:8899/gallery.html');
+await p.waitForFunction(()=>document.title==='ready', null, {timeout:15000});
+await p.waitForTimeout(400);
+await p.screenshot({path:'shots/gene-gallery.png', fullPage:true});
+console.log('ok');
+await b.close();

@@ -272,3 +272,37 @@ the controls.
 > **Tested in Chromium only.** WebKit couldn't be installed in the build
 > environment, so the Safari-specific CSS above is written to spec but has not
 > been run on a real WebKit engine. Worth a quick look on an actual iPhone.
+
+---
+
+## Glass controls
+
+The four primary actions — Breed, Fast-forward, Reseed, Pause — are circular
+glass buttons in a dock that **floats over the terrarium**, not on the panel.
+That placement is functional, not decorative: `backdrop-filter` refracts whatever
+is painted behind an element, so on an opaque panel there is nothing to bend.
+Over the live scene, each lens genuinely bends the bugs and plants behind it.
+
+`src/ui/glass.js` is a vanilla port of the framework-free half of
+[`@samasante/liquid-glass`](https://github.com/samasante/liquid-glass) (MIT) —
+the upstream package is React-only and this app has no React. See
+[THIRD-PARTY.md](./THIRD-PARTY.md) for exactly what was ported and the licence.
+
+How it works: a rounded-rect signed-distance field is rasterized to a
+displacement map where R/G encode X/Y displacement around 128 and B carries a
+specular mask. That map drives `feDisplacementMap` in three passes at slightly
+different scales, giving chromatic aberration at the rim. Because the filter
+runs on the *backdrop*, the icon and label stay perfectly crisp on top.
+
+All four buttons are the same circle, so they share **one** rasterized map and
+one SVG filter. The map is regenerated only when the button's box actually
+changes size (a `ResizeObserver` guards it), not per frame.
+
+Optics are pushed past upstream's defaults — `strength 0.11`, `bend 0.4`,
+`dispersion 0.65` — because at 58px the default reads as a flat tint.
+
+**Browser support.** `backdrop-filter: url()` is Chromium-only; that is a
+web-platform limit, not a shortcut. Chrome and Edge bend the live scene. Safari
+and Firefox fall back to frost + tint + edge-light, which still reads as glass,
+and the buttons carry `data-glass="frost"` so the CSS can lean on the rim a
+little harder there.

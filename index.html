@@ -49,8 +49,13 @@
      the content box Phaser measures. Phaser reads the parent's clientHeight,
      which INCLUDES padding — so the canvas must mount one level in, or it
      would happily draw underneath the bottom sheet. */
+  /* No z-index / isolation here: the scrim multiplies against whatever is
+     painted beneath it in the shared stacking context, and that has to include
+     the canvas. */
   #stage {
     position: relative;
+    grid-column: 1; grid-row: 1;      /* explicit: #scrim is placed explicitly
+                                         too, and auto-placement runs after */
     display: grid;
     grid-template-rows: 100%;
     overflow: hidden;
@@ -65,11 +70,30 @@
   #canvasHost canvas { display: block; max-width: 100%; max-height: 100%; }
 
   /* ------------------------------------------------------------ panel -- */
+  /* The scrim is the surface the panel text sits on — a black gradient in
+     MULTIPLY, so it crushes the scene beneath toward black instead of laying an
+     opaque card over it. It's a sibling of #stage (not a child of <aside>) on
+     purpose: mix-blend-mode composites against the nearest stacking context, so
+     nesting it inside a z-indexed panel would blend it against the panel and
+     the effect would vanish. */
+  #scrim {
+    grid-column: 1; grid-row: 1;
+    align-self: end; justify-self: stretch;
+    height: 0;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    background: linear-gradient(to top,
+      #000 0%, #000 42%,
+      rgba(0,0,0,.95) 60%,
+      rgba(0,0,0,.74) 76%,
+      rgba(0,0,0,.38) 89%,
+      rgba(0,0,0,0) 100%);
+    transition: height .28s cubic-bezier(.4, 0, .2, 1);
+  }
+
   aside {
     grid-column: 2;
     border-left: 1px solid var(--line);
-    /* translucent on purpose — the glass buttons refract whatever shows
-       through, so an opaque panel would leave them with nothing to bend */
     background: rgba(22, 19, 15, .88);
     -webkit-backdrop-filter: blur(18px) saturate(1.15);
     backdrop-filter: blur(18px) saturate(1.15);
@@ -88,9 +112,17 @@
   .muted { color: var(--muted); }
   .small { font-size: 11px; }
   .dead { color: #ff6b57; font-size: 11px; }
+  .kind { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+          color: #0d0b09; background: var(--accent);
+          border-radius: 3px; padding: 2px 6px; margin-left: 6px;
+          vertical-align: middle; }
+  .envenomed { color: #9ad36b; }
 
-  .block { border: 1px solid var(--line); border-radius: 6px;
-           padding: 10px; margin-bottom: 12px; }
+  /* Not cards. Content sits directly on the surface, separated by rhythm and a
+     hairline rule rather than boxed off. */
+  .block { padding: 0 0 12px; margin-bottom: 12px;
+           border: none; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .block:last-child { border-bottom: none; }
 
   .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
   .stat-grid div { display: flex; justify-content: space-between; gap: 6px; }
@@ -124,7 +156,7 @@
      backdrop-filter refracts whatever is painted behind the element, so on an
      opaque panel there is nothing to bend — over the live scene there is. */
   #dock {
-    position: absolute; z-index: 5;
+    position: absolute; z-index: 6;
     left: 50%; transform: translateX(-50%);
     bottom: calc(var(--sheet-now) + 16px);
     display: grid;
@@ -282,22 +314,25 @@
       padding: var(--safe-t) var(--safe-r) 0 var(--safe-l);
     }
 
+    /* No card: no background, no border, no radius, no shadow. The panel is
+       just text and controls resting on the multiply scrim behind it. */
     aside {
       grid-column: 1; grid-row: 1;
       align-self: end;
       width: 100%;
       max-height: var(--sheet);
-      border-left: none;
-      border-top: 1px solid var(--line);
-      border-radius: 14px 14px 0 0;
-      background: rgba(22, 19, 15, 0.86);
-      -webkit-backdrop-filter: blur(20px) saturate(1.2);
-      backdrop-filter: blur(20px) saturate(1.2);
-      box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.5);
-      padding: 0 12px calc(16px + var(--safe-b));
+      border: none; border-radius: 0;
+      background: none;
+      -webkit-backdrop-filter: none; backdrop-filter: none;
+      box-shadow: none;
+      padding: 0 16px calc(16px + var(--safe-b));
       transition: max-height .28s cubic-bezier(.4, 0, .2, 1);
       display: flex; flex-direction: column;
+      z-index: 2;
     }
+    /* the scrim grows and shrinks with the sheet */
+    #scrim { height: calc(var(--sheet) + 20vh); }
+    body.sheet-collapsed #scrim { height: calc(54px + var(--safe-b) + 11vh); }
     body.sheet-collapsed aside { max-height: calc(54px + var(--safe-b)); }
     :root, body { --sheet-now: var(--sheet); }
     body.sheet-collapsed { --sheet-now: calc(54px + var(--safe-b)); }
@@ -307,9 +342,9 @@
     /* grab bar + always-visible summary */
     #handle {
       display: block; flex: 0 0 auto;
-      margin: 0 -12px; padding: 8px 12px 6px;
-      background: transparent; border: none; width: calc(100% + 24px);
-      min-height: 0; border-radius: 14px 14px 0 0;
+      margin: 0 -16px; padding: 10px 16px 6px;
+      background: transparent; border: none; width: calc(100% + 32px);
+      min-height: 0; border-radius: 0;
       position: sticky; top: 0; z-index: 2;
     }
     #handle::before {
@@ -333,7 +368,7 @@
 
     h1 { display: none; }
     .lede { display: none; }
-    .block { padding: 9px; margin-bottom: 9px; }
+    .block { padding: 0 0 10px; margin-bottom: 10px; }
     .btns button { flex: 1 1 30%; }
     .genes { max-height: 116px; overflow-y: auto; }
   }
@@ -404,6 +439,8 @@
           </button>
         </div>
     </div>
+
+  <div id="scrim" aria-hidden="true"></div>
 
   <aside>
     <button id="handle" aria-label="Toggle control panel" aria-expanded="true">

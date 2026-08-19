@@ -49,8 +49,13 @@
      the content box Phaser measures. Phaser reads the parent's clientHeight,
      which INCLUDES padding — so the canvas must mount one level in, or it
      would happily draw underneath the bottom sheet. */
+  /* No z-index / isolation here: the scrim multiplies against whatever is
+     painted beneath it in the shared stacking context, and that has to include
+     the canvas. */
   #stage {
     position: relative;
+    grid-column: 1; grid-row: 1;      /* explicit: #scrim is placed explicitly
+                                         too, and auto-placement runs after */
     display: grid;
     grid-template-rows: 100%;
     overflow: hidden;
@@ -65,11 +70,30 @@
   #canvasHost canvas { display: block; max-width: 100%; max-height: 100%; }
 
   /* ------------------------------------------------------------ panel -- */
+  /* The scrim is the surface the panel text sits on — a black gradient in
+     MULTIPLY, so it crushes the scene beneath toward black instead of laying an
+     opaque card over it. It's a sibling of #stage (not a child of <aside>) on
+     purpose: mix-blend-mode composites against the nearest stacking context, so
+     nesting it inside a z-indexed panel would blend it against the panel and
+     the effect would vanish. */
+  #scrim {
+    grid-column: 1; grid-row: 1;
+    align-self: end; justify-self: stretch;
+    height: 0;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    background: linear-gradient(to top,
+      #000 0%, #000 42%,
+      rgba(0,0,0,.95) 60%,
+      rgba(0,0,0,.74) 76%,
+      rgba(0,0,0,.38) 89%,
+      rgba(0,0,0,0) 100%);
+    transition: height .28s cubic-bezier(.4, 0, .2, 1);
+  }
+
   aside {
     grid-column: 2;
     border-left: 1px solid var(--line);
-    /* translucent on purpose — the glass buttons refract whatever shows
-       through, so an opaque panel would leave them with nothing to bend */
     background: rgba(22, 19, 15, .88);
     -webkit-backdrop-filter: blur(18px) saturate(1.15);
     backdrop-filter: blur(18px) saturate(1.15);
@@ -88,9 +112,17 @@
   .muted { color: var(--muted); }
   .small { font-size: 11px; }
   .dead { color: #ff6b57; font-size: 11px; }
+  .kind { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+          color: #0d0b09; background: var(--accent);
+          border-radius: 3px; padding: 2px 6px; margin-left: 6px;
+          vertical-align: middle; }
+  .envenomed { color: #9ad36b; }
 
-  .block { border: 1px solid var(--line); border-radius: 6px;
-           padding: 10px; margin-bottom: 12px; }
+  /* Not cards. Content sits directly on the surface, separated by rhythm and a
+     hairline rule rather than boxed off. */
+  .block { padding: 0 0 12px; margin-bottom: 12px;
+           border: none; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .block:last-child { border-bottom: none; }
 
   .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
   .stat-grid div { display: flex; justify-content: space-between; gap: 6px; }
@@ -124,7 +156,7 @@
      backdrop-filter refracts whatever is painted behind the element, so on an
      opaque panel there is nothing to bend — over the live scene there is. */
   #dock {
-    position: absolute; z-index: 5;
+    position: absolute; z-index: 6;
     left: 50%; transform: translateX(-50%);
     bottom: calc(var(--sheet-now) + 16px);
     display: grid;
@@ -282,22 +314,25 @@
       padding: var(--safe-t) var(--safe-r) 0 var(--safe-l);
     }
 
+    /* No card: no background, no border, no radius, no shadow. The panel is
+       just text and controls resting on the multiply scrim behind it. */
     aside {
       grid-column: 1; grid-row: 1;
       align-self: end;
       width: 100%;
       max-height: var(--sheet);
-      border-left: none;
-      border-top: 1px solid var(--line);
-      border-radius: 14px 14px 0 0;
-      background: rgba(22, 19, 15, 0.86);
-      -webkit-backdrop-filter: blur(20px) saturate(1.2);
-      backdrop-filter: blur(20px) saturate(1.2);
-      box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.5);
-      padding: 0 12px calc(16px + var(--safe-b));
+      border: none; border-radius: 0;
+      background: none;
+      -webkit-backdrop-filter: none; backdrop-filter: none;
+      box-shadow: none;
+      padding: 0 16px calc(16px + var(--safe-b));
       transition: max-height .28s cubic-bezier(.4, 0, .2, 1);
       display: flex; flex-direction: column;
+      z-index: 2;
     }
+    /* the scrim grows and shrinks with the sheet */
+    #scrim { height: calc(var(--sheet) + 20vh); }
+    body.sheet-collapsed #scrim { height: calc(54px + var(--safe-b) + 11vh); }
     body.sheet-collapsed aside { max-height: calc(54px + var(--safe-b)); }
     :root, body { --sheet-now: var(--sheet); }
     body.sheet-collapsed { --sheet-now: calc(54px + var(--safe-b)); }
@@ -307,9 +342,9 @@
     /* grab bar + always-visible summary */
     #handle {
       display: block; flex: 0 0 auto;
-      margin: 0 -12px; padding: 8px 12px 6px;
-      background: transparent; border: none; width: calc(100% + 24px);
-      min-height: 0; border-radius: 14px 14px 0 0;
+      margin: 0 -16px; padding: 10px 16px 6px;
+      background: transparent; border: none; width: calc(100% + 32px);
+      min-height: 0; border-radius: 0;
       position: sticky; top: 0; z-index: 2;
     }
     #handle::before {
@@ -333,7 +368,7 @@
 
     h1 { display: none; }
     .lede { display: none; }
-    .block { padding: 9px; margin-bottom: 9px; }
+    .block { padding: 0 0 10px; margin-bottom: 10px; }
     .btns button { flex: 1 1 30%; }
     .genes { max-height: 116px; overflow-y: auto; }
   }
@@ -405,6 +440,8 @@
         </div>
     </div>
 
+  <div id="scrim" aria-hidden="true"></div>
+
   <aside>
     <button id="handle" aria-label="Toggle control panel" aria-expanded="true">
       <span id="handleRow">
@@ -475,26 +512,58 @@
 
   // src/core/genes.js
   var GENE_SPECS = {
+    /* ---- body plan ---- */
+    body_segments: { min: 2, max: 4, integer: true },
+    // thorax divisions
+    body_length: { min: 0, max: 1 },
+    body_width: { min: 0, max: 1 },
+    body_mass: { min: 0, max: 1 },
+    head_size: { min: 0, max: 1 },
+    thorax_ratio: { min: 0, max: 1 },
+    // thorax vs abdomen
+    abdomen_taper: { min: 0, max: 1 },
+    // 0 round, 1 pointed
+    carapace_thickness: { min: 0, max: 1 },
+    /* ---- limbs ---- */
     leg_count: { min: 4, max: 10, integer: true, step: 2 },
     leg_length: { min: 0, max: 1 },
     leg_thickness: { min: 0, max: 1 },
     leg_spread: { min: 0, max: 1 },
-    body_length: { min: 0, max: 1 },
-    body_width: { min: 0, max: 1 },
-    body_mass: { min: 0, max: 1 },
-    carapace_thickness: { min: 0, max: 1 },
+    leg_joints: { min: 2, max: 3, integer: true },
+    claw_size: { min: 0, max: 1 },
+    /* ---- wings ---- */
+    wing_count: { min: 0, max: 4, integer: true, step: 2 },
     wing_area: { min: 0, max: 1 },
     wing_beat: { min: 0, max: 1 },
+    /* ---- weapons & defence ---- */
     mandible_size: { min: 0, max: 1 },
     mandible_serration: { min: 0, max: 1 },
-    antenna_length: { min: 0, max: 1 },
+    horn_size: { min: 0, max: 1 },
+    // rostrum / pronotal horn
+    spine_density: { min: 0, max: 1 },
+    // defensive spikes
+    tail_length: { min: 0, max: 1 },
+    // cerci / metasoma
+    stinger_size: { min: 0, max: 1 },
+    /* ---- sensory ---- */
+    eye_count: { min: 2, max: 8, integer: true, step: 2 },
     eye_size: { min: 0, max: 1 },
+    antenna_length: { min: 0, max: 1 },
+    /* ---- physiology & behaviour ---- */
     metabolism: { min: 0, max: 1 },
     aggression: { min: 0, max: 1 },
+    /* ---- surface & colour ---- */
     hue: { min: 0, max: 1, circular: true },
     saturation: { min: 0, max: 1 },
     lightness: { min: 0, max: 1 },
-    pattern: { min: 0, max: 1 }
+    pattern: { min: 0, max: 1 },
+    // selects marking style
+    pattern_scale: { min: 0, max: 1 },
+    pattern_contrast: { min: 0, max: 1 },
+    setae: { min: 0, max: 1 },
+    // hairiness
+    iridescence: { min: 0, max: 1 },
+    translucency: { min: 0, max: 1 }
   };
   var GENE_ORDER = Object.keys(GENE_SPECS);
   function clampGene(name, value) {
@@ -559,38 +628,80 @@
   function morphology(g) {
     const length = 0.4 + g.body_length * 1.6;
     const width = 0.25 + g.body_width * 1.05;
-    const volume = length * width * width;
+    const taper = 1 - 0.28 * g.abdomen_taper;
+    const segments = g.body_segments;
+    const segmentStretch = 1 + (segments - 2) * 0.18;
+    const bodyLen = length * segmentStretch;
+    const volume = bodyLen * width * width * taper;
     const shellVolume = volume * (0.05 + g.carapace_thickness * 0.45);
     const density = 0.5 + g.body_mass * 1.1;
     const mass = volume * density + shellVolume * 1.4;
     const legLen = (0.3 + g.leg_length * 1.7) * length;
     const legs = g.leg_count;
+    const joints = g.leg_joints;
     const strideLoad = mass / legs;
-    const wingLoad = g.wing_area > 0.08 ? mass / (g.wing_area * 3.2) : Infinity;
-    return { length, width, volume, shellVolume, density, mass, legLen, legs, strideLoad, wingLoad };
+    const wingPairs = g.wing_count / 2;
+    const totalWing = wingPairs > 0 ? g.wing_area * (1 + (wingPairs - 1) * 0.35) : 0;
+    const wingLoad = totalWing > 0.08 ? mass / (totalWing * 3.2) : Infinity;
+    return {
+      length: bodyLen,
+      width,
+      volume,
+      shellVolume,
+      density,
+      mass,
+      legLen,
+      legs,
+      joints,
+      strideLoad,
+      wingLoad,
+      totalWing,
+      segments,
+      taper
+    };
   }
   function computeStats(g) {
     const m = morphology(g);
+    const grip = clamp(100 * sig(0.55 * g.claw_size + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
     const stride = m.legLen * (0.55 + 0.45 * Math.log2(m.legs) / Math.log2(10));
     const cadence = 1 / (0.35 + m.strideLoad * 0.55);
-    const speed = clamp(stride * cadence * 26, 1, 100);
+    const speed = clamp(stride * cadence * 19 * (0.82 + grip / 100 * 0.3), 1, 100);
     const agility = clamp(
       100 * sig(0.55 * (1 - g.body_length) + 0.25 * g.leg_spread + 0.2 * (1 - g.body_mass), 5.5) * (0.6 + 0.4 * (1 - clamp01(g.carapace_thickness))),
       1,
       100
     );
     const coverage = m.shellVolume / (m.volume * 0.5 + 0.4);
-    const defense = clamp(100 * sig(coverage * 0.9 + g.carapace_thickness * 0.45, 5), 1, 100);
+    const defense = clamp(
+      100 * sig(coverage * 0.9 + g.carapace_thickness * 0.45 + g.spine_density * 0.35, 5),
+      1,
+      100
+    );
     const bite = g.mandible_size * (0.6 + 0.6 * g.mandible_serration);
-    const attack = clamp(100 * sig(bite * 0.85 + Math.min(m.mass, 3) * 0.12, 5), 1, 100);
+    const horn = g.horn_size * 0.55;
+    const claws = g.claw_size * 0.3;
+    const attack = clamp(
+      100 * sig(bite * 0.85 + horn + claws + Math.min(m.mass, 3) * 0.12, 5),
+      1,
+      100
+    );
+    const venom = g.stinger_size < 0.08 ? 0 : clamp(100 * sig(g.stinger_size * 0.85 + g.tail_length * 0.35, 5), 0, 100);
     const attackRate = clamp(2.4 - g.mandible_size * 1.35 + (1 - g.body_mass) * 0.35, 0.45, 2.6);
-    const health = clamp(30 + m.volume * 26 + g.carapace_thickness * 34, 10, 100);
+    const health = clamp(
+      30 + m.volume * 26 + g.carapace_thickness * 34 + (m.segments - 2) * 5,
+      10,
+      100
+    );
     const stamina = clamp(25 + m.volume * 22 + (1 - g.metabolism) * 42, 5, 100);
     const recovery = clamp(1.2 + g.metabolism * 6.5 - m.mass * 0.35, 0.2, 8);
-    const flight = m.wingLoad === Infinity ? 0 : clamp(100 * sig(1.9 / m.wingLoad * (0.4 + g.wing_beat) - 0.15, 4.5), 0, 100);
-    const vision = clamp(40 + g.eye_size * 190 + g.antenna_length * 45, 30, 280);
+    const flight = m.wingLoad === Infinity ? 0 : clamp(100 * sig(1.25 / m.wingLoad * (0.35 + g.wing_beat) - 0.3, 4.5), 0, 100);
+    const eyeGain = 1 + (g.eye_count - 2) * 0.11;
+    const vision = clamp(40 + g.eye_size * 170 * eyeGain + g.antenna_length * 55, 30, 340);
     const camouflage = clamp(
-      100 * sig(0.45 * (1 - g.saturation) + 0.35 * (1 - g.lightness) + 0.3 * (1 - m.volume / 3.4), 5),
+      100 * sig(
+        0.38 * (1 - g.saturation) + 0.28 * (1 - g.lightness) + 0.24 * (1 - m.volume / 3.4) + 0.18 * g.setae + 0.22 * g.translucency - 0.3 * g.iridescence,
+        5
+      ),
       1,
       100
     );
@@ -608,8 +719,11 @@
       vision,
       camouflage,
       size,
+      venom,
+      grip,
       mass: m.mass,
-      legs: m.legs
+      legs: m.legs,
+      segments: m.segments
     };
   }
   var STAT_KEYS = [
@@ -624,20 +738,411 @@
     "flight",
     "vision",
     "camouflage",
+    "venom",
+    "grip",
     "size"
   ];
   var FITNESS = {
-    balanced: (s) => 0.22 * s.speed + 0.2 * s.attack + 0.2 * s.defense + 0.18 * s.health + 0.2 * s.stamina,
-    brawler: (s) => 0.45 * s.attack + 0.25 * s.health + 0.2 * s.defense + 0.1 * s.attackRate * 20,
-    sprinter: (s) => 0.55 * s.speed + 0.25 * s.agility + 0.2 * s.stamina,
+    balanced: (s) => 0.2 * s.speed + 0.18 * s.attack + 0.18 * s.defense + 0.16 * s.health + 0.18 * s.stamina + 0.1 * s.venom,
+    brawler: (s) => 0.42 * s.attack + 0.24 * s.health + 0.18 * s.defense + 0.1 * s.attackRate * 20,
+    sprinter: (s) => 0.48 * s.speed + 0.22 * s.agility + 0.16 * s.stamina + 0.14 * s.grip,
     tank: (s) => 0.5 * s.defense + 0.35 * s.health - 0.1 * s.speed + 0.25 * s.stamina,
     flier: (s) => 0.6 * s.flight + 0.2 * s.agility + 0.2 * s.stamina,
-    ghost: (s) => 0.5 * s.camouflage + 0.25 * s.agility + 0.25 * s.vision * 0.35
+    ghost: (s) => 0.5 * s.camouflage + 0.25 * s.agility + 0.25 * s.vision * 0.35,
+    venomous: (s) => 0.52 * s.venom + 0.22 * s.speed + 0.16 * s.agility + 0.1 * s.attackRate * 20
   };
   function evaluate(genome, preset = "balanced") {
     const stats = computeStats(genome);
     const fn = FITNESS[preset] ?? FITNESS.balanced;
     return { stats, fitness: fn(stats) };
+  }
+
+  // src/core/archetypes.js
+  var ARCHETYPES = [
+    {
+      key: "beetle",
+      name: "Beetle",
+      blurb: "Armoured bruiser. Thick carapace, horn, short legs \u2014 slow, very hard to kill.",
+      spread: 0.1,
+      bias: {
+        body_segments: 3,
+        body_length: 0.5,
+        body_width: 0.72,
+        body_mass: 0.8,
+        carapace_thickness: 0.88,
+        head_size: 0.42,
+        thorax_ratio: 0.55,
+        abdomen_taper: 0.25,
+        leg_count: 6,
+        leg_length: 0.28,
+        leg_thickness: 0.72,
+        leg_joints: 3,
+        claw_size: 0.5,
+        wing_count: 2,
+        wing_area: 0.2,
+        wing_beat: 0.35,
+        mandible_size: 0.55,
+        mandible_serration: 0.45,
+        horn_size: 0.85,
+        spine_density: 0.3,
+        tail_length: 0.1,
+        stinger_size: 0.02,
+        eye_count: 2,
+        eye_size: 0.3,
+        antenna_length: 0.35,
+        metabolism: 0.3,
+        aggression: 0.55,
+        saturation: 0.3,
+        lightness: 0.22,
+        setae: 0.15,
+        iridescence: 0.45,
+        translucency: 0.05
+      }
+    },
+    {
+      key: "wasp",
+      name: "Wasp",
+      blurb: "Fast flier with a stinger. Light, aggressive, venomous, almost no armour.",
+      spread: 0.1,
+      bias: {
+        body_segments: 3,
+        body_length: 0.62,
+        body_width: 0.24,
+        body_mass: 0.18,
+        carapace_thickness: 0.18,
+        head_size: 0.45,
+        thorax_ratio: 0.45,
+        abdomen_taper: 0.85,
+        leg_count: 6,
+        leg_length: 0.55,
+        leg_thickness: 0.22,
+        leg_joints: 3,
+        claw_size: 0.3,
+        wing_count: 4,
+        wing_area: 0.8,
+        wing_beat: 0.9,
+        mandible_size: 0.3,
+        mandible_serration: 0.3,
+        horn_size: 0.02,
+        spine_density: 0.1,
+        tail_length: 0.55,
+        stinger_size: 0.9,
+        eye_count: 2,
+        eye_size: 0.62,
+        antenna_length: 0.5,
+        metabolism: 0.85,
+        aggression: 0.85,
+        hue: 0.14,
+        saturation: 0.92,
+        lightness: 0.55,
+        pattern: 0.15,
+        pattern_contrast: 0.95,
+        setae: 0.25,
+        iridescence: 0.2,
+        translucency: 0.15
+      }
+    },
+    {
+      key: "spider",
+      name: "Spider",
+      blurb: "Eight legs, many eyes, no wings. Big vision radius, ambushes with venomous fangs.",
+      spread: 0.1,
+      bias: {
+        body_segments: 2,
+        body_length: 0.42,
+        body_width: 0.62,
+        body_mass: 0.35,
+        carapace_thickness: 0.32,
+        head_size: 0.3,
+        thorax_ratio: 0.35,
+        abdomen_taper: 0.2,
+        leg_count: 8,
+        leg_length: 0.92,
+        leg_thickness: 0.28,
+        leg_joints: 3,
+        claw_size: 0.65,
+        wing_count: 0,
+        wing_area: 0,
+        wing_beat: 0,
+        mandible_size: 0.62,
+        mandible_serration: 0.7,
+        horn_size: 0.05,
+        spine_density: 0.25,
+        tail_length: 0.15,
+        stinger_size: 0.55,
+        eye_count: 8,
+        eye_size: 0.45,
+        antenna_length: 0.12,
+        metabolism: 0.45,
+        aggression: 0.7,
+        saturation: 0.25,
+        lightness: 0.18,
+        setae: 0.7,
+        iridescence: 0.1,
+        translucency: 0.05
+      }
+    },
+    {
+      key: "roach",
+      name: "Roach",
+      blurb: "Flat, fast, drab. Survives on speed, stamina and camouflage rather than force.",
+      spread: 0.11,
+      bias: {
+        body_segments: 3,
+        body_length: 0.68,
+        body_width: 0.5,
+        body_mass: 0.3,
+        carapace_thickness: 0.4,
+        head_size: 0.25,
+        thorax_ratio: 0.4,
+        abdomen_taper: 0.35,
+        leg_count: 6,
+        leg_length: 0.62,
+        leg_thickness: 0.35,
+        leg_joints: 3,
+        claw_size: 0.55,
+        wing_count: 2,
+        wing_area: 0.35,
+        wing_beat: 0.45,
+        mandible_size: 0.25,
+        mandible_serration: 0.25,
+        horn_size: 0.02,
+        spine_density: 0.45,
+        tail_length: 0.45,
+        stinger_size: 0.05,
+        eye_count: 2,
+        eye_size: 0.35,
+        antenna_length: 0.95,
+        metabolism: 0.55,
+        aggression: 0.25,
+        hue: 0.08,
+        saturation: 0.35,
+        lightness: 0.24,
+        pattern: 0.9,
+        setae: 0.3,
+        iridescence: 0.3,
+        translucency: 0.1
+      }
+    },
+    {
+      key: "mantis",
+      name: "Mantis",
+      blurb: "Long body, hooked forelimbs. Slow to move, devastating in reach \u2014 a duelist.",
+      spread: 0.1,
+      bias: {
+        body_segments: 3,
+        body_length: 0.92,
+        body_width: 0.26,
+        body_mass: 0.32,
+        carapace_thickness: 0.28,
+        head_size: 0.38,
+        thorax_ratio: 0.75,
+        abdomen_taper: 0.6,
+        leg_count: 6,
+        leg_length: 0.78,
+        leg_thickness: 0.32,
+        leg_joints: 3,
+        claw_size: 0.95,
+        wing_count: 2,
+        wing_area: 0.45,
+        wing_beat: 0.3,
+        mandible_size: 0.7,
+        mandible_serration: 0.85,
+        horn_size: 0.1,
+        spine_density: 0.55,
+        tail_length: 0.25,
+        stinger_size: 0.05,
+        eye_count: 2,
+        eye_size: 0.85,
+        antenna_length: 0.45,
+        metabolism: 0.4,
+        aggression: 0.8,
+        hue: 0.3,
+        saturation: 0.55,
+        lightness: 0.42,
+        setae: 0.1,
+        translucency: 0.12
+      }
+    },
+    {
+      key: "moth",
+      name: "Moth",
+      blurb: "Enormous soft wings, furred body. Great lift and stamina, hopeless in a fight.",
+      spread: 0.11,
+      bias: {
+        body_segments: 3,
+        body_length: 0.45,
+        body_width: 0.45,
+        body_mass: 0.15,
+        carapace_thickness: 0.1,
+        head_size: 0.32,
+        thorax_ratio: 0.5,
+        abdomen_taper: 0.45,
+        leg_count: 6,
+        leg_length: 0.38,
+        leg_thickness: 0.2,
+        leg_joints: 2,
+        claw_size: 0.25,
+        wing_count: 4,
+        wing_area: 0.98,
+        wing_beat: 0.55,
+        mandible_size: 0.08,
+        mandible_serration: 0.05,
+        horn_size: 0.02,
+        spine_density: 0.05,
+        tail_length: 0.2,
+        stinger_size: 0.02,
+        eye_count: 2,
+        eye_size: 0.72,
+        antenna_length: 0.8,
+        metabolism: 0.6,
+        aggression: 0.1,
+        saturation: 0.2,
+        lightness: 0.62,
+        pattern: 0.45,
+        setae: 0.95,
+        iridescence: 0.35,
+        translucency: 0.3
+      }
+    },
+    {
+      key: "centipede",
+      name: "Centipede",
+      blurb: "Ten legs on a long segmented body. Quick, spiny, venomous, poorly armoured.",
+      spread: 0.1,
+      bias: {
+        body_segments: 4,
+        body_length: 0.98,
+        body_width: 0.2,
+        body_mass: 0.28,
+        carapace_thickness: 0.22,
+        head_size: 0.22,
+        thorax_ratio: 0.3,
+        abdomen_taper: 0.7,
+        leg_count: 10,
+        leg_length: 0.48,
+        leg_thickness: 0.18,
+        leg_joints: 2,
+        claw_size: 0.45,
+        wing_count: 0,
+        wing_area: 0,
+        wing_beat: 0,
+        mandible_size: 0.48,
+        mandible_serration: 0.6,
+        horn_size: 0.05,
+        spine_density: 0.8,
+        tail_length: 0.75,
+        stinger_size: 0.65,
+        eye_count: 4,
+        eye_size: 0.25,
+        antenna_length: 0.7,
+        metabolism: 0.7,
+        aggression: 0.65,
+        hue: 0.06,
+        saturation: 0.7,
+        lightness: 0.35,
+        setae: 0.2,
+        translucency: 0.1
+      }
+    },
+    {
+      key: "weevil",
+      name: "Weevil",
+      blurb: "Small, round, absurdly long snout. Tanky for its size and hard to spot.",
+      spread: 0.11,
+      bias: {
+        body_segments: 2,
+        body_length: 0.3,
+        body_width: 0.58,
+        body_mass: 0.55,
+        carapace_thickness: 0.7,
+        head_size: 0.3,
+        thorax_ratio: 0.4,
+        abdomen_taper: 0.15,
+        leg_count: 6,
+        leg_length: 0.3,
+        leg_thickness: 0.45,
+        leg_joints: 2,
+        claw_size: 0.4,
+        wing_count: 2,
+        wing_area: 0.15,
+        wing_beat: 0.25,
+        mandible_size: 0.2,
+        mandible_serration: 0.15,
+        horn_size: 0.95,
+        spine_density: 0.35,
+        tail_length: 0.08,
+        stinger_size: 0.02,
+        eye_count: 2,
+        eye_size: 0.28,
+        antenna_length: 0.55,
+        metabolism: 0.28,
+        aggression: 0.3,
+        saturation: 0.3,
+        lightness: 0.2,
+        pattern: 0.5,
+        setae: 0.45,
+        iridescence: 0.55,
+        translucency: 0.05
+      }
+    }
+  ];
+  var ARCHETYPE_KEYS = ARCHETYPES.map((a) => a.key);
+  function genomeFromArchetype(archetype, rng = makeRng(1)) {
+    const g = {};
+    for (const name of GENE_ORDER) {
+      const spec = GENE_SPECS[name];
+      const target = archetype.bias[name];
+      if (target === void 0) {
+        g[name] = clampGene(name, rng.range(spec.min, spec.max));
+        continue;
+      }
+      const span = spec.max - spec.min;
+      const jitter = rng.normal() * span * (archetype.spread ?? 0.1);
+      g[name] = clampGene(name, target + jitter);
+    }
+    return normalizeGenome(g);
+  }
+  function seededPopulation(size, rng = makeRng(1), { wildcards = 0.15 } = {}) {
+    const order = [...ARCHETYPES];
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = rng.int(0, i);
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    const pop = [];
+    for (let i = 0; i < size; i++) {
+      if (rng() < wildcards) {
+        const g = {};
+        for (const name of GENE_ORDER) {
+          const spec = GENE_SPECS[name];
+          g[name] = clampGene(name, rng.range(spec.min, spec.max));
+        }
+        pop.push(normalizeGenome(g));
+      } else {
+        pop.push(genomeFromArchetype(order[i % order.length], rng));
+      }
+    }
+    return pop;
+  }
+  function nearestArchetype(genome) {
+    let best = null;
+    let bestD = Infinity;
+    for (const a of ARCHETYPES) {
+      let d = 0;
+      let n = 0;
+      for (const [k, target] of Object.entries(a.bias)) {
+        const spec = GENE_SPECS[k];
+        const span = spec.max - spec.min || 1;
+        d += ((genome[k] - target) / span) ** 2;
+        n++;
+      }
+      d = Math.sqrt(d / Math.max(1, n));
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    }
+    return { archetype: best, distance: bestD, confident: bestD < 0.26 };
   }
 
   // src/render/bugArt.js
@@ -649,38 +1154,62 @@
     const h = g.hue;
     const s = 0.15 + g.saturation * 0.7;
     const l = 0.18 + g.lightness * 0.5;
+    const alpha = 1 - g.translucency * 0.45;
     return {
-      shell: hsl(h, s, l),
-      shellHi: hsl(h, s * 0.9, Math.min(0.92, l + 0.16)),
-      shellLo: hsl(h, s, Math.max(0.04, l - 0.13)),
-      limb: hsl((h + 0.03) % 1, s * 0.8, Math.max(0.06, l - 0.08)),
-      mark: hsl((h + 0.5) % 1, s * 0.85, Math.min(0.9, l + 0.28)),
+      shell: hsl(h, s, l, alpha),
+      shellHi: hsl(h, s * 0.9, Math.min(0.92, l + 0.16), alpha),
+      shellLo: hsl(h, s, Math.max(0.04, l - 0.13), alpha),
+      limb: hsl((h + 0.03) % 1, s * 0.8, Math.max(0.06, l - 0.08), alpha),
+      // marking colour: contrast gene pushes it away from the shell
+      mark: hsl((h + 0.5) % 1, s * 0.85, Math.min(0.95, l + 0.12 + g.pattern_contrast * 0.35)),
+      iris: hsl((h + 0.35) % 1, 0.85, 0.62),
       eye: hsl((h + 0.12) % 1, 0.15, 0.06),
       eyeShine: "rgba(255,255,255,0.85)",
-      outline: hsl(h, s * 0.6, Math.max(0.03, l - 0.16))
+      outline: hsl(h, s * 0.6, Math.max(0.03, l - 0.16), alpha),
+      setae: hsl((h + 0.02) % 1, s * 0.5, Math.min(0.8, l + 0.22), 0.55),
+      alpha
     };
   }
   function layout(g, ppu = 26) {
     const m = morphology(g);
     const bodyLen = m.length * ppu;
     const bodyWid = m.width * ppu;
+    const headLen = (0.1 + g.head_size * 0.22) * bodyLen;
+    const thoraxLen = (0.16 + g.thorax_ratio * 0.34) * bodyLen;
+    const abdomenLen = Math.max(0.12 * bodyLen, bodyLen * 0.86 - headLen - thoraxLen);
+    const headX = bodyLen * 0.5 - headLen * 0.5;
+    const thoraxX = headX - headLen * 0.5 - thoraxLen * 0.5;
+    const abdomenX = thoraxX - thoraxLen * 0.5 - abdomenLen * 0.5;
     const seg = {
-      head: { x: bodyLen * 0.4, rx: bodyLen * 0.16, ry: bodyWid * 0.38 },
-      thorax: { x: bodyLen * 0.08, rx: bodyLen * 0.22, ry: bodyWid * 0.5 },
-      abdomen: { x: -bodyLen * 0.32, rx: bodyLen * 0.3, ry: bodyWid * 0.46 }
+      head: { x: headX, rx: headLen * 0.5, ry: bodyWid * (0.26 + g.head_size * 0.24) },
+      thorax: { x: thoraxX, rx: thoraxLen * 0.5, ry: bodyWid * 0.5 },
+      abdomen: { x: abdomenX, rx: abdomenLen * 0.5, ry: bodyWid * (0.5 - g.abdomen_taper * 0.12) }
     };
+    const segments = g.body_segments;
     const pairs = g.leg_count / 2;
     const legLen = m.legLen * ppu * 0.62;
     const legW = (0.6 + g.leg_thickness * 2.4) * (ppu / 26);
     const legs = [];
     for (let p = 0; p < pairs; p++) {
       const t = pairs === 1 ? 0.5 : p / (pairs - 1);
-      const ax = seg.thorax.x + (0.5 - t) * bodyLen * 0.46;
+      const ax = thoraxX + (0.5 - t) * (thoraxLen + abdomenLen * 0.5);
       const splay = (0.35 + g.leg_spread * 0.75) * (0.6 + t * 0.8);
       for (const side of [-1, 1]) {
-        legs.push({ ax, ay: side * bodyWid * 0.34, side, pair: p, splay, len: legLen, w: legW });
+        legs.push({
+          ax,
+          ay: side * bodyWid * 0.34,
+          side,
+          pair: p,
+          splay,
+          len: legLen,
+          w: legW,
+          joints: g.leg_joints,
+          claw: g.claw_size * legW * 2.2
+        });
       }
     }
+    const tail = g.tail_length * bodyLen * 0.55;
+    const stinger = g.stinger_size * bodyLen * 0.22;
     return {
       m,
       ppu,
@@ -689,13 +1218,27 @@
       seg,
       legs,
       pairs,
-      mandible: g.mandible_size * bodyLen * 0.26,
+      segments,
+      mandible: g.mandible_size * bodyLen * 0.22,
       serration: g.mandible_serration,
+      horn: g.horn_size * bodyLen * 0.42,
+      spines: g.spine_density,
+      tail,
+      stinger,
       antenna: g.antenna_length * bodyLen * 0.55,
-      eye: (0.1 + g.eye_size * 0.26) * bodyWid,
+      eye: (0.1 + g.eye_size * 0.24) * bodyWid,
+      eyeCount: g.eye_count,
+      wingPairs: g.wing_count / 2,
       wing: g.wing_area,
-      // canvas frame size with room for legs at full extension
-      half: Math.ceil(bodyLen * 0.62 + legLen + legW * 2 + 6)
+      setae: g.setae,
+      // Frame size: tight around the real extent. Legs reach furthest in y, horn
+      // and tail in x; padding beyond that is wasted texture on every bug.
+      half: Math.ceil(
+        Math.max(
+          bodyLen * 0.5 + Math.max(g.horn_size * bodyLen * 0.42, tail + stinger) + 4,
+          bodyWid * 0.5 + legLen * 0.92 + legW + 4
+        )
+      )
     };
   }
   function ellipse(ctx, x, y, rx, ry, fill, stroke, lw = 1.2) {
@@ -711,51 +1254,64 @@
       ctx.stroke();
     }
   }
-  function drawLeg(ctx, L, leg, phase, col) {
+  function drawLeg(ctx, leg, phase, col) {
     const swing = Math.sin(phase * TAU) * 0.55;
     const lift = Math.max(0, Math.cos(phase * TAU)) * 0.18;
-    const base = leg.side * (Math.PI / 2) * leg.splay;
-    const a1 = base * 0.75 + swing * 0.6 * leg.side * -1;
-    const kneeX = leg.ax + Math.cos(a1 - Math.PI / 2 * leg.side * 0) * 0 + Math.sin(a1) * 0;
     const dir1 = leg.side * (Math.PI / 2) - leg.side * (0.55 * leg.splay) + swing;
-    const kx = leg.ax + Math.cos(dir1) * leg.len * 0.55;
-    const ky = leg.ay + Math.sin(dir1) * leg.len * 0.55;
-    const dir2 = dir1 + leg.side * (0.7 + lift * 2.2);
-    const fx = kx + Math.cos(dir2) * leg.len * 0.55;
-    const fy = ky + Math.sin(dir2) * leg.len * 0.55;
+    const n = leg.joints;
+    const sect = leg.len / n;
+    const pts = [{ x: leg.ax, y: leg.ay }];
+    let dir = dir1;
+    for (let i = 0; i < n; i++) {
+      if (i > 0) dir += leg.side * (0.55 + lift * 1.8) / (n - 1 || 1);
+      const prev = pts[pts.length - 1];
+      pts.push({ x: prev.x + Math.cos(dir) * sect, y: prev.y + Math.sin(dir) * sect });
+    }
     ctx.strokeStyle = col.limb;
     ctx.lineCap = "round";
     ctx.lineWidth = leg.w;
     ctx.beginPath();
-    ctx.moveTo(leg.ax, leg.ay);
-    ctx.lineTo(kx, ky);
-    ctx.lineTo(fx, fy);
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     ctx.stroke();
+    const foot = pts[pts.length - 1];
+    const knee = pts[pts.length - 2];
     ctx.fillStyle = col.outline;
     ctx.beginPath();
-    ctx.arc(fx, fy, leg.w * 0.55, 0, TAU);
+    ctx.arc(foot.x, foot.y, leg.w * 0.55, 0, TAU);
     ctx.fill();
+    if (leg.claw > 0.6) {
+      const a = Math.atan2(foot.y - knee.y, foot.x - knee.x);
+      ctx.strokeStyle = col.outline;
+      ctx.lineWidth = Math.max(0.8, leg.w * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(foot.x, foot.y);
+      ctx.lineTo(foot.x + Math.cos(a + 0.9) * leg.claw, foot.y + Math.sin(a + 0.9) * leg.claw);
+      ctx.stroke();
+    }
   }
   function drawMarkings(ctx, g, L, col) {
     const { seg, bodyWid } = L;
+    if (g.pattern_contrast < 0.08) return;
     ctx.save();
-    ctx.globalAlpha = 0.55;
+    ctx.globalAlpha = 0.3 + g.pattern_contrast * 0.55;
     const style = g.pattern;
+    const density = 0.35 + g.pattern_scale * 0.65;
     if (style < 0.33) {
-      const n = 2 + Math.floor(g.pattern * 9);
+      const n = Math.max(2, Math.round(2 + density * 8));
       for (let i = 0; i < n; i++) {
         const t = (i + 1) / (n + 1);
         const x = seg.abdomen.x + (t - 0.5) * seg.abdomen.rx * 1.7;
         const ry = seg.abdomen.ry * Math.sqrt(Math.max(0, 1 - ((x - seg.abdomen.x) / seg.abdomen.rx) ** 2));
         ctx.strokeStyle = col.mark;
-        ctx.lineWidth = Math.max(1, bodyWid * 0.09);
+        ctx.lineWidth = Math.max(1, bodyWid * 0.09 * density);
         ctx.beginPath();
         ctx.moveTo(x, -ry * 0.92);
         ctx.lineTo(x, ry * 0.92);
         ctx.stroke();
       }
     } else if (style < 0.66) {
-      const n = 3 + Math.floor((g.pattern - 0.33) * 18);
+      const n = Math.max(3, Math.round(3 + density * 16));
       for (let i = 0; i < n; i++) {
         const a = i / n * TAU * 1.6;
         const r = 0.3 + i * 7 % 5 / 9;
@@ -764,7 +1320,7 @@
         ctx.arc(
           seg.abdomen.x + Math.cos(a) * seg.abdomen.rx * r,
           Math.sin(a) * seg.abdomen.ry * r,
-          bodyWid * 0.07,
+          bodyWid * 0.06 * (0.6 + density),
           0,
           TAU
         );
@@ -772,13 +1328,70 @@
       }
     } else {
       ctx.strokeStyle = col.mark;
-      ctx.lineWidth = Math.max(1, bodyWid * 0.12);
+      ctx.lineWidth = Math.max(1, bodyWid * 0.12 * density);
       ctx.beginPath();
       ctx.moveTo(seg.head.x, 0);
       ctx.lineTo(seg.abdomen.x - seg.abdomen.rx * 0.7, 0);
       ctx.stroke();
     }
     ctx.restore();
+  }
+  function drawSegments(ctx, L, col) {
+    if (L.segments < 2) return;
+    const a = L.seg.abdomen;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = col.outline;
+    ctx.lineWidth = Math.max(0.8, L.bodyWid * 0.035);
+    for (let i = 1; i < L.segments; i++) {
+      const t = i / L.segments;
+      const x = a.x + a.rx - t * a.rx * 2;
+      const ry = a.ry * Math.sqrt(Math.max(0, 1 - ((x - a.x) / a.rx) ** 2));
+      ctx.beginPath();
+      ctx.moveTo(x, -ry * 0.95);
+      ctx.lineTo(x, ry * 0.95);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function drawSpines(ctx, L, col) {
+    if (L.spines < 0.12) return;
+    const a = L.seg.abdomen;
+    const n = Math.round(2 + L.spines * 9);
+    const len = L.bodyWid * (0.1 + L.spines * 0.26);
+    ctx.strokeStyle = col.outline;
+    ctx.lineWidth = Math.max(0.9, L.bodyWid * 0.05);
+    ctx.lineCap = "round";
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const x = a.x + a.rx - t * a.rx * 2;
+      const ry = a.ry * Math.sqrt(Math.max(0, 1 - ((x - a.x) / a.rx) ** 2));
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(x, side * ry * 0.95);
+        ctx.lineTo(x - len * 0.35, side * (ry + len));
+        ctx.stroke();
+      }
+    }
+  }
+  function drawSetae(ctx, L, col) {
+    if (L.setae < 0.15) return;
+    const n = Math.round(10 + L.setae * 46);
+    const len = L.bodyWid * (0.12 + L.setae * 0.3);
+    ctx.strokeStyle = col.setae;
+    ctx.lineWidth = Math.max(0.5, L.bodyWid * 0.022);
+    ctx.lineCap = "round";
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU;
+      const rx = L.bodyLen * 0.34, ry = L.bodyWid * 0.46;
+      const x = Math.cos(a) * rx - L.bodyLen * 0.08;
+      const y = Math.sin(a) * ry;
+      const nx = Math.cos(a), ny = Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + nx * len, y + ny * len);
+      ctx.stroke();
+    }
   }
   function drawBug(ctx, g, opts = {}) {
     const { phase = 0, state = "idle", ppu = 26 } = opts;
@@ -789,46 +1402,58 @@
     ctx.save();
     ctx.translate(lunge * L.bodyLen * 0.18, 0);
     ctx.scale(breathe, breathe);
-    if (L.wing > 0.08) {
+    if (L.wingPairs > 0 && L.wing > 0.05) {
       const flap = state === "walk" || state === "attack" ? Math.sin(phase * TAU * (1 + g.wing_beat * 3)) * 0.25 : 0.04;
-      for (const side of [-1, 1]) {
-        ctx.save();
-        ctx.translate(L.seg.thorax.x - L.bodyLen * 0.05, side * L.bodyWid * 0.22);
-        ctx.rotate(side * (0.35 + flap));
-        ellipse(
-          ctx,
-          -L.bodyLen * 0.18 * 0.9,
-          side * L.bodyWid * 0.5,
-          L.bodyLen * 0.36 * (0.5 + L.wing),
-          L.bodyWid * 0.34 * (0.5 + L.wing),
-          hsl(g.hue, 0.25, 0.85, 0.3),
-          "rgba(255,255,255,0.28)",
-          1
-        );
-        ctx.restore();
+      for (let p = 0; p < L.wingPairs; p++) {
+        const back = p * L.bodyLen * 0.14;
+        const scale = 1 - p * 0.22;
+        for (const side of [-1, 1]) {
+          ctx.save();
+          ctx.translate(L.seg.thorax.x - back, side * L.bodyWid * 0.22);
+          ctx.rotate(side * (0.35 + flap + p * 0.18));
+          ellipse(
+            ctx,
+            -L.bodyLen * 0.16,
+            side * L.bodyWid * 0.5,
+            L.bodyLen * 0.36 * (0.5 + L.wing) * scale,
+            L.bodyWid * 0.34 * (0.5 + L.wing) * scale,
+            hsl(g.hue, 0.25 + g.iridescence * 0.5, 0.85, 0.24 + g.iridescence * 0.16),
+            "rgba(255,255,255,0.26)",
+            1
+          );
+          ctx.restore();
+        }
       }
     }
+    drawSetae(ctx, L, col);
     for (const leg of L.legs) {
       const off = (leg.pair * 0.37 + (leg.side > 0 ? 0.5 : 0)) % 1;
-      drawLeg(ctx, L, leg, (phase + off) % 1, col);
+      drawLeg(ctx, leg, (phase + off) % 1, col);
     }
-    if (L.antenna > 1) {
+    if (L.tail > 1) {
+      const curl = Math.sin(phase * TAU) * 0.12 + (state === "attack" ? -0.5 * lunge : 0);
+      const bx = L.seg.abdomen.x - L.seg.abdomen.rx;
       ctx.strokeStyle = col.limb;
-      ctx.lineWidth = Math.max(0.8, L.legs[0]?.w * 0.55 || 1);
-      for (const side of [-1, 1]) {
-        const wag = Math.sin(phase * TAU + side) * 0.18;
+      ctx.lineWidth = Math.max(1, L.bodyWid * 0.13);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(bx, 0);
+      ctx.quadraticCurveTo(bx - L.tail * 0.6, curl * L.tail * 0.5, bx - L.tail, curl * L.tail);
+      ctx.stroke();
+      if (L.stinger > 0.8) {
+        const tipX = bx - L.tail, tipY = curl * L.tail;
+        ctx.fillStyle = col.outline;
         ctx.beginPath();
-        ctx.moveTo(L.seg.head.x + L.seg.head.rx * 0.5, side * L.bodyWid * 0.16);
-        ctx.quadraticCurveTo(
-          L.seg.head.x + L.antenna * 0.7,
-          side * (L.bodyWid * 0.5 + L.antenna * 0.25) + wag * 6,
-          L.seg.head.x + L.antenna,
-          side * (L.bodyWid * 0.4 + L.antenna * 0.55) + wag * 10
-        );
-        ctx.stroke();
+        ctx.moveTo(tipX, tipY - L.stinger * 0.4);
+        ctx.lineTo(tipX - L.stinger * 1.5, tipY + curl * 2);
+        ctx.lineTo(tipX, tipY + L.stinger * 0.4);
+        ctx.closePath();
+        ctx.fill();
       }
     }
     ellipse(ctx, L.seg.abdomen.x, 0, L.seg.abdomen.rx, L.seg.abdomen.ry, col.shell, col.outline, 1.4);
+    drawSpines(ctx, L, col);
+    drawSegments(ctx, L, col);
     drawMarkings(ctx, g, L, col);
     ellipse(ctx, L.seg.thorax.x, 0, L.seg.thorax.rx, L.seg.thorax.ry, col.shellLo, col.outline, 1.4);
     ellipse(ctx, L.seg.head.x, 0, L.seg.head.rx, L.seg.head.ry, col.shell, col.outline, 1.4);
@@ -844,11 +1469,59 @@
       null
     );
     ctx.restore();
+    if (g.iridescence > 0.25) {
+      ctx.save();
+      ctx.globalAlpha = (g.iridescence - 0.25) * 0.5;
+      ellipse(
+        ctx,
+        L.seg.abdomen.x - L.seg.abdomen.rx * 0.2,
+        L.seg.abdomen.ry * 0.2,
+        L.seg.abdomen.rx * 0.5,
+        L.seg.abdomen.ry * 0.3,
+        col.iris,
+        null
+      );
+      ctx.restore();
+    }
+    if (L.antenna > 1) {
+      ctx.strokeStyle = col.limb;
+      ctx.lineWidth = Math.max(0.8, (L.legs[0]?.w ?? 1) * 0.55);
+      for (const side of [-1, 1]) {
+        const wag = Math.sin(phase * TAU + side) * 0.18;
+        ctx.beginPath();
+        ctx.moveTo(L.seg.head.x + L.seg.head.rx * 0.5, side * L.bodyWid * 0.16);
+        ctx.quadraticCurveTo(
+          L.seg.head.x + L.antenna * 0.7,
+          side * (L.bodyWid * 0.5 + L.antenna * 0.25) + wag * 6,
+          L.seg.head.x + L.antenna,
+          side * (L.bodyWid * 0.4 + L.antenna * 0.55) + wag * 10
+        );
+        ctx.stroke();
+      }
+    }
+    if (L.horn > 1.5) {
+      const hx = L.seg.head.x + L.seg.head.rx * 0.7;
+      ctx.fillStyle = col.shellLo;
+      ctx.strokeStyle = col.outline;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(hx, -L.bodyWid * 0.13);
+      ctx.quadraticCurveTo(hx + L.horn * 0.7, -L.bodyWid * 0.3, hx + L.horn, -L.bodyWid * 0.05);
+      ctx.quadraticCurveTo(hx + L.horn * 0.7, L.bodyWid * 0.06, hx, L.bodyWid * 0.13);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    const eyesPerSide = Math.max(1, L.eyeCount / 2);
     for (const side of [-1, 1]) {
-      const ex = L.seg.head.x + L.seg.head.rx * 0.35;
-      const ey = side * L.seg.head.ry * 0.55;
-      ellipse(ctx, ex, ey, L.eye, L.eye, col.eye, null);
-      ellipse(ctx, ex + L.eye * 0.3, ey - L.eye * 0.3, L.eye * 0.32, L.eye * 0.32, col.eyeShine, null);
+      for (let i = 0; i < eyesPerSide; i++) {
+        const t = eyesPerSide === 1 ? 0.5 : i / (eyesPerSide - 1);
+        const ex = L.seg.head.x + L.seg.head.rx * (0.55 - t * 0.75);
+        const ey = side * L.seg.head.ry * (0.62 - t * 0.16);
+        const r = L.eye * (1 - t * 0.35);
+        ellipse(ctx, ex, ey, r, r, col.eye, null);
+        ellipse(ctx, ex + r * 0.3, ey - r * 0.3, r * 0.32, r * 0.32, col.eyeShine, null);
+      }
     }
     if (L.mandible > 0.5) {
       const open = state === "attack" ? 0.25 + lunge * 0.9 : 0.18 + Math.sin(phase * TAU) * 0.04;
@@ -997,10 +1670,12 @@
       this.id = ++uid;
       this.tag = genomeId(genome);
       this.name = genomeName(genome);
+      const na = nearestArchetype(genome);
+      this.kind = na.confident ? na.archetype.name : "Hybrid";
       this.generation = opts.generation ?? 0;
       this.rng = opts.rng;
       const key = `bug-${this.tag}-${this.id}`;
-      const sheet = bakeSpritesheet(genome, { ppu: 22 });
+      const sheet = bakeSpritesheet(genome, { ppu: 26 });
       const tex = scene2.textures.addCanvas(key, sheet.canvas);
       for (let i = 0; i < sheet.total; i++) {
         tex.add(String(i), 0, i * sheet.frameW, 0, sheet.frameW, sheet.frameH);
@@ -1008,7 +1683,7 @@
       tex.refresh();
       this.sheet = sheet;
       this.texKey = key;
-      const radius = Math.max(7, sheet.frameW * 0.2 * this.stats.size * 0.6);
+      const radius = Math.max(7, sheet.frameW * 0.19 * this.stats.size * 0.6);
       this.sprite = scene2.matter.add.sprite(opts.x, opts.y, this.texKey, "0", {
         shape: { type: "circle", radius },
         frictionAir: 0.16 + (1 - this.stats.agility / 100) * 0.14,
@@ -1029,6 +1704,7 @@
       this.thinkIn = this.rng() * 0.8;
       this.attackCooldown = 0;
       this.kills = 0;
+      this.poison = 0;
       this.distance = 0;
       this.alive = true;
     }
@@ -1083,6 +1759,17 @@
       if (!this.alive) return;
       const env = this.scene.env;
       this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+      if (this.poison > 0) {
+        const tick = Math.min(this.poison, this.poison * 0.6 * dt + 0.02);
+        this.poison -= tick;
+        this.hp -= tick;
+        if (this.hp <= 0 && this.alive) {
+          this.alive = false;
+          if (this.poisonBy) this.poisonBy.kills++;
+          this.scene.onBugDown(this);
+          return;
+        }
+      }
       this.think(dt, bugs);
       const goal = this.target && this.target.alive ? { x: this.target.sprite.x, y: this.target.sprite.y } : this.wander;
       const dx = goal.x - this.sprite.x;
@@ -1117,6 +1804,10 @@
       this.attackCooldown = 1 / this.stats.attackRate;
       const dmg = Math.max(1, this.stats.attack * 0.28 * (1 - other.stats.defense / 220));
       other.takeDamage(dmg, this);
+      if (this.stats.venom > 0) {
+        other.poison = (other.poison ?? 0) + this.stats.venom * 0.05;
+        other.poisonBy = this;
+      }
       const a = Math.atan2(other.sprite.y - this.sprite.y, other.sprite.x - this.sprite.x);
       const k = 9e-4 * this.sprite.body.mass * (0.5 + this.stats.attack / 100);
       other.sprite.applyForce({ x: Math.cos(a) * k, y: Math.sin(a) * k });
@@ -1144,7 +1835,9 @@
         id: this.id,
         tag: this.tag,
         name: this.name,
+        kind: this.kind,
         generation: this.generation,
+        poison: this.poison ?? 0,
         genome: this.genome,
         stats: this.stats,
         hp: this.hp,
@@ -1300,9 +1993,6 @@
     }
     return best.genome;
   }
-  function randomPopulation(size, rng = makeRng(1)) {
-    return Array.from({ length: size }, () => randomGenome(rng));
-  }
   function breedGeneration(population, opts = {}) {
     const {
       preset = "balanced",
@@ -1435,7 +2125,7 @@
       this.applyWorldBounds();
       this.drawGround();
       this.buildDecor();
-      this.spawnGeneration(randomPopulation(this.popSize, this.rng));
+      this.spawnGeneration(seededPopulation(this.popSize, this.rng));
       this.input.on("pointerdown", (p) => this.handleClick(p));
       this.scale.on("resize", this.onResize, this);
       this.events.once("shutdown", () => this.scale.off("resize", this.onResize, this));
@@ -1617,7 +2307,7 @@
       this.rng = makeRng(this.seed);
       this.generation = 0;
       this.history = [];
-      this.spawnGeneration(randomPopulation(this.popSize, this.rng));
+      this.spawnGeneration(seededPopulation(this.popSize, this.rng));
       return this.seed;
     }
     onBugDown(bug) {
@@ -2147,8 +2837,8 @@
       return;
     }
     $("inspect").innerHTML = `
-    <h3>${b.name} <span class="muted">#${b.tag}</span>${b.alive ? "" : ' <span class="dead">DOWN</span>'}</h3>
-    <p class="muted small">gen ${b.generation} \xB7 ${b.state} \xB7 ${b.kills} kills \xB7 ${fmt(b.distance, 0)} travelled</p>
+    <h3>${b.name} <span class="kind">${b.kind}</span>${b.alive ? "" : ' <span class="dead">DOWN</span>'}</h3>
+    <p class="muted small">#${b.tag} \xB7 gen ${b.generation} \xB7 ${b.state} \xB7 ${b.kills} kills${b.poison > 0.5 ? ' \xB7 <span class="envenomed">envenomed</span>' : ""}</p>
     <div class="bars">
       ${bar("HP", b.hp, b.stats.health)}
       ${bar("Energy", b.energy, b.stats.stamina)}
@@ -2178,6 +2868,49 @@
   function toggleSheet() {
     document.body.classList.contains("sheet-collapsed") ? expandSheet() : collapseSheet();
   }
+  function wireSwipe() {
+    const sheet = document.querySelector("aside");
+    const body = $("sheetBody");
+    let x0 = 0, y0 = 0, tracking = false, decided = false, claimed = false;
+    const start = (e) => {
+      if (!isSheetMode()) return;
+      const t = e.touches[0];
+      x0 = t.clientX;
+      y0 = t.clientY;
+      tracking = true;
+      decided = false;
+      claimed = false;
+    };
+    const move = (e) => {
+      if (!tracking) return;
+      const t = e.touches[0];
+      const dx = t.clientX - x0;
+      const dy = t.clientY - y0;
+      if (!decided) {
+        if (Math.hypot(dx, dy) < 12) return;
+        decided = true;
+        claimed = Math.abs(dy) > Math.abs(dx) * 1.4 && !(dy > 0 && body.scrollTop > 2 && e.target !== $("handle"));
+      }
+      if (!claimed) return;
+      e.preventDefault();
+      if (dy < -34) {
+        expandSheet();
+        tracking = false;
+      } else if (dy > 34) {
+        collapseSheet();
+        tracking = false;
+      }
+    };
+    const end = () => {
+      tracking = false;
+    };
+    for (const el2 of [sheet, $("scrim")]) {
+      el2.addEventListener("touchstart", start, { passive: true });
+      el2.addEventListener("touchmove", move, { passive: false });
+      el2.addEventListener("touchend", end, { passive: true });
+      el2.addEventListener("touchcancel", end, { passive: true });
+    }
+  }
   var resizeTimer = null;
   function queueResize(delay = 160) {
     clearTimeout(resizeTimer);
@@ -2191,7 +2924,7 @@
     const overlapX = Math.max(0, Math.min(a.right, c.right) - Math.max(a.left, c.left));
     if (overlapX < c.width * 0.5) return 0;
     const overlapY = Math.max(0, c.bottom - Math.max(a.top, c.top));
-    return (overlapY + 10) * (WORLD.h / Math.max(1, c.height));
+    return (overlapY + 24) * (WORLD.h / Math.max(1, c.height));
   }
   function syncViewport() {
     if (!scene) return;
@@ -2204,7 +2937,9 @@
   function wireViewport() {
     const onChange = () => queueResize();
     if (typeof ResizeObserver === "function") {
-      new ResizeObserver(onChange).observe(canvasHost);
+      const ro = new ResizeObserver(onChange);
+      ro.observe(canvasHost);
+      ro.observe(document.querySelector("aside"));
     }
     window.addEventListener("resize", onChange, { passive: true });
     window.addEventListener("orientationchange", () => queueResize(350), { passive: true });
@@ -2220,6 +2955,7 @@
       scene.emitState();
     };
     $("handle").onclick = toggleSheet;
+    wireSwipe();
     $("canvasHost").style.gridArea = "1 / 1";
     $("breed").onclick = () => scene.breed();
     $("ff").onclick = () => scene.fastForward(Number($("ffN").value) || 10);

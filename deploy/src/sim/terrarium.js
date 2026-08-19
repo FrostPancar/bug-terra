@@ -2,7 +2,8 @@
 
 import { Bug } from './bug.js';
 import { behaviourAt, dayFraction, clockLabel } from './dayNight.js';
-import { randomPopulation, breedGeneration, rank } from '../core/breeding.js';
+import { breedGeneration, rank } from '../core/breeding.js';
+import { seededPopulation } from '../core/archetypes.js';
 import { makeRng } from '../core/rng.js';
 import {
   computeWorld, tierSettings, isTouchDevice, pickRadius, aspectChangedMeaningfully,
@@ -57,7 +58,7 @@ export class TerrariumScene extends Phaser.Scene {
     this.applyWorldBounds();
     this.drawGround();
     this.buildDecor();
-    this.spawnGeneration(randomPopulation(this.popSize, this.rng));
+    this.spawnGeneration(seededPopulation(this.popSize, this.rng));
 
     this.input.on('pointerdown', (p) => this.handleClick(p));
     this.scale.on('resize', this.onResize, this);
@@ -270,7 +271,7 @@ export class TerrariumScene extends Phaser.Scene {
     this.rng = makeRng(this.seed);
     this.generation = 0;
     this.history = [];
-    this.spawnGeneration(randomPopulation(this.popSize, this.rng));
+    this.spawnGeneration(seededPopulation(this.popSize, this.rng));
     return this.seed;
   }
 

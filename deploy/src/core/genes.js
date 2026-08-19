@@ -7,26 +7,56 @@ import { makeRng } from './rng.js';
 /** @typedef {Record<string, number>} Genome */
 
 export const GENE_SPECS = {
+  /* ---- body plan ---- */
+  body_segments:      { min: 2, max: 4, integer: true },   // thorax divisions
+  body_length:        { min: 0, max: 1 },
+  body_width:         { min: 0, max: 1 },
+  body_mass:          { min: 0, max: 1 },
+  head_size:          { min: 0, max: 1 },
+  thorax_ratio:       { min: 0, max: 1 },                  // thorax vs abdomen
+  abdomen_taper:      { min: 0, max: 1 },                  // 0 round, 1 pointed
+  carapace_thickness: { min: 0, max: 1 },
+
+  /* ---- limbs ---- */
   leg_count:          { min: 4, max: 10, integer: true, step: 2 },
   leg_length:         { min: 0, max: 1 },
   leg_thickness:      { min: 0, max: 1 },
   leg_spread:         { min: 0, max: 1 },
-  body_length:        { min: 0, max: 1 },
-  body_width:         { min: 0, max: 1 },
-  body_mass:          { min: 0, max: 1 },
-  carapace_thickness: { min: 0, max: 1 },
+  leg_joints:         { min: 2, max: 3, integer: true },
+  claw_size:          { min: 0, max: 1 },
+
+  /* ---- wings ---- */
+  wing_count:         { min: 0, max: 4, integer: true, step: 2 },
   wing_area:          { min: 0, max: 1 },
   wing_beat:          { min: 0, max: 1 },
+
+  /* ---- weapons & defence ---- */
   mandible_size:      { min: 0, max: 1 },
   mandible_serration: { min: 0, max: 1 },
-  antenna_length:     { min: 0, max: 1 },
+  horn_size:          { min: 0, max: 1 },                  // rostrum / pronotal horn
+  spine_density:      { min: 0, max: 1 },                  // defensive spikes
+  tail_length:        { min: 0, max: 1 },                  // cerci / metasoma
+  stinger_size:       { min: 0, max: 1 },
+
+  /* ---- sensory ---- */
+  eye_count:          { min: 2, max: 8, integer: true, step: 2 },
   eye_size:           { min: 0, max: 1 },
+  antenna_length:     { min: 0, max: 1 },
+
+  /* ---- physiology & behaviour ---- */
   metabolism:         { min: 0, max: 1 },
   aggression:         { min: 0, max: 1 },
+
+  /* ---- surface & colour ---- */
   hue:                { min: 0, max: 1, circular: true },
   saturation:         { min: 0, max: 1 },
   lightness:          { min: 0, max: 1 },
-  pattern:            { min: 0, max: 1 },
+  pattern:            { min: 0, max: 1 },                  // selects marking style
+  pattern_scale:      { min: 0, max: 1 },
+  pattern_contrast:   { min: 0, max: 1 },
+  setae:              { min: 0, max: 1 },                  // hairiness
+  iridescence:        { min: 0, max: 1 },
+  translucency:       { min: 0, max: 1 },
 };
 
 export const GENE_ORDER = Object.keys(GENE_SPECS);

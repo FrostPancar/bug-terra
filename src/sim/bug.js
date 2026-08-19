@@ -4,6 +4,7 @@
 
 import { computeStats } from '../core/stats.js';
 import { genomeId, genomeName } from '../core/genes.js';
+import { nearestArchetype } from '../core/archetypes.js';
 import { bakeSpritesheet } from '../render/bugArt.js';
 import { Animator } from './animator.js';
 
@@ -28,12 +29,17 @@ export class Bug {
     this.id = ++uid;
     this.tag = genomeId(genome);
     this.name = genomeName(genome);
+    const na = nearestArchetype(genome);
+    // Display only — nothing in the sim branches on this.
+    this.kind = na.confident ? na.archetype.name : 'Hybrid';
     this.generation = opts.generation ?? 0;
     this.rng = opts.rng;
 
     // --- texture ---
     const key = `bug-${this.tag}-${this.id}`;
-    const sheet = bakeSpritesheet(genome, { ppu: 22 });
+    // 26 px/unit reads clearly on a phone; below ~24 the structural genes
+    // (segments, spines, eye count) stop being legible at all.
+    const sheet = bakeSpritesheet(genome, { ppu: 26 });
     const tex = scene.textures.addCanvas(key, sheet.canvas);
     for (let i = 0; i < sheet.total; i++) {
       tex.add(String(i), 0, i * sheet.frameW, 0, sheet.frameW, sheet.frameH);
@@ -43,7 +49,7 @@ export class Bug {
     this.texKey = key;
 
     // --- sprite + physics body ---
-    const radius = Math.max(7, sheet.frameW * 0.20 * this.stats.size * 0.6);
+    const radius = Math.max(7, sheet.frameW * 0.19 * this.stats.size * 0.6);
     this.sprite = scene.matter.add.sprite(opts.x, opts.y, this.texKey, '0', {
       shape: { type: 'circle', radius },
       frictionAir: 0.16 + (1 - this.stats.agility / 100) * 0.14,
@@ -68,6 +74,7 @@ export class Bug {
     this.thinkIn = this.rng() * 0.8;
     this.attackCooldown = 0;
     this.kills = 0;
+    this.poison = 0;
     this.distance = 0;
     this.alive = true;
   }
@@ -126,6 +133,19 @@ export class Bug {
     if (!this.alive) return;
     const env = this.scene.env;
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+
+    // venom tick
+    if (this.poison > 0) {
+      const tick = Math.min(this.poison, this.poison * 0.6 * dt + 0.02);
+      this.poison -= tick;
+      this.hp -= tick;
+      if (this.hp <= 0 && this.alive) {
+        this.alive = false;
+        if (this.poisonBy) this.poisonBy.kills++;
+        this.scene.onBugDown(this);
+        return;
+      }
+    }
     this.think(dt, bugs);
 
     const goal = this.target && this.target.alive
@@ -179,6 +199,11 @@ export class Bug {
     this.attackCooldown = 1 / this.stats.attackRate;
     const dmg = Math.max(1, this.stats.attack * 0.28 * (1 - other.stats.defense / 220));
     other.takeDamage(dmg, this);
+    // Venom bypasses armour and lands over time instead of on contact.
+    if (this.stats.venom > 0) {
+      other.poison = (other.poison ?? 0) + this.stats.venom * 0.05;
+      other.poisonBy = this;
+    }
     // knockback, scaled by the attacker's mass
     const a = Math.atan2(other.sprite.y - this.sprite.y, other.sprite.x - this.sprite.x);
     const k = 0.0009 * this.sprite.body.mass * (0.5 + this.stats.attack / 100);
@@ -207,7 +232,8 @@ export class Bug {
   /** Everything the HUD wants to show. */
   snapshot() {
     return {
-      id: this.id, tag: this.tag, name: this.name, generation: this.generation,
+      id: this.id, tag: this.tag, name: this.name, kind: this.kind,
+      generation: this.generation, poison: this.poison ?? 0,
       genome: this.genome, stats: this.stats,
       hp: this.hp, energy: this.energy, kills: this.kills,
       distance: this.distance, alive: this.alive,

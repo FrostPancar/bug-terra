@@ -98,8 +98,8 @@ function render(s) {
   if (!b) { $('inspect').innerHTML = `<p class="muted">${touch ? 'Tap' : 'Click'} a bug.</p>`; return; }
 
   $('inspect').innerHTML = `
-    <h3>${b.name} <span class="muted">#${b.tag}</span>${b.alive ? '' : ' <span class="dead">DOWN</span>'}</h3>
-    <p class="muted small">gen ${b.generation} · ${b.state} · ${b.kills} kills · ${fmt(b.distance, 0)} travelled</p>
+    <h3>${b.name} <span class="kind">${b.kind}</span>${b.alive ? '' : ' <span class="dead">DOWN</span>'}</h3>
+    <p class="muted small">#${b.tag} · gen ${b.generation} · ${b.state} · ${b.kills} kills${b.poison > 0.5 ? ' · <span class="envenomed">envenomed</span>' : ''}</p>
     <div class="bars">
       ${bar('HP', b.hp, b.stats.health)}
       ${bar('Energy', b.energy, b.stats.stamina)}
@@ -135,6 +135,51 @@ function toggleSheet() {
   document.body.classList.contains('sheet-collapsed') ? expandSheet() : collapseSheet();
 }
 
+/**
+ * Swipe up to reveal the panel, down to dismiss it.
+ * Only claims the gesture once it's clearly vertical and clearly a drag, so it
+ * never fights the panel's own scrolling or a tap on a control.
+ */
+function wireSwipe() {
+  const sheet = document.querySelector('aside');
+  const body = $('sheetBody');
+  let x0 = 0, y0 = 0, tracking = false, decided = false, claimed = false;
+
+  const start = (e) => {
+    if (!isSheetMode()) return;
+    const t = e.touches[0];
+    x0 = t.clientX; y0 = t.clientY;
+    tracking = true; decided = false; claimed = false;
+  };
+
+  const move = (e) => {
+    if (!tracking) return;
+    const t = e.touches[0];
+    const dx = t.clientX - x0;
+    const dy = t.clientY - y0;
+    if (!decided) {
+      if (Math.hypot(dx, dy) < 12) return;
+      decided = true;
+      // horizontal, or a downward drag inside already-scrolled content: not ours
+      claimed = Math.abs(dy) > Math.abs(dx) * 1.4
+        && !(dy > 0 && body.scrollTop > 2 && e.target !== $('handle'));
+    }
+    if (!claimed) return;
+    e.preventDefault();
+    if (dy < -34) { expandSheet(); tracking = false; }
+    else if (dy > 34) { collapseSheet(); tracking = false; }
+  };
+
+  const end = () => { tracking = false; };
+
+  for (const el of [sheet, $('scrim')]) {
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end, { passive: true });
+    el.addEventListener('touchcancel', end, { passive: true });
+  }
+}
+
 /* ---------------------------------------------------- viewport sync ----- */
 
 let resizeTimer = null;
@@ -158,7 +203,7 @@ function panelOverlap() {
   const overlapY = Math.max(0, c.bottom - Math.max(a.top, c.top));
   // CSS px -> world px (the canvas is FIT-scaled), plus a small margin so the
   // fence sits clear of the sheet's edge rather than exactly on it.
-  return (overlapY + 10) * (WORLD.h / Math.max(1, c.height));
+  return (overlapY + 24) * (WORLD.h / Math.max(1, c.height));
 }
 
 function syncViewport() {
@@ -183,7 +228,12 @@ function wireViewport() {
   // bottom-sheet transition. Watching `resize` alone measured the box mid-
   // animation and locked in the wrong aspect.
   if (typeof ResizeObserver === 'function') {
-    new ResizeObserver(onChange).observe(canvasHost);
+    const ro = new ResizeObserver(onChange);
+    ro.observe(canvasHost);
+    // The panel too: the bug fence is measured from its box, and that box is
+    // still animating when the canvas has already settled. Without this the
+    // fence lands wherever the sheet happened to be mid-transition.
+    ro.observe(document.querySelector('aside'));
   }
 
   window.addEventListener('resize', onChange, { passive: true });
@@ -204,6 +254,7 @@ function wire() {
   $('preset').onchange = (e) => { scene.preset = e.target.value; scene.emitState(); };
 
   $('handle').onclick = toggleSheet;
+  wireSwipe();
   $('canvasHost').style.gridArea = '1 / 1';
 
   $('breed').onclick = () => scene.breed();
