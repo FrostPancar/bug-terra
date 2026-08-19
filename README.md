@@ -213,3 +213,62 @@ in the JSON-spec → rigged-GLB pipeline means writing a
 - Downed bugs stay on the field as static props until the next generation.
 - Combat is contact-only; there's no ranged or ambush behaviour beyond the
   camouflage detection penalty.
+
+---
+
+## Responsive layout
+
+The terrarium reshapes itself to the screen rather than letterboxing a fixed
+1280×800 world into whatever's available.
+
+**World sizing** — `src/sim/viewport.js` computes world dimensions from the
+viewport's aspect ratio at *constant area*, so a portrait phone gets a tall
+terrarium and a desktop gets a wide one, while bugs stay the same relative size
+in both. Aspect is clamped to 1:2 … 12:5 so extreme windows don't get silly.
+
+**Layout modes**
+
+| Screen | Layout |
+|---|---|
+| ≥ 860px wide | canvas + fixed 330px side panel |
+| narrow / portrait | full-bleed canvas + collapsible bottom sheet |
+| short landscape (≤ 430px tall) | canvas + slim 268px rail |
+
+The bottom sheet is a real reservation, not an overlay — `#stage` reserves its
+height so the terrarium is never hidden behind it. Tap the grab bar to collapse;
+tapping a bug auto-expands the sheet to show its genes.
+
+**Device tiers** drive population and decor density, keyed on the *short* edge so
+rotating a phone doesn't reclassify it: phone (< 480px) 7 bugs, tablet (< 900px)
+10, desktop 12. Moving the population slider pins your choice and stops the tier
+default from overriding it.
+
+**Why a ResizeObserver** — watching `window.resize` alone measured the canvas host
+mid-transition and locked in the wrong aspect. Observing the host element catches
+window resizes, orientation flips, iOS toolbar slides, *and* the tail of the
+sheet animation.
+
+### Safari / iOS specifics
+
+- `100dvh` with `100vh` and `-webkit-fill-available` fallbacks — plain `vh` is
+  wrong whenever iOS Safari's toolbars are showing
+- `viewport-fit=cover` plus `env(safe-area-inset-*)` padding for notches
+- `overscroll-behavior: none` kills pull-to-refresh and rubber-banding
+- `touch-action: none` on the canvas, `manipulation` on controls — no 300ms tap
+  delay, no double-tap zoom
+- range inputs draw an explicit full-height track; a 4px WebKit track clips the
+  thumb into a half-dome
+- 40px minimum control height, 44px slider rows, 24px thumbs on coarse pointers
+- the sim pauses on `visibilitychange` so a backgrounded tab stops burning battery
+
+### Verification
+
+`npm run test:viewport` checks six viewports (iPhone SE / 14 / Pixel 7 portrait,
+iPhone landscape, iPad, desktop) for console errors, canvas fit, page overflow,
+offscreen or undersized controls, and **panel-over-canvas occlusion**.
+`npm run test:interact` exercises sheet toggling, rotation both ways, and tapping
+the controls.
+
+> **Tested in Chromium only.** WebKit couldn't be installed in the build
+> environment, so the Safari-specific CSS above is written to spec but has not
+> been run on a real WebKit engine. Worth a quick look on an actual iPhone.

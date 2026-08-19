@@ -9,9 +9,12 @@
     "build": "node tools/build-single.mjs",
     "test": "node --test tests/*.test.js",
     "stage": "node tools/stage-deploy.mjs",
-    "release": "npm run build && npm run stage"
+    "release": "npm run build && npm run stage",
+    "test:viewport": "node tools/viewport-test.mjs",
+    "test:interact": "node tools/interaction-test.mjs"
   },
   "devDependencies": {
-    "phaser": "3.80.1"
+    "phaser": "3.80.1",
+    "playwright": "1.47.0"
   }
 }
