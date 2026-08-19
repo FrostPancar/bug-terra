@@ -43,7 +43,7 @@ is inlined.
 ```bash
 npm install        # only needed for the single-file build + tests
 npm run dev        # serves on http://localhost:5173
-npm test           # 14 tests over genes / stats / breeding
+npm test           # 111 tests over genes / stats / breeding / classification / objects / world / hidden
 npm run build      # regenerates dist/terrarium.html
 ```
 
@@ -67,8 +67,10 @@ npm run build      # regenerates dist/terrarium.html
 
 ### 1. Genetics — `src/core/genes.js`, `genes.schema.json`
 
-A genome is a flat object of **37 scalar genes** across six groups — body plan,
-limbs, wings, weapons/defence, sensory, and surface/colour. `GENE_ORDER` is the
+A genome is a flat object of **41 scalar genes** across six groups — body plan,
+limbs, wings, weapons/defence, sensory, and surface/colour. Four of them
+(`wing_type`, `mandible_type`, `horn_type`, `eye_type`) are categorical "kind"
+genes rather than continuous amounts. `GENE_ORDER` is the
 canonical vector order; crossover, serialization and any future GLB mapping all
 read it.
 
@@ -167,11 +169,28 @@ per-sprite tint (blended toward white so bugs stay legible after dark).
 
 `timeScale` is a debug lever only — at 1 it is exactly real time.
 
+### 7. Objects and plants — `src/sim/objects.js`, `src/sim/plants.js`
+
+Placeable structures and a plant lifecycle FSM (seed → sprout → growing →
+mature → spreading → declining → dead → cleared plot), gated by three upkeep
+meters (hydration, light, nutrients). **No object ever writes a gene or a
+stat** — a Grass Patch contributes a growth multiplier that breeding reads at
+the moment it runs, never an edit to an existing bug. See
+[OBJECTS.md](./OBJECTS.md).
+
+### 8. World — `src/world/`
+
+Per-player terrariums on a shared grid, connected by a destructible dirt zone.
+`DirtWorld` is the client half — predict locally, apply ops, reconcile —
+against a `LocalAuthority` stand-in that runs in-process; a real transport
+swaps in as one object. Chunks are implicit-solid until first dig, so an
+untouched dirt zone costs zero bytes. See [WORLD.md](./WORLD.md).
+
 ---
 
 ## Tests
 
-`npm test` — **111 tests**, all passing, across four files:
+`npm test` — **111 tests**, all passing, across five files:
 
 | File | Covers |
 |---|---|
@@ -254,6 +273,8 @@ TAXONOMY.md                the classification tree, and what it resolved
 OBJECTS.md                 terrarium objects + the plant upkeep loop
 WORLD.md                   multiplayer world, dirt zone, sync authority
 HIDDEN.md                  the no-numbers rule and how it's enforced
+DEPLOY.md                  build + deploy notes
+THIRD-PARTY.md             ported/vendored code and licences
 tests/*.test.js            111 tests across five files
 tools/build-single.mjs     bundles + inlines into dist/terrarium.html
 ```
