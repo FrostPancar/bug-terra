@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terrarium — procedural bug genetics prototype</title>
+<style>
+  :root {
+    --bg: #0d0b09; --panel: #16130f; --line: #2a241c;
+    --ink: #ece3d4; --muted: #9a8f7d; --accent: #c9a227;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: grid; grid-template-columns: 1fr 330px; height: 100vh; overflow: hidden;
+  }
+  #stage { display: grid; place-items: center; overflow: hidden; }
+  #stage canvas { max-width: 100%; max-height: 100vh; }
+
+  aside { border-left: 1px solid var(--line); background: var(--panel);
+          overflow-y: auto; padding: 14px 14px 40px; }
+  h1 { font-size: 15px; letter-spacing: .06em; text-transform: uppercase;
+       margin: 0 0 4px; color: var(--accent); }
+  h3 { font-size: 14px; margin: 0 0 2px; }
+  h4 { font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+       color: var(--muted); margin: 14px 0 6px; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .small { font-size: 11px; }
+  .dead { color: #ff6b57; font-size: 11px; }
+
+  .block { border: 1px solid var(--line); border-radius: 6px;
+           padding: 10px; margin-bottom: 12px; }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+  .stat-grid div { display: flex; justify-content: space-between; }
+  .stat-grid span:first-child { color: var(--muted); }
+
+  #sun { width: 100%; height: 4px; border-radius: 2px; margin-top: 8px; }
+
+  button, select, input[type=number] {
+    background: #221d16; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 4px; padding: 6px 9px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  label { display: flex; align-items: center; justify-content: space-between;
+          gap: 8px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  #ffN { width: 56px; }
+
+  .row { display: grid; grid-template-columns: 74px 1fr 46px;
+         align-items: center; gap: 6px; margin: 2px 0; }
+  .row .k { color: var(--muted); font-size: 11px; }
+  .row .v { text-align: right; font-size: 11px; }
+  .track { height: 7px; background: #221d16; border-radius: 4px; overflow: hidden; }
+  .track i { display: block; height: 100%;
+             background: linear-gradient(90deg, #7a6a2a, var(--accent)); }
+
+  .genes { display: flex; flex-wrap: wrap; gap: 3px; }
+  .gene { font-size: 10px; background: #1e1a14; border: 1px solid var(--line);
+          border-radius: 3px; padding: 2px 5px; }
+  .gene b { color: var(--muted); font-weight: 400; margin-right: 5px; }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <aside>
+    <h1>Terrarium</h1>
+    <p class="muted small">genes → stats → physics. Stats never read back from the sim.</p>
+
+    <div class="block">
+      <div class="stat-grid">
+        <div><span>clock</span><b id="clock">--:--</b></div>
+        <div><span>phase</span><b id="phase">—</b></div>
+        <div><span>gen</span><b id="gen">0</b></div>
+        <div><span>alive</span><b id="alive">0/0</b></div>
+        <div><span>best fit</span><b id="bestFit">0</b></div>
+        <div><span>mean fit</span><b id="meanFit">0</b></div>
+        <div><span>seed</span><b id="seedOut">—</b></div>
+      </div>
+      <div id="sun"></div>
+    </div>
+
+    <div class="block">
+      <div class="btns">
+        <button id="breed">Breed (b)</button>
+        <button id="ff">Fast-forward</button>
+        <input id="ffN" type="number" value="10" min="1" max="500">
+        <button id="reseed">Reseed (r)</button>
+        <button id="pause">Pause</button>
+      </div>
+      <label>fitness <select id="preset"></select></label>
+      <label>population <input id="pop" type="range" min="4" max="30" value="12">
+        <b id="popOut">12</b></label>
+      <label>time scale <input id="tscale" type="range" min="1" max="400" value="1">
+        <b id="tscaleOut">real time</b></label>
+    </div>
+
+    <div class="block" id="inspect"><p class="muted">Click a bug.</p></div>
+  </aside>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

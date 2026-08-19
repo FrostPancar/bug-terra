@@ -1,0 +1,19 @@
+# Static site — no build step needed. index.html loads Phaser from cdnjs and
+# src/main.js as an ES module; both work fine served over HTTP.
+# dist/terrarium.html is the self-contained single-file build.
+
+[build]
+  publish = "."
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Serve ES modules with the right type on any host that guesses wrong.
+[[headers]]
+  for = "/src/*.js"
+  [headers.values]
+    Content-Type = "text/javascript; charset=utf-8"
