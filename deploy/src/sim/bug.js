@@ -4,11 +4,28 @@
 
 import { computeStats } from '../core/stats.js';
 import { genomeId, genomeName } from '../core/genes.js';
-import { nearestArchetype } from '../core/archetypes.js';
+import { classify, applySpecialties } from '../core/classification.js';
+import { physicalReadout } from '../core/impressions.js';
 import { bakeSpritesheet } from '../render/bugArt.js';
 import { Animator } from './animator.js';
 
 let uid = 0;
+
+/** Health as a word. A bar with a number on it is exactly what we are avoiding. */
+function describeCondition(k) {
+  if (k <= 0) return 'down';
+  if (k < 0.2) return 'badly hurt';
+  if (k < 0.5) return 'hurt';
+  if (k < 0.85) return 'scuffed';
+  return 'unhurt';
+}
+
+function describeVigour(k) {
+  if (k < 0.15) return 'spent';
+  if (k < 0.4) return 'flagging';
+  if (k < 0.8) return 'working';
+  return 'fresh';
+}
 
 /** rgb triple -> 0xRRGGBB, pulled `k` of the way toward white (k=1 is white). */
 function mixToWhite(rgb, k) {
@@ -25,13 +42,15 @@ export class Bug {
   constructor(scene, genome, opts) {
     this.scene = scene;
     this.genome = genome;
-    this.stats = computeStats(genome);
+    // Genes -> classification -> specialty multipliers -> stats. Every step is
+    // a pure read off the same vector, so the arrow still only points one way.
+    this.classification = classify(genome);
+    this.stats = applySpecialties(computeStats(genome), this.classification);
     this.id = ++uid;
     this.tag = genomeId(genome);
     this.name = genomeName(genome);
-    const na = nearestArchetype(genome);
-    // Display only — nothing in the sim branches on this.
-    this.kind = na.confident ? na.archetype.name : 'Hybrid';
+    this.kind = this.classification.name;
+    this.physical = physicalReadout(genome);
     this.generation = opts.generation ?? 0;
     this.rng = opts.rng;
 
@@ -215,6 +234,7 @@ export class Bug {
 
   takeDamage(amount, from) {
     this.hp -= amount;
+    if (from) this.lastAttacker = from;
     this.scene.flash(this.sprite.x, this.sprite.y);
     if (this.hp <= 0 && this.alive) {
       this.alive = false;
@@ -231,15 +251,42 @@ export class Bug {
     }
   }
 
-  /** Everything the HUD wants to show. */
+  /**
+   * What the PLAYER is allowed to see.
+   *
+   * Deliberately carries no genome and no stat block. The concept doc's whole
+   * premise is that you learn a bug by watching it, so the panel is not given
+   * the numbers to render even if it wanted to. Condition is a word, not a bar.
+   */
   snapshot() {
     return {
       id: this.id, tag: this.tag, name: this.name, kind: this.kind,
-      generation: this.generation, poison: this.poison ?? 0,
+      generation: this.generation,
+      taxon: this.classification.taxon,
+      tier: this.classification.tier,
+      hybrid: this.classification.hybrid,
+      traits: this.classification.traits,
+      physical: this.physical,
+      condition: describeCondition(this.hp / this.stats.health),
+      vigour: describeVigour(this.energy / this.stats.stamina),
+      envenomed: (this.poison ?? 0) > 0.5,
+      kills: this.kills,
+      alive: this.alive,
+      state: this.anim.state,
+    };
+  }
+
+  /**
+   * The numbers, for tools and tests only. Nothing in `src/ui` may call this —
+   * `tests/hidden.test.js` enforces that by scanning the UI sources.
+   */
+  debugSnapshot() {
+    return {
+      id: this.id, tag: this.tag, name: this.name,
       genome: this.genome, stats: this.stats,
       hp: this.hp, energy: this.energy, kills: this.kills,
-      distance: this.distance, alive: this.alive,
-      state: this.anim.state,
+      distance: this.distance, alive: this.alive, state: this.anim.state,
+      classification: this.classification,
     };
   }
 

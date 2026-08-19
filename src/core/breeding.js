@@ -44,10 +44,16 @@ export const CROSSOVERS = { uniform: uniformCrossover, onePoint: onePointCrossov
  * Gaussian creep. `rate` is per-gene probability, `scale` is sigma as a
  * fraction of each gene's full range.
  */
-export function mutate(genome, rng, { rate = 0.12, scale = 0.10 } = {}) {
+export function mutate(genome, rng, { rate = 0.12, scale = 0.10, locked = [], unlocked = [] } = {}) {
   const out = { ...genome };
+  const lock = new Set(locked);
+  const loose = new Set(unlocked);
   for (const k of GENE_ORDER) {
-    if (rng() >= rate) continue;
+    // A locked gene is what a lineage has committed to. Classification hands
+    // these down (see core/classification.js) and the Prism Chamber adds to
+    // them; either way the gene rides through breeding untouched.
+    if (lock.has(k)) continue;
+    if (rng() >= (loose.has(k) ? rate * 1.8 : rate)) continue;
     const spec = GENE_SPECS[k];
     const span = spec.max - spec.min;
     const step = spec.integer ? (spec.step ?? 1) * (rng() < 0.5 ? -1 : 1)
@@ -111,22 +117,32 @@ export function breedGeneration(population, opts = {}) {
     mutationScale = 0.10,
     immigrants = 1,          // fresh random genomes per generation, keeps diversity up
     size = population.length,
+    // Terrarium objects feed these in at breed time (see sim/objects.js). None
+    // of them writes a gene — they only change how the next draw is taken.
+    selection = null,        // 'inverse' = the Compost Heap: breed from the worst
+    locked = [],             // genes held steady (classification locks, Prism Chamber)
+    unlocked = [],           // genes that mutate harder (classification unlocks)
   } = opts;
 
   const ranked = rank(population, preset);
+  // Inverse selection preserves diversity by breeding what would otherwise be
+  // discarded. Same tournament, reversed ordering — no special-cased path.
+  const pool = selection === 'inverse' ? [...ranked].reverse() : ranked;
   const cross = CROSSOVERS[crossover] ?? blendCrossover;
   const next = [];
 
-  for (let i = 0; i < Math.min(elitism, ranked.length) && next.length < size; i++) {
-    next.push({ ...ranked[i].genome });
+  for (let i = 0; i < Math.min(elitism, pool.length) && next.length < size; i++) {
+    next.push({ ...pool[i].genome });
   }
   for (let i = 0; i < immigrants && next.length < size; i++) {
     next.push(randomGenome(rng));
   }
   while (next.length < size) {
-    const a = tournament(ranked, rng, tournamentK);
-    const b = tournament(ranked, rng, tournamentK);
-    next.push(mutate(cross(a, b, rng), rng, { rate: mutationRate, scale: mutationScale }));
+    const a = tournament(pool, rng, tournamentK);
+    const b = tournament(pool, rng, tournamentK);
+    next.push(mutate(cross(a, b, rng), rng, {
+      rate: mutationRate, scale: mutationScale, locked, unlocked,
+    }));
   }
 
   const fits = ranked.map((e) => e.fitness);

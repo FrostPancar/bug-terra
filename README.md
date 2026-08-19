@@ -9,18 +9,27 @@ Stack: Phaser 3 + Matter.js, plain ES modules, no build step required for dev.
 
 ## The one rule
 
-Stats are a **pure function of genes**. Nothing in the simulation ever writes
-back into them.
+Stats are a **pure function of genes**. Classification is a second, equally pure
+read. Nothing in the simulation ever writes back into either.
 
 ```
-genes ──► stats ──► physics params (velocity, mass, force)
-   │         │  └──► animation rates (walk fps, bite rate)
-   │         └────► fitness ──► selection
-   └──────────────► sprite geometry (legs, body, mandibles, colour)
+genes ──┬──► stats ──► physics params (velocity, mass, force)
+        │       │  └──► animation rates (walk fps, bite rate)
+        │       └────► fitness ──► selection
+        ├──► classification ──► identity, specialty multipliers, breeding locks
+        └──► sprite geometry (legs, body, mandibles, colour)
 ```
 
-`computeStats()` takes no time, no randomness, no world state. The same genome
-produces byte-identical stats forever — that's covered by a test.
+`computeStats()` and `classify()` take no time, no randomness, no world state.
+The same genome produces byte-identical results forever — both are covered by
+tests that recompute and compare.
+
+## The second rule
+
+**The player never sees a number.** Stats and genes are hidden; you learn a bug
+by watching it, fighting it, and taking it to the Vet Station. See
+[HIDDEN.md](HIDDEN.md) — and note that this is enforced by a test that scans the
+UI sources, not just by convention.
 
 ---
 
@@ -44,11 +53,12 @@ npm run build      # regenerates dist/terrarium.html
 
 | Action | How |
 |---|---|
-| Inspect a bug | click it — genes and stats appear in the panel |
+| Inspect a bug | click it — you get what you've earned, in words |
+| See what a bug actually is | `Take it in` — the Vet Station, visually only |
 | Breed one generation | `Breed` button, or `b` |
 | Fast-forward N generations | `Fast-forward` (headless, then respawns) |
 | New random population | `Reseed`, or `r` |
-| Change selection pressure | the `fitness` dropdown |
+| Change selection pressure | the `breeding for` dropdown |
 | Watch a full day in minutes | `time scale` slider (1 = real time) |
 
 ---
@@ -161,7 +171,37 @@ per-sprite tint (blended toward white so bugs stay legible after dark).
 
 ## Tests
 
-`npm test` — 20 tests, all passing:
+`npm test` — **111 tests**, all passing, across four files:
+
+| File | Covers |
+|---|---|
+| `core.test.js` | genes, stats, breeding, archetypes (20) |
+| `classification.test.js` | the taxonomy tree and the hybrid seam (21) |
+| `plants.test.js` | plant lifecycle, meters, objects (20) |
+| `world.test.js` | chunks, ops, grid, gates, discovery (29) |
+| `hidden.test.js` | the no-numbers rule, impressions, knowledge, vet (21) |
+
+Highlights beyond the original genetics suite:
+
+- **Classification is pure and total** — 20 recomputes per genome match exactly;
+  400 random genomes all land on a real node with a valid parent chain
+- **The Beetle ⇄ Moth wall holds** — no genome satisfies both windows, and
+  walking `wing_area` between them passes through a genuine gap
+- **The hybrid seam works** — a Beetle bred to eight legs stays a Beetle chassis
+  on an arachnid body and is named accordingly, rather than becoming a Spider
+- **Plants never touch genetics** — `plants.js`'s imports are inspected and the
+  source is scanned for `computeStats`, `clampGene`, `GENE_ORDER`, `genome`
+- **Dig ops are idempotent and order-independent**; an untouched dirt zone
+  occupies zero bytes; a long-abandoned hole closes and forgets its chunk
+- **The UI cannot render a number** — `main.js` and `src/ui/` are scanned for
+  gene/stat imports, `snapshot()` for a leaked genome or stat block, and every
+  impression phrase for a digit
+
+Browser matrices (need a static server on `:8899`):
+`npm run test:viewport` (6 viewports, occlusion-checked) and
+`npm run test:interact`.
+
+### The original genetics suite
 
 - RNG determinism; genome range/quantisation invariants over 500 random genomes
 - Stats identical across 50 recomputes; finite and bounded over 2000 genomes
@@ -191,16 +231,30 @@ src/core/genes.js          gene specs, clamping, vector I/O, ids, names
 src/core/archetypes.js     eight body plans + seeding + nearest-archetype label
 src/core/genes.schema.json JSON Schema for the genome
 src/core/stats.js          morphology + pure stat formulas + fitness presets
+src/core/classification.js clade brackets + taxonomy tree (second pure read)
+src/core/impressions.js    stats -> words; the no-numbers vocabulary
 src/core/breeding.js       crossover, mutation, selection, generation loop
 src/render/bugArt.js       procedural canvas art + spritesheet baking
 src/sim/animator.js        animation state machine
 src/sim/dayNight.js        real-clock day/night + behaviour modifiers
 src/sim/bug.js             entity: stats -> body, animator, behaviour
-src/sim/terrarium.js       Phaser scene, decor, generation control
+src/sim/knowledge.js       what the player has earned + the Vet Station
+src/sim/objects.js         placeable object catalog + field aggregation
+src/sim/plants.js          plant lifecycle FSM + three upkeep meters
+src/sim/terrarium.js       Phaser scene, decor, garden, generation control
+src/world/chunks.js        dirt-zone chunks, dig/fill ops, regrowth, POIs
+src/world/grid.js          cell topology + spiral assignment
+src/world/gates.js         gateOpen / pvpEnabled and the entry rules
+src/world/discovery.js     falloff curve, dig power, borrowed holes
+src/world/index.js         DirtWorld client + LocalAuthority stand-in
 src/ui/glass.js            liquid-glass port (see THIRD-PARTY.md)
-src/main.js                boot + HUD
+src/main.js                boot + HUD (cannot render a number)
 GENES.md                   full gene and archetype reference
-tests/core.test.js         genetics/stats/breeding tests
+TAXONOMY.md                the classification tree, and what it resolved
+OBJECTS.md                 terrarium objects + the plant upkeep loop
+WORLD.md                   multiplayer world, dirt zone, sync authority
+HIDDEN.md                  the no-numbers rule and how it's enforced
+tests/*.test.js            111 tests across five files
 tools/build-single.mjs     bundles + inlines into dist/terrarium.html
 ```
 

@@ -5,6 +5,11 @@ import { behaviourAt, dayFraction, clockLabel } from './dayNight.js';
 import { breedGeneration, rank } from '../core/breeding.js';
 import { seededPopulation } from '../core/archetypes.js';
 import { makeRng } from '../core/rng.js';
+import { PlantBed } from './plants.js';
+import { placeObject, fieldAt, breedingModifiers } from './objects.js';
+import { Knowledge, sendToVet, vetStatus, isAway, VET } from './knowledge.js';
+import { vetReadout } from '../core/impressions.js';
+import { drawBug } from '../render/bugArt.js';
 import {
   computeWorld, tierSettings, isTouchDevice, pickRadius, aspectChangedMeaningfully,
 } from './viewport.js';
@@ -14,6 +19,14 @@ export const WORLD = { w: 1280, h: 800 };
 
 /** Inset from the world edge to the glass wall, scaled to the smaller side. */
 const wallInset = () => Math.max(12, Math.round(Math.min(WORLD.w, WORLD.h) * 0.03));
+
+/** 0xRRGGBB lerp — used for the wilting palette shift. */
+function mixToward(a, b, k) {
+  const t = Math.max(0, Math.min(1, k));
+  const ch = (v, s) => (v >> s) & 255;
+  const m = [16, 8, 0].map((s) => Math.round(ch(a, s) + (ch(b, s) - ch(a, s)) * t));
+  return (m[0] << 16) | (m[1] << 8) | m[2];
+}
 
 export class TerrariumScene extends Phaser.Scene {
   constructor() {
@@ -29,6 +42,16 @@ export class TerrariumScene extends Phaser.Scene {
     this.touch = false;
     this.popSize = 12;
     this.popSizeExplicit = false;   // true once the user moves the slider
+    // What the player has learned, and what they have not. The panel reads this
+    // rather than reading stats — see sim/knowledge.js.
+    this.knowledge = new Knowledge();
+    /** @type {Array<ReturnType<typeof placeObject>>} */
+    this.objects = [];
+    /** @type {PlantBed|null} */
+    this.bed = null;
+    /** Bugs currently at the vet: out of the terrarium, not gone. */
+    this.atVet = [];
+    this.clock = 0;                 // seconds of sim time, for vet timers
     // World px hidden behind the bottom sheet. The canvas draws full bleed so
     // the glass buttons have live terrarium to refract; the playable box stops
     // short of it so no bug is ever unreachable under the panel.
@@ -51,6 +74,7 @@ export class TerrariumScene extends Phaser.Scene {
 
     this.groundLayer = this.add.graphics().setDepth(0);
     this.decorLayer = this.add.graphics().setDepth(1);
+    this.plantLayer = this.add.graphics().setDepth(2);
     this.fxLayer = this.add.graphics().setDepth(30);
     this.lightLayer = this.add.graphics().setDepth(40);
     this.fx = [];
@@ -58,6 +82,7 @@ export class TerrariumScene extends Phaser.Scene {
     this.applyWorldBounds();
     this.drawGround();
     this.buildDecor();
+    this.buildGarden();
     this.spawnGeneration(seededPopulation(this.popSize, this.rng));
 
     this.input.on('pointerdown', (p) => this.handleClick(p));
@@ -129,6 +154,20 @@ export class TerrariumScene extends Phaser.Scene {
     this.drawGround();
     this.decorLayer.clear();
     this.buildDecor();
+    // Keep the garden inside the new walls without restarting its lifecycle.
+    if (this.bed) {
+      const b = this.terrariumBounds;
+      this.bed.bounds = { x: b.x + 20, y: b.y + 20, right: b.right - 20, bottom: b.bottom - 20 };
+      for (const p of this.bed.plants) {
+        p.x = p.plot.x = Math.min(b.right - 20, Math.max(b.x + 20, p.x));
+        p.y = p.plot.y = Math.min(b.bottom - 20, Math.max(b.y + 20, p.y));
+      }
+      for (const o of this.objects) {
+        o.x = Math.min(b.right - 20, Math.max(b.x + 20, o.x));
+        o.y = Math.min(b.bottom - 20, Math.max(b.y + 20, o.y));
+      }
+      this.drawGarden();
+    }
 
     // pull everyone back inside the new walls
     const b = this.terrariumBounds;
@@ -222,6 +261,143 @@ export class TerrariumScene extends Phaser.Scene {
     }
   }
 
+  /* ---------------------------------------------------------- garden ---- */
+
+  /**
+   * Placeable objects and the plant bed. Plants tick alongside decor rather
+   * than alongside bugs — they have no Matter.js body beyond a footprint, and
+   * they read the same `behaviourAt()` signal bug behaviour reads.
+   */
+  buildGarden() {
+    const b = this.terrariumBounds;
+    this.bed = new PlantBed({
+      rng: makeRng(this.seed ^ 0x5eed),
+      bounds: { x: b.x + 20, y: b.y + 20, right: b.right - 20, bottom: b.bottom - 20 },
+    });
+    this.objects = [];
+
+    // A starter garden so the loop is visible on first run. Everything here is
+    // ordinary placement — nothing about it is special-cased.
+    const r = makeRng(777);
+    const at = (fx, fy) => ({ x: b.x + b.width * fx, y: b.y + b.height * fy });
+    const pond = at(0.18, 0.72);
+    const heap = at(0.82, 0.24);
+    this.objects.push(placeObject('pond', pond.x, pond.y));
+    this.objects.push(placeObject('compost_heap', heap.x, heap.y));
+    this.objects.push(placeObject('training_rock', at(0.5, 0.2).x, at(0.5, 0.2).y));
+
+    const starters = ['grass_patch', 'moss_bed', 'fern_cluster', 'berry_bush', 'flowering_bush'];
+    for (const id of starters) {
+      for (let tries = 0; tries < 12; tries++) {
+        const x = Math.round(b.x + 40 + r() * (b.width - 80));
+        const y = Math.round(b.y + 40 + r() * (b.height - 80));
+        if (this.bed.plant(id, x, y, { state: r() < 0.5 ? 'growing' : 'mature' })) break;
+      }
+    }
+  }
+
+  /** Aggregated object influence at a point — passed straight to the plant bed. */
+  fieldFor(x, y) { return fieldAt(this.objects, x, y); }
+
+  drawGarden() {
+    const g = this.plantLayer;
+    g.clear();
+    for (const p of this.bed?.plants ?? []) {
+      if (p.state === 'seed') {
+        g.fillStyle(0x6b543a, 0.9).fillCircle(p.x, p.y, 3);
+        continue;
+      }
+      const wilt = p.wilt;
+      const base = [0x3f7a3a, 0x2f6330, 0x54994a][p.id.length % 3];
+      // Wilting is a palette shift, not a label. You are supposed to notice it.
+      const col = wilt > 0.15 ? mixToward(base, 0x8a7a3c, Math.min(1, wilt)) : base;
+      const blades = 3 + (p.id.length % 4);
+      const len = (18 + 40 * p.scale) * (1 - wilt * 0.35);
+      for (let i = 0; i < blades; i++) {
+        const a = -Math.PI / 2 + (i / blades - 0.5) * 1.9;
+        g.lineStyle(2 + p.scale * 2.5, col, 0.95);
+        g.beginPath();
+        g.moveTo(p.x, p.y);
+        g.lineTo(p.x + Math.cos(a) * len * 0.6, p.y + Math.sin(a) * len * 0.6);
+        g.lineTo(p.x + Math.cos(a + 0.4) * len, p.y + Math.sin(a + 0.4) * len);
+        g.strokePath();
+      }
+      if (p.pendingYield > 0) {
+        g.fillStyle(0xffd166, 1).fillCircle(p.x, p.y - len * 0.7, 4);
+      }
+    }
+    for (const o of this.objects) {
+      g.fillStyle(0x2c3b4a, 0.5).fillCircle(o.x, o.y, Math.max(10, o.spec.footprint || 12));
+      g.lineStyle(2, 0x9fd9e8, 0.35).strokeCircle(o.x, o.y, Math.max(10, o.spec.footprint || 12));
+    }
+  }
+
+  /* ------------------------------------------------------- vet station --- */
+
+  /**
+   * Take a bug out for a look-over. It leaves the terrarium for the length of
+   * the visit and cannot go straight back in afterwards, so this is a decision
+   * rather than something you do to every bug constantly.
+   */
+  sendToVet(bug) {
+    if (!bug || !sendToVet(this.knowledge, bug.genome, this.clock)) return false;
+    bug.sprite.setVisible(false);
+    bug.sprite.setStatic(true);
+    this.atVet.push(bug);
+    this.bugs = this.bugs.filter((b) => b !== bug);
+    if (this.selected === bug) this.selected = this.bugs[0] ?? null;
+    this.emitState();
+    return true;
+  }
+
+  /**
+   * The Vet Station's entire output: a picture, and words about what is in the
+   * picture. This is the ONE sanctioned path from a genome to the player, and
+   * it is deliberately the least useful view for min-maxing — it tells you what
+   * the bug IS, never what it is worth.
+   *
+   * The genome crosses into the UI as pixels and prose, never as data: the
+   * caller gets a canvas and a list of sentences, and no way back to a number.
+   */
+  vetPortrait(bug, { size = 260 } = {}) {
+    if (!bug) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.translate(size / 2, size / 2);
+    // Held still, head-up, at a resolution where the parts actually read.
+    drawBug(ctx, bug.genome, { phase: 0, state: 'idle', ppu: Math.round(size / 8.5) });
+    return { canvas, readout: vetReadout(bug.genome) };
+  }
+
+  /** Anyone whose visit has elapsed comes home. Cooldown starts on return. */
+  returnFromVet() {
+    if (!this.atVet.length) return;
+    const back = [];
+    this.atVet = this.atVet.filter((bug) => {
+      const rec = this.knowledge.recordFor(bug.genome);
+      if (isAway(rec, this.clock)) return true;
+      back.push(bug);
+      return false;
+    });
+    for (const bug of back) {
+      const b = this.terrariumBounds;
+      bug.sprite.setVisible(true);
+      bug.sprite.setStatic(false);
+      bug.sprite.setPosition(b.x + this.rng() * b.width, b.y + this.rng() * b.height);
+      bug.wander = bug.pickWanderPoint();
+      this.bugs.push(bug);
+    }
+    if (back.length) this.emitState();
+  }
+
+  /** Record a fight for both parties — this is how combat impressions unlock. */
+  noteFight(winner, loser) {
+    if (winner) this.knowledge.fought(winner.genome, { won: true });
+    if (loser) this.knowledge.fought(loser.genome, { won: false });
+  }
+
   /* ------------------------------------------------------ population ---- */
 
   spawnGeneration(population) {
@@ -236,13 +412,29 @@ export class TerrariumScene extends Phaser.Scene {
     this.emitState();
   }
 
-  /** Breed the CURRENT genomes into the next generation and respawn. */
+  /**
+   * Breed the CURRENT genomes into the next generation and respawn.
+   *
+   * `at` is where the breeding happens — the modifiers of whatever structures
+   * cover that point are read HERE, at the moment the call runs. Nothing was
+   * written onto any bug beforehand; that is the whole distinction the objects
+   * doc draws between a rate multiplier and a gene write.
+   */
   breed(opts = {}) {
     const genomes = this.bugs.map((b) => b.genome);
+    const at = opts.at ?? { x: this.terrariumBounds.centerX, y: this.terrariumBounds.centerY };
+    const mods = breedingModifiers(this.objects, at.x, at.y);
+    // Locks come from what the lineage already is: a Beetle line holds its
+    // wings closed unless you deliberately breed it out of Beetle.
+    const dominant = this.bugs[0]?.classification ?? null;
     const { population, report } = breedGeneration(genomes, {
       preset: this.preset,
       rng: this.rng,
       size: this.popSize,
+      mutationScale: 0.10 * mods.mutationScale,
+      selection: mods.selection,
+      locked: mods.lockChoices > 0 ? (dominant?.locks ?? []) : [],
+      unlocked: dominant?.unlocks ?? [],
       ...opts,
     });
     this.generation++;
@@ -279,6 +471,7 @@ export class TerrariumScene extends Phaser.Scene {
     bug.sprite.setAlpha(0.35);
     bug.sprite.setStatic(true);
     this.flash(bug.sprite.x, bug.sprite.y, 0xff5b4a, 26);
+    this.noteFight(bug.poisonBy ?? bug.lastAttacker ?? null, bug);
     if (this.selected === bug) this.selected = this.bugs.find((b) => b.alive) ?? bug;
     if (this.bugs.filter((b) => b.alive).length <= 1) this.events.emit('roundOver');
   }
@@ -305,10 +498,24 @@ export class TerrariumScene extends Phaser.Scene {
 
   update(_time, delta) {
     const dt = Math.min(0.05, delta / 1000);
+    this.clock += dt;
     this.env = behaviourAt(dayFraction(new Date(), this.timeScale));
 
     const alive = this.bugs.filter((b) => b.alive);
     for (const b of alive) b.update(dt, alive);
+
+    // Watching IS the mechanic. Time on screen is what buys the phrases the
+    // panel is allowed to show.
+    for (const b of alive) this.knowledge.observe(b.genome, dt);
+
+    // Plants tick beside the decor, on the same clock the bugs read.
+    if (this.bed) {
+      this.gardenTick = (this.gardenTick ?? 0) + dt;
+      this.bed.tick(dt, { light: this.env.light, disturbance: alive.length * 0.05 },
+                   (x, y) => this.fieldFor(x, y));
+      if (this.gardenTick > 0.5) { this.gardenTick = 0; this.drawGarden(); }
+    }
+    this.returnFromVet();
 
     // fx
     this.fxLayer.clear();
@@ -335,9 +542,29 @@ export class TerrariumScene extends Phaser.Scene {
     if (this.hudTick > 0.2) { this.hudTick = 0; this.emitState(); }
   }
 
+  /**
+   * The population's direction of travel, as a phrase. The GA still ranks by a
+   * numeric fitness internally — it has to — but the number never leaves this
+   * method. Comparing this generation's mean against the last two is enough to
+   * say "coming along" without ever printing a score.
+   */
+  poolTrend() {
+    const h = this.history;
+    if (h.length < 2) return 'too early to say';
+    const last = h[h.length - 1];
+    const prev = h[h.length - 2];
+    const d = (last.mean ?? 0) - (prev.mean ?? 0);
+    const scale = Math.max(1, Math.abs(prev.mean ?? 1)) * 0.02;
+    if (d > scale) return 'the pool is coming along';
+    if (d < -scale) return 'the pool has slipped';
+    return 'the pool is holding steady';
+  }
+
   emitState() {
     const alive = this.bugs.filter((b) => b.alive);
+    // rank() is still what selection uses; the numbers stay inside this call.
     const ranked = this.bugs.length ? rank(this.bugs.map((b) => b.genome), this.preset) : [];
+    const sel = this.selected;
     this.events.emit('state', {
       clock: clockLabel(new Date(), this.timeScale),
       env: this.env,
@@ -345,14 +572,37 @@ export class TerrariumScene extends Phaser.Scene {
       preset: this.preset,
       seed: this.seed,
       alive: alive.length,
-      total: this.bugs.length,
+      total: this.bugs.length + this.atVet.length,
       popSize: this.popSize,
       tier: this.settings?.tier ?? 'desktop',
-      bestFitness: ranked[0]?.fitness ?? 0,
-      meanFitness: ranked.length ? ranked.reduce((a, e) => a + e.fitness, 0) / ranked.length : 0,
-      selected: this.selected?.snapshot() ?? null,
+      trend: this.poolTrend(),
+      diversity: ranked.length ? describeDiversity(ranked) : 'nothing to compare yet',
+      garden: this.bed?.snapshot() ?? [],
+      atVet: this.atVet.map((b) => ({
+        ...b.snapshot(),
+        remaining: Math.ceil(vetStatus(this.knowledge.recordFor(b.genome), this.clock).remaining),
+      })),
+      vetCapacity: VET,
+      selected: sel ? {
+        ...sel.snapshot(),
+        impressions: this.knowledge.known(sel.genome).map((i) => i.phrase),
+        familiarity: this.knowledge.familiarity(sel.genome),
+        moments: this.knowledge.recordFor(sel.genome).moments.slice(-5),
+        vet: vetStatus(this.knowledge.recordFor(sel.genome), this.clock),
+      } : null,
       roster: this.bugs.map((b) => b.snapshot()),
       history: this.history.slice(-40),
     });
   }
+}
+
+/** Spread of the pool, as a word. Same rule: the number stays in here. */
+function describeDiversity(ranked) {
+  const vals = ranked.map((r) => r.fitness);
+  const mean = vals.reduce((a, v) => a + v, 0) / vals.length;
+  const sd = Math.sqrt(vals.reduce((a, v) => a + (v - mean) ** 2, 0) / vals.length);
+  const cv = Math.abs(mean) > 1e-6 ? sd / Math.abs(mean) : 0;
+  if (cv < 0.06) return 'they are all much of a muchness';
+  if (cv < 0.18) return 'a few stand out';
+  return 'wildly different animals';
 }

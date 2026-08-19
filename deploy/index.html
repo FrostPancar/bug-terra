@@ -282,19 +282,36 @@
   }
   #ffN { width: 64px; flex: 0 0 auto; text-align: center; }
 
-  .row { display: grid; grid-template-columns: 74px minmax(0,1fr) 46px;
-         align-items: center; gap: 6px; margin: 3px 0; }
-  .row .k { color: var(--muted); font-size: 11px;
-            overflow: hidden; text-overflow: ellipsis; }
-  .row .v { text-align: right; font-size: 11px; }
-  .track { height: 7px; background: #221d16; border-radius: 4px; overflow: hidden; }
-  .track i { display: block; height: 100%;
-             background: linear-gradient(90deg, #7a6a2a, var(--accent)); }
+  /* No stat bars and no gene chips live here any more — on purpose. The bug is
+     described, not tabulated. See src/core/impressions.js. */
+  .tells { list-style: none; margin: 6px 0 0; padding: 0; }
+  .tells li { position: relative; padding: 4px 0 4px 14px; font-size: 12.5px;
+              line-height: 1.45; }
+  .tells li::before { content: '·'; position: absolute; left: 3px;
+                      color: var(--accent); }
+  .tells li.faint { color: var(--muted); }
 
-  .genes { display: flex; flex-wrap: wrap; gap: 3px; }
-  .gene { font-size: 10px; background: #1e1a14; border: 1px solid var(--line);
-          border-radius: 3px; padding: 3px 5px; }
-  .gene b { color: var(--muted); font-weight: 400; margin-right: 5px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .fact { font-size: 10.5px; background: #1e1a14; border: 1px solid var(--line);
+          border-radius: 999px; padding: 3px 8px; color: var(--muted); }
+  .fact.trait { color: var(--accent); border-color: #4a3f20; }
+
+  .familiar { font-size: 11px; color: var(--muted); font-style: italic;
+              margin-top: 8px; }
+  .moments { font-size: 11px; color: var(--muted); margin-top: 6px;
+             padding-left: 14px; }
+  .unknown { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .vet-row { display: flex; align-items: center; gap: 8px; margin-top: 8px;
+             flex-wrap: wrap; }
+  .vet-row button { flex: 0 0 auto; }
+  .vet-state { font-size: 11px; color: var(--muted); }
+  .vet-away { font-size: 11.5px; color: var(--muted); margin: 4px 0 0;
+              padding-left: 14px; }
+  .vet-card { margin-top: 10px; padding: 10px; border: 1px solid var(--line);
+              border-radius: 12px; background:
+                radial-gradient(120% 90% at 50% 0%, #221c14 0%, #171310 70%); }
+  .vet-card canvas { image-rendering: auto; }
 
   /* --------------------------------------------------- sheet handle ---- */
   #handle { display: none; }
@@ -453,7 +470,7 @@
 
     <div id="sheetBody">
       <h1>Terrarium</h1>
-      <p class="muted small lede">genes → stats → physics. Stats never read back from the sim.</p>
+      <p class="muted small lede">You learn a bug by watching it. Nothing here will tell you a number.</p>
 
       <div class="block">
         <div class="stat-grid">
@@ -461,10 +478,10 @@
           <div><span>phase</span><b id="phase">—</b></div>
           <div><span>gen</span><b id="gen">0</b></div>
           <div><span>alive</span><b id="alive">0/0</b></div>
-          <div><span>best fit</span><b id="bestFit">0</b></div>
-          <div><span>mean fit</span><b id="meanFit">0</b></div>
           <div><span>seed</span><b id="seedOut">—</b></div>
         </div>
+        <p class="muted small" id="trend">too early to say</p>
+        <p class="muted small" id="spread">nothing to compare yet</p>
         <div id="sun"></div>
       </div>
 
@@ -472,7 +489,7 @@
         <label class="ffn-row">generations
           <input id="ffN" type="number" value="10" min="1" max="500"
                  inputmode="numeric" pattern="[0-9]*"></label>
-        <label>fitness <select id="preset"></select></label>
+        <label>breeding for <select id="preset"></select></label>
         <label>population <input id="pop" type="range" min="4" max="30" value="12">
           <b id="popOut">12</b></label>
         <label>time scale <input id="tscale" type="range" min="1" max="400" value="1">
@@ -480,6 +497,17 @@
       </div>
 
       <div class="block" id="inspect"><p class="muted">Tap a bug.</p></div>
+
+      <div class="block" id="vetBlock">
+        <h4>Vet station</h4>
+        <p class="muted small">The only place you see what a bug actually is —
+          and only ever as a picture. A visit costs you the bug for a while.</p>
+        <div class="vet-row">
+          <button id="vetSend" type="button">Take it in</button>
+          <span class="vet-state" id="vetState">—</span>
+        </div>
+        <div id="vetAway"></div>
+      </div>
     </div>
   </aside>
 
@@ -733,22 +761,6 @@
       segments: m.segments
     };
   }
-  var STAT_KEYS = [
-    "speed",
-    "agility",
-    "defense",
-    "attack",
-    "attackRate",
-    "health",
-    "stamina",
-    "recovery",
-    "flight",
-    "vision",
-    "camouflage",
-    "venom",
-    "grip",
-    "size"
-  ];
   var FITNESS = {
     balanced: (s) => 0.2 * s.speed + 0.18 * s.attack + 0.18 * s.defense + 0.16 * s.health + 0.18 * s.stamina + 0.1 * s.venom,
     brawler: (s) => 0.42 * s.attack + 0.24 * s.health + 0.18 * s.defense + 0.1 * s.attackRate * 20,
@@ -764,430 +776,985 @@
     return { stats, fitness: fn(stats) };
   }
 
-  // src/core/archetypes.js
-  var ARCHETYPES = [
-    {
-      key: "beetle",
-      name: "Beetle",
-      blurb: "Armoured bruiser. Thick carapace, horn, short legs \u2014 slow, very hard to kill.",
-      spread: 0.1,
-      bias: {
-        body_segments: 3,
-        body_length: 0.5,
-        body_width: 0.72,
-        body_mass: 0.8,
-        carapace_thickness: 0.88,
-        head_size: 0.42,
-        thorax_ratio: 0.55,
-        abdomen_taper: 0.25,
-        leg_count: 6,
-        leg_length: 0.28,
-        leg_thickness: 0.72,
-        leg_joints: 3,
-        claw_size: 0.5,
+  // src/core/classification.js
+  function bounds(spec, range) {
+    if (typeof range === "number") return [range, range];
+    return [range[0], range[1]];
+  }
+  function matchesWindow(genome, window2) {
+    for (const [gene, range] of Object.entries(window2 ?? {})) {
+      const spec = GENE_SPECS[gene];
+      if (!spec) return false;
+      const [lo, hi] = bounds(spec, range);
+      const v = genome[gene];
+      if (!(v >= lo && v <= hi)) return false;
+    }
+    return true;
+  }
+  function specificity(window2) {
+    return Object.keys(window2 ?? {}).length;
+  }
+  var CLADE_AXES = {
+    legPlan: {
+      gene: "leg_count",
+      brackets: [
+        { key: "hexapod", label: "Hexapod", range: [4, 6] },
+        { key: "arachnid", label: "Arachnid", range: [8, 8] },
+        { key: "myriapod", label: "Myriapod", range: [10, 10] }
+      ]
+    },
+    wingPlan: {
+      gene: "wing_count",
+      brackets: [
+        { key: "apterous", label: "Wingless", range: [0, 0] },
+        { key: "dipterous", label: "One pair", range: [2, 2] },
+        { key: "tetrapterous", label: "Two pairs", range: [4, 4] }
+      ]
+    },
+    massClass: {
+      gene: "body_mass",
+      brackets: [
+        { key: "micro", label: "Micro", range: [0, 0.18] },
+        { key: "standard", label: "Standard", range: [0.18, 0.8] },
+        { key: "titan", label: "Titan", range: [0.8, 1] }
+      ]
+    }
+  };
+  function venomClass(g) {
+    if (g.stinger_size < 0.08) return "none";
+    const score = g.stinger_size * 0.7 + g.tail_length * 0.3;
+    if (score < 0.45) return "mild";
+    if (score < 0.75) return "potent";
+    return "lethal";
+  }
+  function surfaceClass(g) {
+    const candidates = [
+      ["ghost", g.translucency],
+      ["radiant", g.iridescence],
+      ["furred", g.setae]
+    ];
+    let best = candidates[0];
+    for (const c of candidates) if (c[1] > best[1]) best = c;
+    return best[1] < 0.4 ? "ironclad" : best[0];
+  }
+  function bracketFor(axis, value) {
+    for (const b of axis.brackets) {
+      if (value >= b.range[0] && value <= b.range[1]) return b.key;
+    }
+    return axis.brackets[axis.brackets.length - 1].key;
+  }
+  function cladeOf(genome) {
+    return {
+      legPlan: bracketFor(CLADE_AXES.legPlan, genome.leg_count),
+      wingPlan: bracketFor(CLADE_AXES.wingPlan, genome.wing_count),
+      massClass: bracketFor(CLADE_AXES.massClass, genome.body_mass),
+      venomClass: venomClass(genome),
+      surfaceClass: surfaceClass(genome)
+    };
+  }
+  var CLADE_LABEL = {
+    hexapod: "Hexapod",
+    arachnid: "Arachnid",
+    myriapod: "Myriapod"
+  };
+  var CLASS_TREE = {
+    /* ---- tier 0 ---- */
+    larva: {
+      taxon: "Larva",
+      tier: 0,
+      parent: null,
+      order: null,
+      clade: null,
+      adjective: "Larval",
+      status: "coded",
+      window: {},
+      locks: [],
+      unlocks: [],
+      specialty: null,
+      blurb: "Undifferentiated. Everything starts here and most things stay here."
+    },
+    /* ---- tier 1: orders ---- */
+    beetle: {
+      taxon: "Beetle",
+      tier: 1,
+      parent: "larva",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Armoured",
+      status: "coded",
+      // The wing_area ceiling is the named hard wall from §4: Beetle and Moth now
+      // constrain the same gene in opposite directions, so a lineage crossing
+      // between them must pass through a stretch of gene-space satisfying neither.
+      window: {
+        carapace_thickness: [0.55, 1],
+        horn_size: [0.5, 1],
+        leg_length: [0, 0.45],
+        wing_area: [0, 0.35]
+      },
+      locks: ["wing_area", "wing_beat"],
+      unlocks: ["spine_density", "leg_thickness"],
+      specialty: null,
+      blurb: "Shell first. Short legs, heavy front end, wings kept folded away."
+    },
+    wasp: {
+      taxon: "Wasp",
+      tier: 1,
+      parent: "larva",
+      order: "Hymenoptera",
+      clade: "hexapod",
+      adjective: "Venom",
+      status: "coded",
+      window: { wing_count: 4, stinger_size: [0.6, 1], carapace_thickness: [0, 0.3] },
+      locks: ["carapace_thickness", "body_mass"],
+      unlocks: ["wing_beat", "tail_length"],
+      specialty: null,
+      blurb: "Four wings and a delivery system. Nothing spare anywhere else."
+    },
+    roach: {
+      taxon: "Roach",
+      tier: 1,
+      parent: "larva",
+      order: "Blattodea",
+      clade: "hexapod",
+      adjective: "Skittering",
+      status: "coded",
+      window: { antenna_length: [0.75, 1], pattern: [0.7, 1], aggression: [0, 0.4] },
+      locks: [],
+      unlocks: ["metabolism"],
+      specialty: null,
+      blurb: "Feels the room before it sees it. Avoids every fight it can."
+    },
+    mantis: {
+      taxon: "Mantis",
+      tier: 1,
+      parent: "larva",
+      order: "Mantodea",
+      clade: "hexapod",
+      adjective: "Hooked",
+      status: "coded",
+      window: { claw_size: [0.8, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
+      locks: [],
+      unlocks: ["claw_size"],
+      specialty: null,
+      blurb: "Reach as a weapon. Waits, then closes the distance once."
+    },
+    moth: {
+      taxon: "Moth",
+      tier: 1,
+      parent: "larva",
+      order: "Lepidoptera",
+      clade: "hexapod",
+      adjective: "Winged",
+      status: "coded",
+      window: { wing_area: [0.85, 1], setae: [0.75, 1], mandible_size: [0, 0.2] },
+      locks: ["mandible_size"],
+      unlocks: ["wing_area", "setae"],
+      specialty: null,
+      blurb: "All surface, no bite. Drifts more than it flies."
+    },
+    odonata: {
+      taxon: "Dragonfly",
+      tier: 1,
+      parent: "larva",
+      order: "Odonata",
+      clade: "hexapod",
+      adjective: "Hawking",
+      status: "drafted",
+      // §3b: nothing else claims high eye_count and high wing_area together.
+      window: {
+        wing_area: [0.7, 1],
+        eye_count: [6, 8],
+        eye_size: [0.6, 1],
+        aggression: [0.5, 1]
+      },
+      locks: ["eye_count"],
+      unlocks: ["wing_beat"],
+      specialty: null,
+      blurb: "Eyes built for interception. Hunts on the wing and nowhere else."
+    },
+    diptera: {
+      taxon: "Fly",
+      tier: 1,
+      parent: "larva",
+      order: "Diptera",
+      clade: "hexapod",
+      adjective: "Darting",
+      status: "drafted",
+      window: {
         wing_count: 2,
-        wing_type: 1,
-        wing_area: 0.2,
-        wing_beat: 0.35,
-        mandible_size: 0.55,
-        mandible_serration: 0.45,
-        horn_size: 0.85,
-        horn_type: 0,
-        eye_type: 1,
-        mandible_type: 0,
-        spine_density: 0.3,
-        tail_length: 0.1,
-        stinger_size: 0.02,
-        eye_count: 2,
-        eye_size: 0.3,
-        antenna_length: 0.35,
-        metabolism: 0.3,
-        aggression: 0.55,
-        saturation: 0.3,
-        lightness: 0.22,
-        setae: 0.15,
-        iridescence: 0.45,
-        translucency: 0.05
-      }
+        wing_beat: [0.72, 1],
+        body_mass: [0, 0.3],
+        mandible_size: [0, 0.25]
+      },
+      locks: ["wing_count"],
+      unlocks: ["wing_beat", "metabolism"],
+      specialty: null,
+      blurb: "One pair of wings beaten absurdly fast. Impossible to corner."
     },
-    {
-      key: "wasp",
-      name: "Wasp",
-      blurb: "Fast flier with a stinger. Light, aggressive, venomous, almost no armour.",
-      spread: 0.1,
-      bias: {
-        body_segments: 3,
-        body_length: 0.62,
-        body_width: 0.24,
-        body_mass: 0.18,
-        carapace_thickness: 0.18,
-        head_size: 0.45,
-        thorax_ratio: 0.45,
-        abdomen_taper: 0.85,
-        leg_count: 6,
-        leg_length: 0.55,
-        leg_thickness: 0.22,
-        leg_joints: 3,
-        claw_size: 0.3,
-        wing_count: 4,
-        wing_type: 4,
-        wing_area: 0.8,
-        wing_beat: 0.9,
-        mandible_size: 0.3,
-        mandible_serration: 0.3,
-        horn_size: 0.02,
-        horn_type: 4,
-        eye_type: 0,
-        mandible_type: 3,
-        spine_density: 0.1,
-        tail_length: 0.55,
-        stinger_size: 0.9,
-        eye_count: 2,
-        eye_size: 0.62,
-        antenna_length: 0.5,
-        metabolism: 0.85,
-        aggression: 0.85,
-        hue: 0.14,
-        saturation: 0.92,
-        lightness: 0.55,
-        pattern: 0.15,
-        pattern_contrast: 0.95,
-        setae: 0.25,
-        iridescence: 0.2,
-        translucency: 0.15
-      }
-    },
-    {
-      key: "spider",
-      name: "Spider",
-      blurb: "Eight legs, many eyes, no wings. Big vision radius, ambushes with venomous fangs.",
-      spread: 0.1,
-      bias: {
-        body_segments: 2,
-        body_length: 0.42,
-        body_width: 0.62,
-        body_mass: 0.35,
-        carapace_thickness: 0.32,
-        head_size: 0.3,
-        thorax_ratio: 0.35,
-        abdomen_taper: 0.2,
-        leg_count: 8,
-        leg_length: 0.92,
-        leg_thickness: 0.28,
-        leg_joints: 3,
-        claw_size: 0.65,
-        wing_count: 0,
-        wing_type: 0,
-        wing_area: 0,
-        wing_beat: 0,
-        mandible_size: 0.62,
-        mandible_serration: 0.7,
-        horn_size: 0.05,
-        horn_type: 1,
-        eye_type: 1,
-        mandible_type: 2,
-        spine_density: 0.25,
-        tail_length: 0.15,
-        stinger_size: 0.55,
-        eye_count: 8,
-        eye_size: 0.45,
-        antenna_length: 0.12,
-        metabolism: 0.45,
-        aggression: 0.7,
-        saturation: 0.25,
-        lightness: 0.18,
-        setae: 0.7,
-        iridescence: 0.1,
-        translucency: 0.05
-      }
-    },
-    {
-      key: "roach",
-      name: "Roach",
-      blurb: "Flat, fast, drab. Survives on speed, stamina and camouflage rather than force.",
-      spread: 0.11,
-      bias: {
-        body_segments: 3,
-        body_length: 0.68,
-        body_width: 0.5,
-        body_mass: 0.3,
-        carapace_thickness: 0.4,
-        head_size: 0.25,
-        thorax_ratio: 0.4,
-        abdomen_taper: 0.35,
-        leg_count: 6,
-        leg_length: 0.62,
-        leg_thickness: 0.35,
-        leg_joints: 3,
-        claw_size: 0.55,
-        wing_count: 2,
-        wing_type: 1,
-        wing_area: 0.35,
-        wing_beat: 0.45,
-        mandible_size: 0.25,
-        mandible_serration: 0.25,
-        horn_size: 0.02,
-        horn_type: 3,
-        eye_type: 2,
-        mandible_type: 3,
-        spine_density: 0.45,
-        tail_length: 0.45,
-        stinger_size: 0.05,
-        eye_count: 2,
-        eye_size: 0.35,
-        antenna_length: 0.95,
-        metabolism: 0.55,
-        aggression: 0.25,
-        hue: 0.08,
-        saturation: 0.35,
-        lightness: 0.24,
-        pattern: 0.9,
-        setae: 0.3,
-        iridescence: 0.3,
-        translucency: 0.1
-      }
-    },
-    {
-      key: "mantis",
-      name: "Mantis",
-      blurb: "Long body, hooked forelimbs. Slow to move, devastating in reach \u2014 a duelist.",
-      spread: 0.1,
-      bias: {
-        body_segments: 3,
-        body_length: 0.92,
-        body_width: 0.26,
-        body_mass: 0.32,
-        carapace_thickness: 0.28,
-        head_size: 0.38,
-        thorax_ratio: 0.75,
-        abdomen_taper: 0.6,
-        leg_count: 6,
-        leg_length: 0.78,
-        leg_thickness: 0.32,
-        leg_joints: 3,
-        claw_size: 0.95,
-        wing_count: 2,
-        wing_type: 3,
-        wing_area: 0.45,
-        wing_beat: 0.3,
-        mandible_size: 0.7,
-        mandible_serration: 0.85,
-        horn_size: 0.1,
-        horn_type: 3,
-        eye_type: 0,
-        mandible_type: 2,
-        spine_density: 0.55,
-        tail_length: 0.25,
-        stinger_size: 0.05,
-        eye_count: 2,
-        eye_size: 0.85,
-        antenna_length: 0.45,
-        metabolism: 0.4,
-        aggression: 0.8,
-        hue: 0.3,
-        saturation: 0.55,
-        lightness: 0.42,
-        setae: 0.1,
-        translucency: 0.12
-      }
-    },
-    {
-      key: "moth",
-      name: "Moth",
-      blurb: "Enormous soft wings, furred body. Great lift and stamina, hopeless in a fight.",
-      spread: 0.11,
-      bias: {
-        body_segments: 3,
-        body_length: 0.45,
-        body_width: 0.45,
-        body_mass: 0.15,
-        carapace_thickness: 0.1,
-        head_size: 0.32,
-        thorax_ratio: 0.5,
-        abdomen_taper: 0.45,
-        leg_count: 6,
-        leg_length: 0.38,
-        leg_thickness: 0.2,
-        leg_joints: 2,
-        claw_size: 0.25,
-        wing_count: 4,
-        wing_type: 2,
-        wing_area: 0.98,
-        wing_beat: 0.55,
-        mandible_size: 0.08,
-        mandible_serration: 0.05,
-        horn_size: 0.02,
-        horn_type: 4,
-        eye_type: 3,
-        mandible_type: 3,
-        spine_density: 0.05,
-        tail_length: 0.2,
-        stinger_size: 0.02,
-        eye_count: 2,
-        eye_size: 0.72,
-        antenna_length: 0.8,
-        metabolism: 0.6,
-        aggression: 0.1,
-        saturation: 0.2,
-        lightness: 0.62,
-        pattern: 0.45,
-        setae: 0.95,
-        iridescence: 0.35,
-        translucency: 0.3
-      }
-    },
-    {
-      key: "centipede",
-      name: "Centipede",
-      blurb: "Ten legs on a long segmented body. Quick, spiny, venomous, poorly armoured.",
-      spread: 0.1,
-      bias: {
-        body_segments: 4,
-        body_length: 0.98,
-        body_width: 0.2,
-        body_mass: 0.28,
-        carapace_thickness: 0.22,
-        head_size: 0.22,
-        thorax_ratio: 0.3,
-        abdomen_taper: 0.7,
-        leg_count: 10,
-        leg_length: 0.48,
-        leg_thickness: 0.18,
-        leg_joints: 2,
-        claw_size: 0.45,
-        wing_count: 0,
-        wing_type: 0,
-        wing_area: 0,
-        wing_beat: 0,
-        mandible_size: 0.48,
-        mandible_serration: 0.6,
-        horn_size: 0.05,
-        horn_type: 1,
-        eye_type: 2,
-        mandible_type: 1,
-        spine_density: 0.8,
-        tail_length: 0.75,
-        stinger_size: 0.65,
-        eye_count: 4,
-        eye_size: 0.25,
-        antenna_length: 0.7,
-        metabolism: 0.7,
-        aggression: 0.65,
-        hue: 0.06,
-        saturation: 0.7,
-        lightness: 0.35,
-        setae: 0.2,
-        translucency: 0.1
-      }
-    },
-    {
-      key: "weevil",
-      name: "Weevil",
-      blurb: "Small, round, absurdly long snout. Tanky for its size and hard to spot.",
-      spread: 0.11,
-      bias: {
-        body_segments: 2,
-        body_length: 0.3,
-        body_width: 0.58,
-        body_mass: 0.55,
-        carapace_thickness: 0.7,
-        head_size: 0.3,
-        thorax_ratio: 0.4,
-        abdomen_taper: 0.15,
-        leg_count: 6,
-        leg_length: 0.3,
-        leg_thickness: 0.45,
-        leg_joints: 2,
-        claw_size: 0.4,
-        wing_count: 2,
-        wing_type: 1,
-        wing_area: 0.15,
-        wing_beat: 0.25,
-        mandible_size: 0.2,
-        mandible_serration: 0.15,
-        horn_size: 0.95,
+    hemiptera: {
+      taxon: "True Bug",
+      tier: 1,
+      parent: "larva",
+      order: "Hemiptera",
+      clade: "hexapod",
+      adjective: "Beaked",
+      status: "drafted",
+      window: {
         horn_type: 2,
-        eye_type: 1,
-        mandible_type: 3,
-        spine_density: 0.35,
-        tail_length: 0.08,
-        stinger_size: 0.02,
-        eye_count: 2,
-        eye_size: 0.28,
-        antenna_length: 0.55,
-        metabolism: 0.28,
-        aggression: 0.3,
-        saturation: 0.3,
-        lightness: 0.2,
-        pattern: 0.5,
-        setae: 0.45,
-        iridescence: 0.55,
-        translucency: 0.05
-      }
+        // rostrum
+        horn_size: [0.35, 0.78],
+        mandible_size: [0, 0.3],
+        carapace_thickness: [0.25, 0.65]
+      },
+      locks: ["horn_type"],
+      unlocks: ["horn_size"],
+      specialty: null,
+      blurb: "A beak instead of jaws. Feeds without ever opening its mouth."
+    },
+    orthoptera: {
+      taxon: "Grasshopper",
+      tier: 1,
+      parent: "larva",
+      order: "Orthoptera",
+      clade: "hexapod",
+      adjective: "Springing",
+      status: "drafted",
+      window: {
+        leg_length: [0.7, 1],
+        leg_thickness: [0.55, 1],
+        antenna_length: [0.45, 1],
+        body_length: [0.45, 1]
+      },
+      locks: [],
+      unlocks: ["leg_thickness", "leg_spread"],
+      specialty: null,
+      blurb: "Back legs loaded like a spring. Travels in jumps, not steps."
+    },
+    /* ---- tier 1: the two non-hexapod brackets ----
+       §5 asked for these to be pure leg_count brackets rather than hand-authored
+       windows, so that any chassis can drift into them symmetrically. Their
+       windows are empty on purpose: membership is decided by the clade axis. */
+    arachnid: {
+      taxon: "Arachnid",
+      tier: 1,
+      parent: "larva",
+      order: "Arachnida",
+      clade: "arachnid",
+      adjective: "Eight-legged",
+      status: "coded",
+      window: {},
+      locks: [],
+      unlocks: [],
+      specialty: null,
+      bracketNode: true,
+      blurb: "Eight legs. Whatever else it is, it is this first."
+    },
+    myriapod: {
+      taxon: "Myriapod",
+      tier: 1,
+      parent: "larva",
+      order: "Myriapoda",
+      clade: "myriapod",
+      adjective: "Many-legged",
+      status: "coded",
+      window: {},
+      locks: [],
+      unlocks: [],
+      specialty: null,
+      bracketNode: true,
+      blurb: "Ten legs on a body built in repeating parts."
+    },
+    /* ---- tier 2: Coleoptera ---- */
+    armored_beetle: {
+      taxon: "Armoured Beetle",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Ironclad",
+      status: "coded",
+      window: {
+        carapace_thickness: [0.75, 1],
+        spine_density: [0.45, 1],
+        leg_thickness: [0.5, 1]
+      },
+      locks: ["body_length"],
+      unlocks: ["horn_size"],
+      specialty: { key: "armor_plating", name: "Armour Plating", mods: { defense: 1.15 } },
+      blurb: "Shell thickened past the point of grace."
+    },
+    thorax_goliath: {
+      taxon: "Thorax Goliath",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Titanic",
+      status: "coded",
+      window: { body_mass: [0.75, 1], leg_thickness: [0.6, 1], body_length: [0.5, 1] },
+      locks: ["antenna_length"],
+      unlocks: ["leg_count", "body_segments"],
+      specialty: {
+        key: "overwhelming_mass",
+        name: "Overwhelming Mass",
+        mods: { attack: 1.1, health: 1.08 }
+      },
+      blurb: "Wins by being more animal than the other animal."
+    },
+    dynastinae: {
+      taxon: "Rhinoceros Beetle",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Horned",
+      status: "drafted",
+      window: {
+        horn_type: 0,
+        horn_size: [0.85, 1],
+        body_mass: [0.7, 1],
+        carapace_thickness: [0.6, 1]
+      },
+      locks: ["horn_type"],
+      unlocks: ["horn_size", "body_mass"],
+      specialty: { key: "leverage", name: "Leverage", mods: { attack: 1.12 } },
+      blurb: "Max horn over max shell. Fights by getting underneath things."
+    },
+    lucanidae: {
+      taxon: "Stag Beetle",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Antlered",
+      status: "drafted",
+      window: {
+        horn_type: 1,
+        mandible_size: [0.8, 1],
+        mandible_serration: [0.5, 1],
+        carapace_thickness: [0.4, 0.7]
+      },
+      locks: ["horn_type"],
+      unlocks: ["mandible_size", "mandible_serration"],
+      specialty: { key: "locking_jaws", name: "Locking Jaws", mods: { attack: 1.14, attackRate: 0.92 } },
+      blurb: "Jaw-weapon build. Trades shell for something to grab with."
+    },
+    buprestidae: {
+      taxon: "Jewel Beetle",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Radiant",
+      status: "drafted",
+      window: {
+        iridescence: [0.75, 1],
+        saturation: [0.6, 1],
+        carapace_thickness: [0.3, 0.6]
+      },
+      locks: ["iridescence"],
+      unlocks: ["hue", "saturation"],
+      specialty: { key: "dazzle", name: "Dazzle", mods: { agility: 1.08, camouflage: 0.88 } },
+      blurb: "Beauty over brawn. Visible from across the terrarium, and knows it."
+    },
+    carabidae: {
+      taxon: "Ground Beetle",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Coursing",
+      status: "drafted",
+      window: {
+        leg_length: [0.6, 1],
+        aggression: [0.6, 1],
+        carapace_thickness: [0.35, 0.6]
+      },
+      locks: [],
+      unlocks: ["leg_length", "aggression"],
+      specialty: { key: "run_down", name: "Run Down", mods: { speed: 1.1 } },
+      blurb: "Predatory and quick for a beetle. Chases rather than waits."
+    },
+    lampyridae: {
+      taxon: "Firefly",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Glimmering",
+      status: "drafted",
+      window: {
+        wing_count: [2, 4],
+        carapace_thickness: [0, 0.35],
+        pattern_contrast: [0.6, 1]
+      },
+      locks: [],
+      unlocks: ["pattern_contrast", "wing_area"],
+      specialty: { key: "cold_light", name: "Cold Light", mods: { vision: 1.15, camouflage: 0.85 } },
+      blurb: "A beetle that gave up its shell to fly at night."
+    },
+    coccinellidae: {
+      taxon: "Ladybird",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Spotted",
+      status: "drafted",
+      window: {
+        carapace_thickness: [0.4, 0.65],
+        pattern_contrast: [0.8, 1],
+        aggression: [0, 0.3]
+      },
+      locks: ["pattern_contrast"],
+      unlocks: ["pattern", "hue"],
+      specialty: { key: "aposematic", name: "Warning Colours", mods: { defense: 1.1 } },
+      blurb: "Warning colouration instead of armour. Nothing wants to bite it twice."
+    },
+    // §5 resolved: Weevil is Curculionidae, a beetle family. It was a stray
+    // Tier-1 root; it now sits where it belongs, under Coleoptera.
+    weevil: {
+      taxon: "Weevil",
+      tier: 2,
+      parent: "beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Snouted",
+      status: "coded",
+      // The doc drafted [0.80, 0.45, 0.55]. Widened slightly: those thresholds
+      // predate the weevil archetype's spread, and against it roughly a third of
+      // draws fell outside their own taxon. A starting archetype should read as
+      // the thing it was drawn for.
+      window: {
+        horn_type: 2,
+        horn_size: [0.72, 1],
+        body_width: [0.42, 1],
+        carapace_thickness: [0.52, 1]
+      },
+      locks: ["horn_type"],
+      unlocks: ["horn_size"],
+      specialty: { key: "boring_snout", name: "Boring Snout", mods: { attack: 1.06, defense: 1.06 } },
+      blurb: "Small, round, and absurdly long in the face."
+    },
+    /* ---- tier 2: Hymenoptera ---- */
+    venom_striker: {
+      taxon: "Venom Striker",
+      tier: 2,
+      parent: "wasp",
+      order: "Hymenoptera",
+      clade: "hexapod",
+      adjective: "Envenomed",
+      status: "coded",
+      window: { stinger_size: [0.8, 1], tail_length: [0.6, 1] },
+      locks: ["carapace_thickness"],
+      unlocks: ["aggression"],
+      specialty: { key: "concentrated_venom", name: "Concentrated Venom", mods: { venom: 1.2 } },
+      blurb: "The whole abdomen is a syringe."
+    },
+    swift_flier: {
+      taxon: "Swift Flier",
+      tier: 2,
+      parent: "wasp",
+      order: "Hymenoptera",
+      clade: "hexapod",
+      adjective: "Fleet",
+      status: "coded",
+      window: { wing_beat: [0.75, 1], wing_area: [0.7, 1], body_mass: [0, 0.25] },
+      locks: ["stinger_size"],
+      unlocks: ["leg_spread"],
+      specialty: { key: "aerial_mastery", name: "Aerial Mastery", mods: { speed: 1.1, flight: 1.15 } },
+      blurb: "Gave up mass for airspeed and never looked back."
+    },
+    // §5 resolved: Hornet reads as "aggressive Wasp", so it nests under Wasp
+    // rather than sitting beside it as a Hymenoptera sibling.
+    vespidae: {
+      taxon: "Hornet",
+      tier: 2,
+      parent: "wasp",
+      order: "Hymenoptera",
+      clade: "hexapod",
+      adjective: "Furious",
+      status: "drafted",
+      window: {
+        aggression: [0.8, 1],
+        body_mass: [0.25, 0.55],
+        mandible_size: [0.4, 1]
+      },
+      locks: [],
+      unlocks: ["aggression", "mandible_size"],
+      specialty: { key: "harrying", name: "Harrying", mods: { attackRate: 1.12 } },
+      blurb: "Stings and bites. Starts fights it has no reason to start."
+    },
+    /* ---- tier 2: Arachnida ---- */
+    spider: {
+      taxon: "Spider",
+      tier: 2,
+      parent: "arachnid",
+      order: "Arachnida",
+      clade: "arachnid",
+      adjective: "Stalking",
+      status: "coded",
+      window: { wing_count: 0, eye_count: [6, 8] },
+      locks: ["wing_count"],
+      unlocks: ["eye_size", "setae"],
+      specialty: null,
+      blurb: "Sees in every direction at once and never leaves the ground."
+    },
+    scorpiones: {
+      taxon: "Scorpion",
+      tier: 2,
+      parent: "arachnid",
+      order: "Arachnida",
+      clade: "arachnid",
+      adjective: "Barbed",
+      status: "drafted",
+      window: {
+        stinger_size: [0.7, 1],
+        tail_length: [0.6, 1],
+        claw_size: [0.6, 1],
+        carapace_thickness: [0.5, 1]
+      },
+      locks: ["tail_length"],
+      unlocks: ["stinger_size", "claw_size"],
+      specialty: { key: "pincer_and_tail", name: "Pincer and Tail", mods: { venom: 1.12, defense: 1.08 } },
+      blurb: "Armoured and venomous at once, which is rare and unfair."
+    },
+    /* ---- tier 2: Myriapoda ---- */
+    centipede: {
+      taxon: "Centipede",
+      tier: 2,
+      parent: "myriapod",
+      order: "Myriapoda",
+      clade: "myriapod",
+      adjective: "Rippling",
+      status: "coded",
+      window: { spine_density: [0.65, 1], stinger_size: [0.15, 1] },
+      locks: [],
+      unlocks: ["tail_length", "spine_density"],
+      specialty: null,
+      blurb: "Predatory and fast for something with that many legs to coordinate."
+    },
+    diplopoda: {
+      taxon: "Millipede",
+      tier: 2,
+      parent: "myriapod",
+      order: "Myriapoda",
+      clade: "myriapod",
+      adjective: "Coiling",
+      status: "drafted",
+      window: { spine_density: [0.7, 1], stinger_size: [0, 0.1] },
+      locks: ["stinger_size"],
+      unlocks: ["carapace_thickness"],
+      specialty: { key: "curl", name: "Curl", mods: { defense: 1.14, speed: 0.92 } },
+      blurb: "Defence-curl instead of venom. The inverse of a centipede."
+    },
+    /* ---- tier 2: Lepidoptera ---- */
+    butterfly: {
+      taxon: "Butterfly",
+      tier: 2,
+      parent: "moth",
+      order: "Lepidoptera",
+      clade: "hexapod",
+      adjective: "Painted",
+      status: "drafted",
+      window: { pattern_contrast: [0.75, 1], saturation: [0.65, 1], setae: [0, 0.3] },
+      locks: [],
+      unlocks: ["hue", "pattern"],
+      specialty: { key: "flash_colour", name: "Flash Colour", mods: { agility: 1.1, camouflage: 0.85 } },
+      blurb: "Same chassis as a moth, opposite surface entirely."
+    },
+    /* ---- tier 3 ---- */
+    siege_tank_rhinoceros: {
+      taxon: "Siege-Tank Rhinoceros",
+      tier: 3,
+      parent: "armored_beetle",
+      order: "Coleoptera",
+      clade: "hexapod",
+      adjective: "Siege",
+      status: "coded",
+      window: { carapace_thickness: [0.9, 1], horn_size: [0.8, 1], leg_count: [4, 6] },
+      locks: [],
+      unlocks: [],
+      specialty: {
+        key: "siege_plating",
+        name: "Siege Plating",
+        mods: { defense: 1.25 },
+        replacesParent: true
+      },
+      blurb: "Stops being a bug and starts being terrain."
+    },
+    apex_venom_wyrm: {
+      taxon: "Apex Venom Wyrm",
+      tier: 3,
+      parent: "venom_striker",
+      order: "Hymenoptera",
+      clade: "hexapod",
+      adjective: "Apex",
+      status: "coded",
+      window: { stinger_size: [0.9, 1], tail_length: [0.75, 1], aggression: [0.7, 1] },
+      locks: [],
+      unlocks: [],
+      specialty: { key: "apex_toxin", name: "Apex Toxin", mods: { venom: 1.35 } },
+      blurb: "The end of the venom line. Nothing survives a second hit."
     }
-  ];
-  var ARCHETYPE_KEYS = ARCHETYPES.map((a) => a.key);
-  var isCategorical = (name) => name.endsWith("_type");
-  function genomeFromArchetype(archetype, rng = makeRng(1)) {
-    const g = {};
-    for (const name of GENE_ORDER) {
-      const spec = GENE_SPECS[name];
-      const target = archetype.bias[name];
-      if (target === void 0) {
-        g[name] = clampGene(name, rng.range(spec.min, spec.max));
-        continue;
-      }
-      if (isCategorical(name)) {
-        const drift = rng() < 0.12 ? rng() < 0.5 ? -1 : 1 : 0;
-        g[name] = clampGene(name, target + drift);
-        continue;
-      }
-      const span = spec.max - spec.min;
-      const jitter = rng.normal() * span * (archetype.spread ?? 0.1);
-      g[name] = clampGene(name, target + jitter);
+  };
+  var TAXON_IDS = Object.keys(CLASS_TREE);
+  var CHILDREN = (() => {
+    const map = {};
+    for (const id of TAXON_IDS) map[id] = [];
+    for (const id of TAXON_IDS) {
+      const p = CLASS_TREE[id].parent;
+      if (p) map[p].push(id);
     }
-    return normalizeGenome(g);
+    return map;
+  })();
+  function childrenOf(id) {
+    return CHILDREN[id] ?? [];
   }
-  function seededPopulation(size, rng = makeRng(1), { wildcards = 0.15 } = {}) {
-    const order = [...ARCHETYPES];
-    for (let i = order.length - 1; i > 0; i--) {
-      const j = rng.int(0, i);
-      [order[i], order[j]] = [order[j], order[i]];
+  var TRAITS = {
+    venomous: {
+      name: "Venomous",
+      appliesTo: null,
+      window: { stinger_size: [0.6, 1], tail_length: [0.4, 1] },
+      unlocks: ["tail_length", "aggression"],
+      tell: "moves like it expects one hit to be enough"
+    },
+    winged: {
+      name: "Winged",
+      // Only remarkable on a chassis that normally stays on the ground.
+      appliesTo: ["beetle", "armored_beetle", "thorax_goliath", "weevil", "spider", "centipede", "diplopoda"],
+      window: { wing_count: [2, 4], wing_area: [0.45, 1] },
+      unlocks: ["wing_beat"],
+      tell: "gets airborne when it has no business doing so"
+    },
+    camouflaged: {
+      name: "Camouflaged",
+      appliesTo: null,
+      window: { saturation: [0, 0.25], translucency: [0.55, 1] },
+      unlocks: ["setae"],
+      tell: "you lose track of it against the substrate"
     }
-    const pop = [];
-    for (let i = 0; i < size; i++) {
-      if (rng() < wildcards) {
-        const g = {};
-        for (const name of GENE_ORDER) {
-          const spec = GENE_SPECS[name];
-          g[name] = clampGene(name, rng.range(spec.min, spec.max));
-        }
-        pop.push(normalizeGenome(g));
-      } else {
-        pop.push(genomeFromArchetype(order[i % order.length], rng));
-      }
+  };
+  var TRAIT_IDS = Object.keys(TRAITS);
+  function traitsOf(genome, chassisId = null) {
+    const out = [];
+    for (const id of TRAIT_IDS) {
+      const t = TRAITS[id];
+      if (t.appliesTo && chassisId && !t.appliesTo.includes(chassisId)) continue;
+      if (matchesWindow(genome, t.window)) out.push(id);
     }
-    return pop;
+    return out;
   }
-  function nearestArchetype(genome) {
+  function bestPathFrom(genome, id, legPlan) {
     let best = null;
-    let bestD = Infinity;
-    for (const a of ARCHETYPES) {
-      let d = 0;
-      let n = 0;
-      for (const [k, target] of Object.entries(a.bias)) {
-        const spec = GENE_SPECS[k];
-        const span = spec.max - spec.min || 1;
-        d += ((genome[k] - target) / span) ** 2;
-        n++;
-      }
-      d = Math.sqrt(d / Math.max(1, n));
-      if (d < bestD) {
-        bestD = d;
-        best = a;
+    for (const childId of childrenOf(id)) {
+      const node = CLASS_TREE[childId];
+      if (!matchesWindow(genome, node.window)) continue;
+      if (node.bracketNode && legPlan !== node.clade) continue;
+      const sub = bestPathFrom(genome, childId, legPlan);
+      const cand = {
+        path: [childId, ...sub.path],
+        depth: 1 + sub.depth,
+        spec: specificity(node.window),
+        margin: insideMargin(genome, node.window)
+      };
+      if (!best || cand.depth > best.depth || cand.depth === best.depth && cand.spec > best.spec || cand.depth === best.depth && cand.spec === best.spec && cand.margin > best.margin) {
+        best = cand;
       }
     }
-    return { archetype: best, distance: bestD, confident: bestD < 0.26 };
+    return best ?? { path: [], depth: 0, spec: 0, margin: 0 };
+  }
+  function descend(genome, legPlan) {
+    const best = bestPathFrom(genome, "larva", legPlan);
+    return { id: best.path[best.path.length - 1] ?? "larva", path: ["larva", ...best.path] };
+  }
+  function insideMargin(genome, window2) {
+    let total = 0;
+    let n = 0;
+    for (const [gene, range] of Object.entries(window2 ?? {})) {
+      const spec = GENE_SPECS[gene];
+      if (!spec) continue;
+      const [lo, hi] = bounds(spec, range);
+      const span = spec.max - spec.min || 1;
+      const v = genome[gene];
+      total += Math.min(v - lo, hi - v) / span;
+      n++;
+    }
+    return n ? total / n : 0;
+  }
+  function classify(genome) {
+    const clade = cladeOf(genome);
+    const { id, path } = descend(genome, clade.legPlan);
+    const node = CLASS_TREE[id];
+    const hybrid = Boolean(node.clade) && node.clade !== clade.legPlan && !node.bracketNode;
+    const traits = traitsOf(genome, id);
+    return {
+      id,
+      taxon: node.taxon,
+      tier: node.tier,
+      order: node.order,
+      path,
+      clade,
+      hybrid,
+      name: hybrid ? `${node.adjective} ${CLADE_LABEL[clade.legPlan]}` : node.taxon,
+      blurb: node.blurb,
+      traits,
+      specialties: specialtiesAlong(path),
+      locks: collect(path, "locks"),
+      unlocks: unionUnlocks(path, traits),
+      status: node.status
+    };
+  }
+  function collect(path, key) {
+    const out = /* @__PURE__ */ new Set();
+    for (const id of path) for (const g of CLASS_TREE[id][key] ?? []) out.add(g);
+    return [...out];
+  }
+  function unionUnlocks(path, traits) {
+    const out = new Set(collect(path, "unlocks"));
+    for (const t of traits) for (const g of TRAITS[t].unlocks ?? []) out.add(g);
+    return [...out];
+  }
+  function specialtiesAlong(path) {
+    const out = [];
+    for (const id of path) {
+      const s = CLASS_TREE[id].specialty;
+      if (!s) continue;
+      if (s.replacesParent) out.length = 0;
+      out.push(s);
+    }
+    return out;
+  }
+  function applySpecialties(stats, classification) {
+    const out = { ...stats };
+    for (const s of classification.specialties ?? []) {
+      for (const [k, mult] of Object.entries(s.mods ?? {})) {
+        if (typeof out[k] === "number") out[k] *= mult;
+      }
+    }
+    return out;
+  }
+
+  // src/core/impressions.js
+  var IMPRESSION_SPECS = {
+    speed: {
+      channel: "watch",
+      scale: 100,
+      bands: [
+        [0, "barely moves \u2014 you keep checking whether it is alive"],
+        [0.22, "plods"],
+        [0.42, null],
+        [0.7, "covers ground quickly"],
+        [0.86, "freakishly fast, for no reason you can point at"]
+      ]
+    },
+    agility: {
+      channel: "watch",
+      scale: 100,
+      bands: [
+        [0, "turns like a barge"],
+        [0.24, "commits to a direction and stays committed"],
+        [0.44, null],
+        [0.72, "changes its mind mid-stride"],
+        [0.88, "impossible to corner"]
+      ]
+    },
+    defense: {
+      channel: "combat",
+      scale: 100,
+      bands: [
+        [0, "comes apart if anything touches it"],
+        [0.24, "bruises easily"],
+        [0.45, null],
+        [0.72, "shrugs off hits that should land"],
+        [0.88, "you have watched things bounce off it"]
+      ]
+    },
+    attack: {
+      channel: "combat",
+      scale: 100,
+      bands: [
+        [0, "cannot hurt anything"],
+        [0.24, "hits without conviction"],
+        [0.45, null],
+        [0.72, "hits hard"],
+        [0.88, "ends fights in one motion"]
+      ]
+    },
+    attackRate: {
+      channel: "combat",
+      scale: 2.6,
+      bands: [
+        [0, "winds up forever between bites"],
+        [0.28, "slow to swing"],
+        [0.5, null],
+        [0.74, "bites in flurries"],
+        [0.88, "never seems to stop biting"]
+      ]
+    },
+    health: {
+      channel: "combat",
+      scale: 100,
+      bands: [
+        [0, "fragile"],
+        [0.26, "does not last long in a scrap"],
+        [0.46, null],
+        [0.72, "keeps going long past when it should stop"],
+        [0.88, "you have not yet seen it go down"]
+      ]
+    },
+    stamina: {
+      channel: "watch",
+      scale: 100,
+      bands: [
+        [0, "runs out of steam almost immediately"],
+        [0.26, "tires quickly"],
+        [0.48, null],
+        [0.74, "still going when everything else has settled"],
+        [0.88, "seems not to need rest at all"]
+      ]
+    },
+    recovery: {
+      channel: "watch",
+      scale: 8,
+      bands: [
+        [0, "takes forever to get its wind back"],
+        [0.24, "slow to recover"],
+        [0.46, null],
+        [0.72, "back on its feet almost at once"],
+        [0.88, "barely acknowledges having been tired"]
+      ]
+    },
+    flight: {
+      channel: "watch",
+      scale: 100,
+      bands: [
+        [0, null],
+        // flightless is read off the body, not the stat
+        [0.15, "gets off the ground, briefly"],
+        [0.42, "flies competently"],
+        [0.7, "prefers the air to the floor"],
+        [0.88, "genuinely at home in the air"]
+      ]
+    },
+    vision: {
+      channel: "watch",
+      scale: 340,
+      bands: [
+        [0, "blunders into things"],
+        [0.22, "has to be close to notice you"],
+        [0.42, null],
+        [0.7, "reacts to things across the terrarium"],
+        [0.86, "sees everything, all the time"]
+      ]
+    },
+    camouflage: {
+      channel: "watch",
+      scale: 100,
+      bands: [
+        [0, "impossible to miss"],
+        [0.24, "stands out"],
+        [0.46, null],
+        [0.72, "you lose it against the substrate"],
+        [0.88, "you only find it again when it moves"]
+      ]
+    },
+    venom: {
+      channel: "combat",
+      scale: 100,
+      bands: [
+        [0, null],
+        // no stinger is a physical fact, not a tell
+        [0.1, "leaves the other one unwell"],
+        [0.42, "its bites keep working after the fight"],
+        [0.7, "whatever it stings does not recover"],
+        [0.88, "one hit is the whole fight"]
+      ]
+    },
+    grip: {
+      channel: "training",
+      scale: 100,
+      bands: [
+        [0, "slides around"],
+        [0.24, "loses its footing"],
+        [0.46, null],
+        [0.72, "plants itself and does not move"],
+        [0.88, "you could tip the terrarium and it would stay put"]
+      ]
+    }
+  };
+  var IMPRESSION_KEYS = Object.keys(IMPRESSION_SPECS);
+  function bandIndex(spec, norm) {
+    let i = 0;
+    for (let k = 0; k < spec.bands.length; k++) if (norm >= spec.bands[k][0]) i = k;
+    return i;
+  }
+  function allImpressions(genome) {
+    const cls = classify(genome);
+    const stats = applySpecialties(computeStats(genome), cls);
+    const out = [];
+    for (const key of IMPRESSION_KEYS) {
+      const spec = IMPRESSION_SPECS[key];
+      const norm = Math.min(1, Math.max(0, stats[key] / spec.scale));
+      const idx = bandIndex(spec, norm);
+      const phrase = spec.bands[idx][1];
+      if (!phrase) continue;
+      const mid = (spec.bands.length - 1) / 2;
+      out.push({
+        key,
+        channel: spec.channel,
+        phrase,
+        // How striking this is — drives ordering, never shown as a value.
+        salience: Math.abs(idx - mid) / mid,
+        direction: idx > mid ? "high" : "low"
+      });
+    }
+    out.sort((a, b) => b.salience - a.salience);
+    return out;
+  }
+  function physicalReadout(genome) {
+    const cls = classify(genome);
+    const c = cls.clade;
+    const legs = {
+      hexapod: "six legs",
+      arachnid: "eight legs",
+      myriapod: "ten legs"
+    }[c.legPlan];
+    const wings = {
+      apterous: "no wings",
+      dipterous: "one pair of wings",
+      tetrapterous: "two pairs of wings"
+    }[c.wingPlan];
+    const bulk = { micro: "slight", standard: "ordinary build", titan: "heavy" }[c.massClass];
+    const surface = {
+      ghost: "you can see light through it",
+      radiant: "the shell catches the light",
+      furred: "covered in fine hair",
+      ironclad: "plain hard shell"
+    }[c.surfaceClass];
+    const sting = {
+      none: null,
+      mild: "a small stinger",
+      potent: "a serious stinger",
+      lethal: "a stinger it clearly intends to use"
+    }[c.venomClass];
+    return [legs, wings, bulk, surface, sting].filter(Boolean);
+  }
+  function vetReadout(genome) {
+    const cls = classify(genome);
+    return {
+      name: cls.name,
+      taxon: cls.taxon,
+      tier: cls.tier,
+      order: cls.order,
+      hybrid: cls.hybrid,
+      blurb: cls.blurb,
+      path: cls.path,
+      traits: cls.traits,
+      physical: physicalReadout(genome),
+      // What it seems to be turning into — as a direction, never as a distance.
+      drifting: cls.hybrid ? `carrying ${cls.taxon.toLowerCase()} traits on a ${cls.clade.legPlan} body` : null
+    };
   }
 
   // src/render/bugArt.js
@@ -2039,6 +2606,19 @@
 
   // src/sim/bug.js
   var uid = 0;
+  function describeCondition(k) {
+    if (k <= 0) return "down";
+    if (k < 0.2) return "badly hurt";
+    if (k < 0.5) return "hurt";
+    if (k < 0.85) return "scuffed";
+    return "unhurt";
+  }
+  function describeVigour(k) {
+    if (k < 0.15) return "spent";
+    if (k < 0.4) return "flagging";
+    if (k < 0.8) return "working";
+    return "fresh";
+  }
   function mixToWhite(rgb, k) {
     const m = rgb.map((c) => Math.round(c + (255 - c) * Math.max(0, Math.min(1, k))));
     return m[0] << 16 | m[1] << 8 | m[2];
@@ -2052,12 +2632,13 @@
     constructor(scene2, genome, opts) {
       this.scene = scene2;
       this.genome = genome;
-      this.stats = computeStats(genome);
+      this.classification = classify(genome);
+      this.stats = applySpecialties(computeStats(genome), this.classification);
       this.id = ++uid;
       this.tag = genomeId(genome);
       this.name = genomeName(genome);
-      const na = nearestArchetype(genome);
-      this.kind = na.confident ? na.archetype.name : "Hybrid";
+      this.kind = this.classification.name;
+      this.physical = physicalReadout(genome);
       this.generation = opts.generation ?? 0;
       this.rng = opts.rng;
       const key = `bug-${this.tag}-${this.id}`;
@@ -2201,6 +2782,7 @@
     }
     takeDamage(amount, from) {
       this.hp -= amount;
+      if (from) this.lastAttacker = from;
       this.scene.flash(this.sprite.x, this.sprite.y);
       if (this.hp <= 0 && this.alive) {
         this.alive = false;
@@ -2215,7 +2797,13 @@
         };
       }
     }
-    /** Everything the HUD wants to show. */
+    /**
+     * What the PLAYER is allowed to see.
+     *
+     * Deliberately carries no genome and no stat block. The concept doc's whole
+     * premise is that you learn a bug by watching it, so the panel is not given
+     * the numbers to render even if it wanted to. Condition is a word, not a bar.
+     */
     snapshot() {
       return {
         id: this.id,
@@ -2223,7 +2811,28 @@
         name: this.name,
         kind: this.kind,
         generation: this.generation,
-        poison: this.poison ?? 0,
+        taxon: this.classification.taxon,
+        tier: this.classification.tier,
+        hybrid: this.classification.hybrid,
+        traits: this.classification.traits,
+        physical: this.physical,
+        condition: describeCondition(this.hp / this.stats.health),
+        vigour: describeVigour(this.energy / this.stats.stamina),
+        envenomed: (this.poison ?? 0) > 0.5,
+        kills: this.kills,
+        alive: this.alive,
+        state: this.anim.state
+      };
+    }
+    /**
+     * The numbers, for tools and tests only. Nothing in `src/ui` may call this —
+     * `tests/hidden.test.js` enforces that by scanning the UI sources.
+     */
+    debugSnapshot() {
+      return {
+        id: this.id,
+        tag: this.tag,
+        name: this.name,
         genome: this.genome,
         stats: this.stats,
         hp: this.hp,
@@ -2231,7 +2840,8 @@
         kills: this.kills,
         distance: this.distance,
         alive: this.alive,
-        state: this.anim.state
+        state: this.anim.state,
+        classification: this.classification
       };
     }
     destroy() {
@@ -2357,10 +2967,13 @@
     return normalizeGenome(child);
   }
   var CROSSOVERS = { uniform: uniformCrossover, onePoint: onePointCrossover, blend: blendCrossover };
-  function mutate(genome, rng, { rate = 0.12, scale = 0.1 } = {}) {
+  function mutate(genome, rng, { rate = 0.12, scale = 0.1, locked = [], unlocked = [] } = {}) {
     const out = { ...genome };
+    const lock = new Set(locked);
+    const loose = new Set(unlocked);
     for (const k of GENE_ORDER) {
-      if (rng() >= rate) continue;
+      if (lock.has(k)) continue;
+      if (rng() >= (loose.has(k) ? rate * 1.8 : rate)) continue;
       const spec = GENE_SPECS[k];
       const span = spec.max - spec.min;
       const step = spec.integer ? (spec.step ?? 1) * (rng() < 0.5 ? -1 : 1) : rng.normal() * span * scale;
@@ -2390,21 +3003,35 @@
       mutationScale = 0.1,
       immigrants = 1,
       // fresh random genomes per generation, keeps diversity up
-      size = population.length
+      size = population.length,
+      // Terrarium objects feed these in at breed time (see sim/objects.js). None
+      // of them writes a gene — they only change how the next draw is taken.
+      selection = null,
+      // 'inverse' = the Compost Heap: breed from the worst
+      locked = [],
+      // genes held steady (classification locks, Prism Chamber)
+      unlocked = []
+      // genes that mutate harder (classification unlocks)
     } = opts;
     const ranked = rank(population, preset);
+    const pool = selection === "inverse" ? [...ranked].reverse() : ranked;
     const cross = CROSSOVERS[crossover] ?? blendCrossover;
     const next = [];
-    for (let i = 0; i < Math.min(elitism, ranked.length) && next.length < size; i++) {
-      next.push({ ...ranked[i].genome });
+    for (let i = 0; i < Math.min(elitism, pool.length) && next.length < size; i++) {
+      next.push({ ...pool[i].genome });
     }
     for (let i = 0; i < immigrants && next.length < size; i++) {
       next.push(randomGenome(rng));
     }
     while (next.length < size) {
-      const a = tournament(ranked, rng, tournamentK);
-      const b = tournament(ranked, rng, tournamentK);
-      next.push(mutate(cross(a, b, rng), rng, { rate: mutationRate, scale: mutationScale }));
+      const a = tournament(pool, rng, tournamentK);
+      const b = tournament(pool, rng, tournamentK);
+      next.push(mutate(cross(a, b, rng), rng, {
+        rate: mutationRate,
+        scale: mutationScale,
+        locked,
+        unlocked
+      }));
     }
     const fits = ranked.map((e) => e.fitness);
     return {
@@ -2432,6 +3059,1242 @@
       acc += Math.sqrt(varr) / span;
     }
     return acc / GENE_ORDER.length;
+  }
+
+  // src/core/archetypes.js
+  var ARCHETYPES = [
+    {
+      key: "beetle",
+      name: "Beetle",
+      blurb: "Armoured bruiser. Thick carapace, horn, short legs \u2014 slow, very hard to kill.",
+      spread: 0.1,
+      bias: {
+        body_segments: 3,
+        body_length: 0.5,
+        body_width: 0.72,
+        body_mass: 0.8,
+        carapace_thickness: 0.88,
+        head_size: 0.42,
+        thorax_ratio: 0.55,
+        abdomen_taper: 0.25,
+        leg_count: 6,
+        leg_length: 0.28,
+        leg_thickness: 0.72,
+        leg_joints: 3,
+        claw_size: 0.5,
+        wing_count: 2,
+        wing_type: 1,
+        wing_area: 0.2,
+        wing_beat: 0.35,
+        mandible_size: 0.55,
+        mandible_serration: 0.45,
+        horn_size: 0.85,
+        horn_type: 0,
+        eye_type: 1,
+        mandible_type: 0,
+        spine_density: 0.3,
+        tail_length: 0.1,
+        stinger_size: 0.02,
+        eye_count: 2,
+        eye_size: 0.3,
+        antenna_length: 0.35,
+        metabolism: 0.3,
+        aggression: 0.55,
+        saturation: 0.3,
+        lightness: 0.22,
+        setae: 0.15,
+        iridescence: 0.45,
+        translucency: 0.05
+      }
+    },
+    {
+      key: "wasp",
+      name: "Wasp",
+      blurb: "Fast flier with a stinger. Light, aggressive, venomous, almost no armour.",
+      spread: 0.1,
+      bias: {
+        body_segments: 3,
+        body_length: 0.62,
+        body_width: 0.24,
+        body_mass: 0.18,
+        carapace_thickness: 0.18,
+        head_size: 0.45,
+        thorax_ratio: 0.45,
+        abdomen_taper: 0.85,
+        leg_count: 6,
+        leg_length: 0.55,
+        leg_thickness: 0.22,
+        leg_joints: 3,
+        claw_size: 0.3,
+        wing_count: 4,
+        wing_type: 4,
+        wing_area: 0.8,
+        wing_beat: 0.9,
+        mandible_size: 0.3,
+        mandible_serration: 0.3,
+        horn_size: 0.02,
+        horn_type: 4,
+        eye_type: 0,
+        mandible_type: 3,
+        spine_density: 0.1,
+        tail_length: 0.55,
+        stinger_size: 0.9,
+        eye_count: 2,
+        eye_size: 0.62,
+        antenna_length: 0.5,
+        metabolism: 0.85,
+        aggression: 0.85,
+        hue: 0.14,
+        saturation: 0.92,
+        lightness: 0.55,
+        pattern: 0.15,
+        pattern_contrast: 0.95,
+        setae: 0.25,
+        iridescence: 0.2,
+        translucency: 0.15
+      }
+    },
+    {
+      key: "spider",
+      name: "Spider",
+      blurb: "Eight legs, many eyes, no wings. Big vision radius, ambushes with venomous fangs.",
+      spread: 0.1,
+      bias: {
+        body_segments: 2,
+        body_length: 0.42,
+        body_width: 0.62,
+        body_mass: 0.35,
+        carapace_thickness: 0.32,
+        head_size: 0.3,
+        thorax_ratio: 0.35,
+        abdomen_taper: 0.2,
+        leg_count: 8,
+        leg_length: 0.92,
+        leg_thickness: 0.28,
+        leg_joints: 3,
+        claw_size: 0.65,
+        wing_count: 0,
+        wing_type: 0,
+        wing_area: 0,
+        wing_beat: 0,
+        mandible_size: 0.62,
+        mandible_serration: 0.7,
+        horn_size: 0.05,
+        horn_type: 1,
+        eye_type: 1,
+        mandible_type: 2,
+        spine_density: 0.25,
+        tail_length: 0.15,
+        stinger_size: 0.55,
+        eye_count: 8,
+        eye_size: 0.45,
+        antenna_length: 0.12,
+        metabolism: 0.45,
+        aggression: 0.7,
+        saturation: 0.25,
+        lightness: 0.18,
+        setae: 0.7,
+        iridescence: 0.1,
+        translucency: 0.05
+      }
+    },
+    {
+      key: "roach",
+      name: "Roach",
+      blurb: "Flat, fast, drab. Survives on speed, stamina and camouflage rather than force.",
+      spread: 0.11,
+      bias: {
+        body_segments: 3,
+        body_length: 0.68,
+        body_width: 0.5,
+        body_mass: 0.3,
+        carapace_thickness: 0.4,
+        head_size: 0.25,
+        thorax_ratio: 0.4,
+        abdomen_taper: 0.35,
+        leg_count: 6,
+        leg_length: 0.62,
+        leg_thickness: 0.35,
+        leg_joints: 3,
+        claw_size: 0.55,
+        wing_count: 2,
+        wing_type: 1,
+        wing_area: 0.35,
+        wing_beat: 0.45,
+        mandible_size: 0.25,
+        mandible_serration: 0.25,
+        horn_size: 0.02,
+        horn_type: 3,
+        eye_type: 2,
+        mandible_type: 3,
+        spine_density: 0.45,
+        tail_length: 0.45,
+        stinger_size: 0.05,
+        eye_count: 2,
+        eye_size: 0.35,
+        antenna_length: 0.95,
+        metabolism: 0.55,
+        aggression: 0.25,
+        hue: 0.08,
+        saturation: 0.35,
+        lightness: 0.24,
+        pattern: 0.9,
+        setae: 0.3,
+        iridescence: 0.3,
+        translucency: 0.1
+      }
+    },
+    {
+      key: "mantis",
+      name: "Mantis",
+      blurb: "Long body, hooked forelimbs. Slow to move, devastating in reach \u2014 a duelist.",
+      spread: 0.1,
+      bias: {
+        body_segments: 3,
+        body_length: 0.92,
+        body_width: 0.26,
+        body_mass: 0.32,
+        carapace_thickness: 0.28,
+        head_size: 0.38,
+        thorax_ratio: 0.75,
+        abdomen_taper: 0.6,
+        leg_count: 6,
+        leg_length: 0.78,
+        leg_thickness: 0.32,
+        leg_joints: 3,
+        claw_size: 0.95,
+        wing_count: 2,
+        wing_type: 3,
+        wing_area: 0.45,
+        wing_beat: 0.3,
+        mandible_size: 0.7,
+        mandible_serration: 0.85,
+        horn_size: 0.1,
+        horn_type: 3,
+        eye_type: 0,
+        mandible_type: 2,
+        spine_density: 0.55,
+        tail_length: 0.25,
+        stinger_size: 0.05,
+        eye_count: 2,
+        eye_size: 0.85,
+        antenna_length: 0.45,
+        metabolism: 0.4,
+        aggression: 0.8,
+        hue: 0.3,
+        saturation: 0.55,
+        lightness: 0.42,
+        setae: 0.1,
+        translucency: 0.12
+      }
+    },
+    {
+      key: "moth",
+      name: "Moth",
+      blurb: "Enormous soft wings, furred body. Great lift and stamina, hopeless in a fight.",
+      spread: 0.11,
+      bias: {
+        body_segments: 3,
+        body_length: 0.45,
+        body_width: 0.45,
+        body_mass: 0.15,
+        carapace_thickness: 0.1,
+        head_size: 0.32,
+        thorax_ratio: 0.5,
+        abdomen_taper: 0.45,
+        leg_count: 6,
+        leg_length: 0.38,
+        leg_thickness: 0.2,
+        leg_joints: 2,
+        claw_size: 0.25,
+        wing_count: 4,
+        wing_type: 2,
+        wing_area: 0.98,
+        wing_beat: 0.55,
+        mandible_size: 0.08,
+        mandible_serration: 0.05,
+        horn_size: 0.02,
+        horn_type: 4,
+        eye_type: 3,
+        mandible_type: 3,
+        spine_density: 0.05,
+        tail_length: 0.2,
+        stinger_size: 0.02,
+        eye_count: 2,
+        eye_size: 0.72,
+        antenna_length: 0.8,
+        metabolism: 0.6,
+        aggression: 0.1,
+        saturation: 0.2,
+        lightness: 0.62,
+        pattern: 0.45,
+        setae: 0.95,
+        iridescence: 0.35,
+        translucency: 0.3
+      }
+    },
+    {
+      key: "centipede",
+      name: "Centipede",
+      blurb: "Ten legs on a long segmented body. Quick, spiny, venomous, poorly armoured.",
+      spread: 0.1,
+      bias: {
+        body_segments: 4,
+        body_length: 0.98,
+        body_width: 0.2,
+        body_mass: 0.28,
+        carapace_thickness: 0.22,
+        head_size: 0.22,
+        thorax_ratio: 0.3,
+        abdomen_taper: 0.7,
+        leg_count: 10,
+        leg_length: 0.48,
+        leg_thickness: 0.18,
+        leg_joints: 2,
+        claw_size: 0.45,
+        wing_count: 0,
+        wing_type: 0,
+        wing_area: 0,
+        wing_beat: 0,
+        mandible_size: 0.48,
+        mandible_serration: 0.6,
+        horn_size: 0.05,
+        horn_type: 1,
+        eye_type: 2,
+        mandible_type: 1,
+        spine_density: 0.8,
+        tail_length: 0.75,
+        stinger_size: 0.65,
+        eye_count: 4,
+        eye_size: 0.25,
+        antenna_length: 0.7,
+        metabolism: 0.7,
+        aggression: 0.65,
+        hue: 0.06,
+        saturation: 0.7,
+        lightness: 0.35,
+        setae: 0.2,
+        translucency: 0.1
+      }
+    },
+    {
+      key: "weevil",
+      name: "Weevil",
+      blurb: "Small, round, absurdly long snout. Tanky for its size and hard to spot.",
+      spread: 0.11,
+      bias: {
+        body_segments: 2,
+        body_length: 0.3,
+        body_width: 0.58,
+        body_mass: 0.55,
+        carapace_thickness: 0.7,
+        head_size: 0.3,
+        thorax_ratio: 0.4,
+        abdomen_taper: 0.15,
+        leg_count: 6,
+        leg_length: 0.3,
+        leg_thickness: 0.45,
+        leg_joints: 2,
+        claw_size: 0.4,
+        wing_count: 2,
+        wing_type: 1,
+        wing_area: 0.15,
+        wing_beat: 0.25,
+        mandible_size: 0.2,
+        mandible_serration: 0.15,
+        horn_size: 0.95,
+        horn_type: 2,
+        eye_type: 1,
+        mandible_type: 3,
+        spine_density: 0.35,
+        tail_length: 0.08,
+        stinger_size: 0.02,
+        eye_count: 2,
+        eye_size: 0.28,
+        antenna_length: 0.55,
+        metabolism: 0.28,
+        aggression: 0.3,
+        saturation: 0.3,
+        lightness: 0.2,
+        pattern: 0.5,
+        setae: 0.45,
+        iridescence: 0.55,
+        translucency: 0.05
+      }
+    }
+  ];
+  var ARCHETYPE_KEYS = ARCHETYPES.map((a) => a.key);
+  var isCategorical = (name) => name.endsWith("_type");
+  function genomeFromArchetype(archetype, rng = makeRng(1)) {
+    const g = {};
+    for (const name of GENE_ORDER) {
+      const spec = GENE_SPECS[name];
+      const target = archetype.bias[name];
+      if (target === void 0) {
+        g[name] = clampGene(name, rng.range(spec.min, spec.max));
+        continue;
+      }
+      if (isCategorical(name)) {
+        const drift = rng() < 0.12 ? rng() < 0.5 ? -1 : 1 : 0;
+        g[name] = clampGene(name, target + drift);
+        continue;
+      }
+      const span = spec.max - spec.min;
+      const jitter = rng.normal() * span * (archetype.spread ?? 0.1);
+      g[name] = clampGene(name, target + jitter);
+    }
+    return normalizeGenome(g);
+  }
+  function seededPopulation(size, rng = makeRng(1), { wildcards = 0.15 } = {}) {
+    const order = [...ARCHETYPES];
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = rng.int(0, i);
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    const pop = [];
+    for (let i = 0; i < size; i++) {
+      if (rng() < wildcards) {
+        const g = {};
+        for (const name of GENE_ORDER) {
+          const spec = GENE_SPECS[name];
+          g[name] = clampGene(name, rng.range(spec.min, spec.max));
+        }
+        pop.push(normalizeGenome(g));
+      } else {
+        pop.push(genomeFromArchetype(order[i % order.length], rng));
+      }
+    }
+    return pop;
+  }
+
+  // src/sim/objects.js
+  var OBJECT_SPECS = {
+    /* ------------------------------------------------------------ breeding -- */
+    hive: {
+      id: "hive",
+      name: "Hive",
+      category: "breeding",
+      radius: 120,
+      footprint: 26,
+      blurb: "Queen-populated. Fast breeding cadence.",
+      breeding: { rate: 1.6 }
+    },
+    cave: {
+      id: "cave",
+      name: "Cave",
+      category: "breeding",
+      radius: 140,
+      footprint: 34,
+      blurb: "Slow, but works for any bug at all.",
+      breeding: { rate: 0.65, universal: true }
+    },
+    pond: {
+      id: "pond",
+      name: "Pond",
+      category: "breeding",
+      radius: 170,
+      footprint: 0,
+      blurb: "Enables breeding for water-based bugs. Keeps nearby plants watered.",
+      breeding: { rate: 1, aquatic: true },
+      provides: { hydration: 0.055 }
+    },
+    nest: {
+      id: "nest",
+      name: "Nest",
+      category: "breeding",
+      radius: 90,
+      footprint: 18,
+      blurb: "Bonds two chosen bugs. Guaranteed offspring, no tournament.",
+      breeding: { rate: 1, pairing: "manual", bypassSelection: true }
+    },
+    compost_heap: {
+      id: "compost_heap",
+      name: "Compost Heap",
+      category: "breeding",
+      radius: 150,
+      footprint: 22,
+      // Open question in the doc was whether to split this in two. Kept as one
+      // object: the dual purpose IS the idea — you park your worst bugs next to
+      // the thing that feeds your garden.
+      blurb: "Breeds from the weakest of the pool, preserving diversity. Feeds the soil.",
+      breeding: { rate: 0.85, selection: "inverse" },
+      provides: { soil: 0.05 }
+    },
+    amber_chamber: {
+      id: "amber_chamber",
+      name: "Amber Chamber",
+      category: "breeding",
+      radius: 0,
+      footprint: 20,
+      blurb: "Freezes a genome. It cannot breed while stored, and revives unchanged.",
+      breeding: { rate: 0, storage: true }
+    },
+    pollen_bloom: {
+      id: "pollen_bloom",
+      name: "Pollen Bloom",
+      category: "breeding",
+      radius: 130,
+      footprint: 0,
+      blurb: "A hive for fliers. Only helps things that pollinate.",
+      breeding: { rate: 1.45, requires: "winged" },
+      provides: { soil: 0.02 }
+    },
+    /* -------------------------------------------------------- gene modifiers */
+    glass_dome: {
+      id: "glass_dome",
+      name: "Glass Dome",
+      category: "gene",
+      radius: 0,
+      footprint: 30,
+      blurb: "Edit a gene by hand. The change shows up in the children, never in the bug you edited.",
+      gene: { expressIn: "offspring", edits: 1 }
+    },
+    crucible: {
+      id: "crucible",
+      name: "Crucible",
+      category: "gene",
+      radius: 110,
+      footprint: 24,
+      blurb: "Everything bred here mutates hard. High variance, and you asked for it.",
+      gene: { mutationScale: 3.2 }
+    },
+    prism_chamber: {
+      id: "prism_chamber",
+      name: "Prism Chamber",
+      category: "gene",
+      radius: 110,
+      footprint: 24,
+      blurb: "Pin one gene against mutation and keep breeding everything else.",
+      gene: { lockChoice: 1 }
+    },
+    /* -------------------------------------------------------- stat modifiers */
+    training_rock: {
+      id: "training_rock",
+      name: "Training Rock",
+      category: "stat",
+      radius: 70,
+      footprint: 28,
+      blurb: "Trains base stats directly. Genes stay exactly where they were.",
+      trains: { attack: 0.9, defense: 0.9 },
+      sessionSeconds: 45
+    },
+    feeding_trough: {
+      id: "feeding_trough",
+      name: "Feeding Trough",
+      category: "stat",
+      radius: 80,
+      footprint: 20,
+      blurb: "A full bug is a better bug, until it is hungry again.",
+      trains: { stamina: 1.4, recovery: 0.6 },
+      temporary: true,
+      decaySeconds: 300
+    },
+    obstacle_course: {
+      id: "obstacle_course",
+      name: "Obstacle Course",
+      category: "stat",
+      radius: 150,
+      footprint: 0,
+      blurb: "Has to be physically run. Trains agility and speed, nothing else.",
+      trains: { agility: 1.1, speed: 0.8 },
+      sessionSeconds: 60,
+      requiresTraversal: true
+    },
+    root_tangle: {
+      id: "root_tangle",
+      name: "Root Tangle",
+      category: "stat",
+      radius: 120,
+      footprint: 0,
+      blurb: "Slows anything crossing it. Cross it enough and that stops being true.",
+      trains: { defense: 0.7, grip: 1.2 },
+      sessionSeconds: 60,
+      requiresTraversal: true,
+      traversal: { speedMultiplier: 0.55 }
+    },
+    /* ------------------------------------------------------------ traversal */
+    wormway: {
+      id: "wormway",
+      name: "Wormway",
+      category: "traversal",
+      radius: 60,
+      footprint: 22,
+      blurb: "Fast travel between explored sections.",
+      traversal: { link: "pair", instant: true }
+    },
+    bridge: {
+      id: "bridge",
+      name: "Bridge / Tunnel",
+      category: "traversal",
+      radius: 0,
+      footprint: 0,
+      blurb: "A permanent connection between two zones. Cheaper than a Wormway, no jump.",
+      traversal: { link: "pair", instant: false }
+    },
+    beacon: {
+      id: "beacon",
+      name: "Beacon",
+      category: "traversal",
+      radius: 260,
+      footprint: 12,
+      blurb: "Bugs drift toward it when idle. Steering, not commanding.",
+      traversal: { attract: 0.45 }
+    },
+    vine_trellis: {
+      id: "vine_trellis",
+      name: "Vine Trellis",
+      category: "traversal",
+      radius: 0,
+      footprint: 0,
+      blurb: "Climbable. Changes where climbers can go, and shades what is under it.",
+      traversal: { climbable: true },
+      env: { light: -0.25 }
+    },
+    /* ---------------------------------------------------------- environment */
+    heat_lamp: {
+      id: "heat_lamp",
+      name: "Heat Lamp",
+      category: "environment",
+      radius: 190,
+      footprint: 14,
+      blurb: "A local daytime that ignores the real clock.",
+      env: { light: 0.55, warmth: 0.6 },
+      provides: { light: 0.06, hydration: -0.02 }
+    },
+    shade_tree: {
+      id: "shade_tree",
+      name: "Shade Tree",
+      category: "environment",
+      radius: 200,
+      footprint: 30,
+      blurb: "The same hook as the Heat Lamp, pulling the other way.",
+      env: { light: -0.45, warmth: -0.35 },
+      provides: { light: -0.04, hydration: 0.02 }
+    },
+    filter_stone: {
+      id: "filter_stone",
+      name: "Filter Stone",
+      category: "environment",
+      radius: 150,
+      footprint: 18,
+      blurb: "Slowly improves a Pond. Aquatic breeding gets better the longer you leave it.",
+      breeding: { aquaticBonus: 0.35 },
+      provides: { hydration: 0.02, soil: 0.02 }
+    },
+    mushroom_ring: {
+      id: "mushroom_ring",
+      name: "Mushroom Ring",
+      category: "environment",
+      radius: 130,
+      footprint: 0,
+      blurb: "Bugs that linger inside it do better at selection time.",
+      breeding: { fitnessBonus: 0.12 },
+      provides: { soil: 0.035, light: -0.01 }
+    }
+  };
+  var PLANT_SPECS = {
+    grass_patch: {
+      id: "grass_patch",
+      name: "Grass Patch",
+      category: "plant",
+      radius: 110,
+      footprint: 0,
+      blurb: "Increases growth rate nearby.",
+      growth: 1,
+      lifespan: 1,
+      spreadChance: 0.35,
+      breeding: { growthRate: 1.25 },
+      provides: { soil: 0.015 }
+    },
+    moss_bed: {
+      id: "moss_bed",
+      name: "Moss Bed",
+      category: "plant",
+      radius: 110,
+      footprint: 0,
+      blurb: "Slows growth and extends lifespan. The inverse trade to grass.",
+      growth: 0.6,
+      lifespan: 1.9,
+      spreadChance: 0.18,
+      breeding: { growthRate: 0.78, lifespan: 1.3 },
+      provides: { hydration: 0.02, soil: 0.01 }
+    },
+    flowering_bush: {
+      id: "flowering_bush",
+      name: "Flowering Bush",
+      category: "plant",
+      radius: 90,
+      footprint: 10,
+      blurb: "Drops nectar. Eating one gives a short burst of growth.",
+      growth: 0.9,
+      lifespan: 1,
+      spreadChance: 0.25,
+      yields: { kind: "nectar", everySeconds: 70, effect: { growthRate: 1.5, seconds: 40 } }
+    },
+    fern_cluster: {
+      id: "fern_cluster",
+      name: "Fern Cluster",
+      category: "plant",
+      radius: 120,
+      footprint: 0,
+      blurb: "Speeds juvenile growth only. Does nothing for an adult.",
+      growth: 0.85,
+      lifespan: 1.2,
+      spreadChance: 0.3,
+      breeding: { juvenileGrowth: 1.45 },
+      provides: { hydration: 0.015 }
+    },
+    berry_bush: {
+      id: "berry_bush",
+      name: "Berry Bush",
+      category: "plant",
+      radius: 90,
+      footprint: 12,
+      blurb: "Renewable food. A berry is a small temporary buff.",
+      growth: 0.8,
+      lifespan: 1.1,
+      spreadChance: 0.22,
+      yields: { kind: "berry", everySeconds: 90, effect: { stamina: 1.2, seconds: 120 } }
+    },
+    seed_pod: {
+      id: "seed_pod",
+      name: "Seed Pod",
+      category: "plant",
+      radius: 60,
+      footprint: 8,
+      blurb: "Exists to spread. Germinates a new plant elsewhere on a timer.",
+      growth: 1,
+      lifespan: 0.8,
+      spreadChance: 0.85
+    }
+  };
+  var CATALOG = { ...OBJECT_SPECS, ...PLANT_SPECS };
+  var CATALOG_IDS = Object.keys(CATALOG);
+  function specOf(id) {
+    const s = CATALOG[id];
+    if (!s) throw new Error(`unknown terrarium object: ${id}`);
+    return s;
+  }
+  function placeObject(id, x, y, extra = {}) {
+    const spec = specOf(id);
+    return { id, spec, x, y, ...extra };
+  }
+  var within = (o, x, y) => {
+    const r = o.spec.radius ?? 0;
+    if (r <= 0) return false;
+    return (o.x - x) ** 2 + (o.y - y) ** 2 <= r * r;
+  };
+  function fieldAt(objects, x, y) {
+    const out = {
+      hydration: 0,
+      light: 0,
+      soil: 0,
+      envLight: 0,
+      warmth: 0,
+      speedMultiplier: 1,
+      attract: 0,
+      climbable: false
+    };
+    for (const o of objects) {
+      if (!within(o, x, y)) continue;
+      const s = o.spec;
+      for (const [k, v] of Object.entries(s.provides ?? {})) out[k] += v;
+      if (s.env) {
+        out.envLight += s.env.light ?? 0;
+        out.warmth += s.env.warmth ?? 0;
+      }
+      if (s.traversal) {
+        out.speedMultiplier *= s.traversal.speedMultiplier ?? 1;
+        out.attract += s.traversal.attract ?? 0;
+        out.climbable = out.climbable || Boolean(s.traversal.climbable);
+      }
+    }
+    return out;
+  }
+  function breedingModifiers(objects, x, y) {
+    const out = {
+      rate: 1,
+      mutationScale: 1,
+      fitnessBonus: 0,
+      growthRate: 1,
+      selection: null,
+      bypassSelection: false,
+      lockChoices: 0,
+      universal: false,
+      aquatic: false,
+      requires: null
+    };
+    for (const o of objects) {
+      const s = o.spec;
+      const inRange = (s.radius ?? 0) > 0 ? within(o, x, y) : o.x === x && o.y === y;
+      if (!inRange) continue;
+      const b = s.breeding ?? {};
+      if (b.rate !== void 0) out.rate *= b.rate;
+      if (b.fitnessBonus) out.fitnessBonus += b.fitnessBonus;
+      if (b.selection) out.selection = b.selection;
+      if (b.bypassSelection) out.bypassSelection = true;
+      if (b.universal) out.universal = true;
+      if (b.aquatic) out.aquatic = true;
+      if (b.requires) out.requires = b.requires;
+      if (b.growthRate) out.growthRate *= b.growthRate;
+      const g = s.gene ?? {};
+      if (g.mutationScale) out.mutationScale *= g.mutationScale;
+      if (g.lockChoice) out.lockChoices += g.lockChoice;
+    }
+    return out;
+  }
+
+  // src/sim/plants.js
+  var TIMINGS = {
+    germinate: 40,
+    // favourable seconds a seed needs before it sprouts
+    seedFail: 90,
+    // unfavourable seconds before a seed gives up
+    sprout: 55,
+    grow: 180,
+    spreadEvery: 150,
+    // a mature plant tries to seed on this cadence
+    declineGrace: 120
+    // how long a neglected plant hangs on at one dead meter
+  };
+  var DECAY = {
+    hydration: 85e-4,
+    light: 7e-3,
+    // only at night; daylight refills it (see decay())
+    soil: 4e-3,
+    crowdingPenalty: 3e-3,
+    // per additional plant sharing the plot's radius
+    fallowRecovery: 6e-3
+    // soil regained per second by an empty plot
+  };
+  var clamp012 = (v) => Math.min(1, Math.max(0, v));
+  var Plot = class {
+    constructor(x, y, { radius = 90 } = {}) {
+      this.x = x;
+      this.y = y;
+      this.radius = radius;
+      this.hydration = 0.75;
+      this.light = 0.7;
+      this.soil = 0.8;
+      this.residue = 0;
+      this.occupant = null;
+      this.crowding = 0;
+    }
+    get meters() {
+      return this;
+    }
+    water(amount = 0.35) {
+      this.hydration = clamp012(this.hydration + amount);
+      return this.hydration;
+    }
+    /** Which meters are exhausted right now. Drives the decline rules. */
+    get exhausted() {
+      const out = [];
+      if (this.hydration <= 0) out.push("hydration");
+      if (this.light <= 0) out.push("light");
+      if (this.soil <= 0) out.push("soil");
+      return out;
+    }
+    /**
+     * `env` is the terrarium's behaviour read plus the aggregated object field at
+     * this plot: `{ light, field: { hydration, light, soil, envLight } }`.
+     */
+    decay(dt, env = {}) {
+      const field = env.field ?? {};
+      const ambient = clamp012((env.light ?? 0.5) + (field.envLight ?? 0));
+      this.hydration = clamp012(
+        this.hydration - DECAY.hydration * dt + (field.hydration ?? 0) * dt
+      );
+      const lightFlux = (ambient - 0.42) * DECAY.light * 2.6 + (field.light ?? 0);
+      this.light = clamp012(this.light + lightFlux * dt);
+      const drain = DECAY.soil + this.crowding * DECAY.crowdingPenalty + (env.disturbance ?? 0) * 4e-3;
+      const feed = (field.soil ?? 0) * (1 - this.residue);
+      const fallow = this.occupant ? 0 : DECAY.fallowRecovery * (1 - this.residue);
+      this.soil = clamp012(this.soil - drain * dt + (feed + fallow) * dt);
+      this.residue = clamp012(this.residue - dt * 25e-4);
+      return this;
+    }
+  };
+  var Plant = class {
+    /**
+     * @param {string} id     a key in PLANT_SPECS
+     * @param {Plot} plot     the plot it occupies
+     */
+    constructor(id, plot, { state = "seed" } = {}) {
+      this.spec = specOf(id);
+      if (this.spec.category !== "plant") throw new Error(`${id} is not a plant`);
+      this.id = id;
+      this.plot = plot;
+      this.x = plot.x;
+      this.y = plot.y;
+      this.state = state;
+      this.age = 0;
+      this.stateAge = 0;
+      this.progress = 0;
+      this.scale = 0.12;
+      this.declineFor = 0;
+      this.spreadTimer = 0;
+      this.yieldTimer = 0;
+      this.pendingYield = 0;
+      this.trampled = 0;
+      plot.occupant = this;
+    }
+    /** The doc's loop calls `plant.meters.decay(...)`; the plot IS the meters. */
+    get meters() {
+      return this.plot;
+    }
+    get alive() {
+      return this.state !== "dead";
+    }
+    get mature() {
+      return this.state === "mature" || this.state === "spreading";
+    }
+    /** 0 = healthy, 1 = fully wilted. Drives the palette shift, nothing else. */
+    get wilt() {
+      if (this.state === "declining") return clamp012(this.declineFor / TIMINGS.declineGrace);
+      const worst = Math.min(this.plot.hydration, this.plot.light, this.plot.soil);
+      return clamp012(0.5 - worst) * 1.4;
+    }
+    /** A growth multiplier from the plant's own spec. Never touches a bug. */
+    get growthRate() {
+      return this.spec.growth ?? 1;
+    }
+    /** Bugs walking over a sprout can destroy it, if the setting allows it. */
+    trample(amount = 1) {
+      if (this.state !== "sprout" && this.state !== "seed") return false;
+      this.trampled += amount;
+      if (this.trampled >= 3) {
+        this.state = "dead";
+        this.stateAge = 0;
+        return true;
+      }
+      return false;
+    }
+    setState(next) {
+      if (this.state === next) return;
+      this.state = next;
+      this.stateAge = 0;
+    }
+    /**
+     * One tick of the lifecycle. Pure with respect to the rest of the game: reads
+     * its own meters and the ambient environment, writes only its own fields.
+     */
+    advanceLifecycle(dt, env = {}) {
+      this.age += dt;
+      this.stateAge += dt;
+      const rate = this.growthRate;
+      const dead = this.plot.exhausted;
+      if (dead.length >= 3) {
+        this.setState("dead");
+        return this.state;
+      }
+      if (dead.length >= 1 && this.state !== "dead" && this.state !== "declining") {
+        this.setState("declining");
+        this.declineFor = 0;
+      }
+      switch (this.state) {
+        case "seed": {
+          const favourable = this.plot.light > 0.3 && this.plot.hydration > 0.25;
+          if (favourable) {
+            this.progress += dt * rate / TIMINGS.germinate;
+            this.stalled = 0;
+            if (this.progress >= 1) {
+              this.progress = 0;
+              this.setState("sprout");
+            }
+          } else {
+            this.stalled = (this.stalled ?? 0) + dt;
+            if (this.stalled > TIMINGS.seedFail) this.setState("dead");
+          }
+          this.scale = 0.1;
+          break;
+        }
+        case "sprout": {
+          this.scale = 0.22 + 0.1 * Math.min(1, this.stateAge / TIMINGS.sprout);
+          if (this.stateAge > TIMINGS.sprout / rate) this.setState("growing");
+          break;
+        }
+        case "growing": {
+          this.progress = Math.min(1, this.progress + dt * rate / TIMINGS.grow);
+          this.scale = 0.32 + 0.68 * this.progress;
+          if (this.progress >= 1) this.setState("mature");
+          break;
+        }
+        case "mature": {
+          this.scale = 1;
+          this.spreadTimer += dt;
+          if (this.spreadTimer >= TIMINGS.spreadEvery / rate) {
+            this.spreadTimer = 0;
+            this.setState("spreading");
+          }
+          this.tickYield(dt);
+          break;
+        }
+        case "spreading": {
+          this.scale = 1;
+          if (this.stateAge > 1) this.setState("mature");
+          this.tickYield(dt);
+          break;
+        }
+        case "declining": {
+          this.declineFor += dt * (dead.length >= 2 ? 2.4 : 1);
+          this.scale = Math.max(0.35, this.scale - dt * 0.02);
+          if (dead.length === 0) {
+            this.declineFor = 0;
+            this.setState(this.progress >= 1 ? "mature" : "growing");
+          } else if (this.declineFor >= TIMINGS.declineGrace) {
+            this.setState("dead");
+          }
+          break;
+        }
+        case "dead":
+        default:
+          this.scale = 0;
+          break;
+      }
+      return this.state;
+    }
+    tickYield(dt) {
+      const y = this.spec.yields;
+      if (!y) return;
+      this.yieldTimer += dt;
+      if (this.yieldTimer >= y.everySeconds) {
+        this.yieldTimer = 0;
+        if (this.wilt < 0.5) this.pendingYield = Math.min(3, this.pendingYield + 1);
+      }
+    }
+    /** Take one pickup, if there is one. Returns the effect spec or null. */
+    harvest() {
+      if (this.pendingYield <= 0) return null;
+      this.pendingYield -= 1;
+      return this.spec.yields?.effect ?? null;
+    }
+    snapshot() {
+      return {
+        id: this.id,
+        name: this.spec.name,
+        state: this.state,
+        x: this.x,
+        y: this.y,
+        scale: this.scale,
+        wilt: this.wilt,
+        hydration: this.plot.hydration,
+        light: this.plot.light,
+        soil: this.plot.soil,
+        pendingYield: this.pendingYield
+      };
+    }
+  };
+  var PlantBed = class {
+    constructor({ rng = makeRng(31337), bounds: bounds2 = null, minGap = 46 } = {}) {
+      this.rng = rng;
+      this.bounds = bounds2;
+      this.minGap = minGap;
+      this.plots = [];
+      this.plants = [];
+      this.settings = { plantsTrampleable: true, maxPlants: 24 };
+    }
+    plotAt(x, y, opts) {
+      const plot = new Plot(x, y, opts);
+      this.plots.push(plot);
+      return plot;
+    }
+    /** Plant `id` at a point, creating a plot if there isn't one free there. */
+    plant(id, x, y, opts = {}) {
+      if (this.plants.length >= this.settings.maxPlants) return null;
+      if (!this.hasRoom(x, y)) return null;
+      const plot = this.plots.find((p2) => p2.x === x && p2.y === y && !p2.occupant) ?? this.plotAt(x, y);
+      const p = new Plant(id, plot, opts);
+      this.plants.push(p);
+      return p;
+    }
+    hasRoom(x, y) {
+      if (this.bounds) {
+        const b = this.bounds;
+        if (x < b.x || x > b.right || y < b.y || y > b.bottom) return false;
+      }
+      return !this.plants.some((p) => (p.x - x) ** 2 + (p.y - y) ** 2 < this.minGap ** 2);
+    }
+    /** Plants sharing a plot's radius drain its soil faster. */
+    updateCrowding() {
+      for (const plot of this.plots) {
+        let n = 0;
+        for (const p of this.plants) {
+          if (p.plot === plot || !p.alive) continue;
+          if ((p.x - plot.x) ** 2 + (p.y - plot.y) ** 2 < plot.radius ** 2) n++;
+        }
+        plot.crowding = n;
+      }
+    }
+    /**
+     * The update hook, in the shape the objects doc specified.
+     * `fieldFor(x, y)` supplies the aggregated object influence at a point —
+     * pass `objects.fieldAt.bind(null, placedObjects)` or anything with that shape.
+     */
+    tick(dt, env = {}, fieldFor = null) {
+      this.updateCrowding();
+      for (const plant of this.plants) {
+        const local = { ...env, field: fieldFor ? fieldFor(plant.x, plant.y) : env.field ?? {} };
+        plant.meters.decay(dt, local);
+        plant.advanceLifecycle(dt, local);
+        if (plant.state === "spreading") this.trySpreadSeed(plant);
+        if (plant.state === "dead") this.clearPlot(plant);
+      }
+      for (const plot of this.plots) {
+        if (!plot.occupant) plot.decay(dt, { ...env, field: fieldFor ? fieldFor(plot.x, plot.y) : {} });
+      }
+      this.plants = this.plants.filter((p) => p.alive);
+      return this.plants.length;
+    }
+    /** A mature plant attempts to seed nearby. Deterministic under a seeded rng. */
+    trySpreadSeed(parent) {
+      if (this.rng() > (parent.spec.spreadChance ?? 0)) return null;
+      const angle = this.rng() * Math.PI * 2;
+      const dist = this.minGap * (1.2 + this.rng() * 1.6);
+      const x = Math.round(parent.x + Math.cos(angle) * dist);
+      const y = Math.round(parent.y + Math.sin(angle) * dist);
+      return this.plant(parent.id, x, y, { state: "seed" });
+    }
+    /**
+     * A dead plant frees its plot and leaves residue. Deliberately NOT a fresh
+     * seed: a garden that reseeds itself forever needs no gardener.
+     */
+    clearPlot(plant) {
+      const plot = plant.plot;
+      plot.occupant = null;
+      plot.residue = Math.min(1, plot.residue + 0.55);
+      plot.soil = Math.min(plot.soil, 0.35);
+      return plot;
+    }
+    snapshot() {
+      return this.plants.map((p) => p.snapshot());
+    }
+  };
+
+  // src/sim/knowledge.js
+  var CHANNEL_COST = {
+    watch: { base: 150, floor: 12 },
+    // seconds
+    combat: { base: 6, floor: 1 },
+    // fights
+    training: { base: 4, floor: 1 },
+    // sessions
+    vet: { base: 1, floor: 1 }
+    // visits
+  };
+  function costFor(channel, salience) {
+    const c = CHANNEL_COST[channel] ?? CHANNEL_COST.watch;
+    return Math.max(c.floor, Math.round(c.base - (c.base - c.floor) * salience));
+  }
+  function blankRecord(id) {
+    return {
+      id,
+      exposure: { watch: 0, combat: 0, training: 0, vet: 0 },
+      moments: [],
+      // short strings: things the player saw happen
+      firstSeen: null,
+      vet: { state: "available", until: 0, visits: 0 }
+    };
+  }
+  var Knowledge = class {
+    constructor(saved = {}) {
+      this.records = { ...saved };
+    }
+    recordFor(genome) {
+      const id = genomeId(genome);
+      if (!this.records[id]) this.records[id] = blankRecord(id);
+      return this.records[id];
+    }
+    /** Time spent watching a bug move, in seconds. Called from the sim loop. */
+    observe(genome, seconds) {
+      const r = this.recordFor(genome);
+      r.exposure.watch += seconds;
+      if (r.firstSeen === null) r.firstSeen = 0;
+      return r;
+    }
+    /** One completed fight involving this bug. */
+    fought(genome, { won = false, note = null } = {}) {
+      const r = this.recordFor(genome);
+      r.exposure.combat += 1;
+      if (note) this.remember(genome, note);
+      else this.remember(genome, won ? "won a fight" : "lost a fight");
+      return r;
+    }
+    /** One completed training session (Training Rock, Obstacle Course, ...). */
+    trained(genome, what = "trained") {
+      const r = this.recordFor(genome);
+      r.exposure.training += 1;
+      this.remember(genome, what);
+      return r;
+    }
+    /** A moment worth remembering. Capped so the log stays readable. */
+    remember(genome, text) {
+      const r = this.recordFor(genome);
+      if (r.moments[r.moments.length - 1] === text) return r;
+      r.moments.push(text);
+      if (r.moments.length > 12) r.moments.shift();
+      return r;
+    }
+    /**
+     * The phrases the player has earned about this bug, most striking first.
+     * Everything else stays invisible — not greyed out, not teased, absent.
+     */
+    known(genome) {
+      const r = this.recordFor(genome);
+      return allImpressions(genome).filter(
+        (imp) => r.exposure[imp.channel] >= costFor(imp.channel, imp.salience)
+      );
+    }
+    /**
+     * How much of a bug is still unknown, as a coarse word rather than a
+     * percentage — a progress bar would be exactly the spreadsheet the concept
+     * doc is trying to avoid.
+     */
+    familiarity(genome) {
+      const total = allImpressions(genome).length;
+      if (total === 0) return "unremarkable so far";
+      const got = this.known(genome).length;
+      const k = got / total;
+      if (k === 0) return "a stranger";
+      if (k < 0.34) return "starting to get a sense of it";
+      if (k < 0.67) return "you know its habits";
+      if (k < 1) return "few surprises left";
+      return "you know this one";
+    }
+    export() {
+      return JSON.parse(JSON.stringify(this.records));
+    }
+  };
+  var VET = {
+    visitSeconds: 90,
+    cooldownSeconds: 240
+  };
+  function vetStatus(record, now) {
+    const v = record.vet;
+    if (v.state === "available") return { state: "available", remaining: 0 };
+    const remaining = Math.max(0, v.until - now);
+    if (remaining > 0) return { state: v.state, remaining };
+    if (v.state === "visiting") {
+      v.state = "cooldown";
+      v.until = now + VET.cooldownSeconds;
+      return { state: "cooldown", remaining: VET.cooldownSeconds };
+    }
+    v.state = "available";
+    v.until = 0;
+    return { state: "available", remaining: 0 };
+  }
+  function sendToVet(knowledge, genome, now) {
+    const r = knowledge.recordFor(genome);
+    if (vetStatus(r, now).state !== "available") return false;
+    r.vet.state = "visiting";
+    r.vet.until = now + VET.visitSeconds;
+    r.vet.visits += 1;
+    r.exposure.vet += 1;
+    knowledge.remember(genome, "went in for a look-over");
+    return true;
+  }
+  function isAway(record, now) {
+    return vetStatus(record, now).state === "visiting";
   }
 
   // src/sim/viewport.js
@@ -2479,6 +4342,12 @@
   // src/sim/terrarium.js
   var WORLD = { w: 1280, h: 800 };
   var wallInset = () => Math.max(12, Math.round(Math.min(WORLD.w, WORLD.h) * 0.03));
+  function mixToward(a, b, k) {
+    const t = Math.max(0, Math.min(1, k));
+    const ch = (v, s) => v >> s & 255;
+    const m = [16, 8, 0].map((s) => Math.round(ch(a, s) + (ch(b, s) - ch(a, s)) * t));
+    return m[0] << 16 | m[1] << 8 | m[2];
+  }
   var TerrariumScene = class extends Phaser.Scene {
     constructor() {
       super("terrarium");
@@ -2493,6 +4362,11 @@
       this.touch = false;
       this.popSize = 12;
       this.popSizeExplicit = false;
+      this.knowledge = new Knowledge();
+      this.objects = [];
+      this.bed = null;
+      this.atVet = [];
+      this.clock = 0;
       this.insetBottom = 0;
     }
     create() {
@@ -2505,12 +4379,14 @@
       this.matter.world.disableGravity();
       this.groundLayer = this.add.graphics().setDepth(0);
       this.decorLayer = this.add.graphics().setDepth(1);
+      this.plantLayer = this.add.graphics().setDepth(2);
       this.fxLayer = this.add.graphics().setDepth(30);
       this.lightLayer = this.add.graphics().setDepth(40);
       this.fx = [];
       this.applyWorldBounds();
       this.drawGround();
       this.buildDecor();
+      this.buildGarden();
       this.spawnGeneration(seededPopulation(this.popSize, this.rng));
       this.input.on("pointerdown", (p) => this.handleClick(p));
       this.scale.on("resize", this.onResize, this);
@@ -2578,6 +4454,19 @@
       this.drawGround();
       this.decorLayer.clear();
       this.buildDecor();
+      if (this.bed) {
+        const b2 = this.terrariumBounds;
+        this.bed.bounds = { x: b2.x + 20, y: b2.y + 20, right: b2.right - 20, bottom: b2.bottom - 20 };
+        for (const p of this.bed.plants) {
+          p.x = p.plot.x = Math.min(b2.right - 20, Math.max(b2.x + 20, p.x));
+          p.y = p.plot.y = Math.min(b2.bottom - 20, Math.max(b2.y + 20, p.y));
+        }
+        for (const o of this.objects) {
+          o.x = Math.min(b2.right - 20, Math.max(b2.x + 20, o.x));
+          o.y = Math.min(b2.bottom - 20, Math.max(b2.y + 20, o.y));
+        }
+        this.drawGarden();
+      }
       const b = this.terrariumBounds;
       for (const bug of this.bugs) {
         bug.sprite.setPosition(
@@ -2648,6 +4537,130 @@
         this.decor.push({ kind: "food", x, y });
       }
     }
+    /* ---------------------------------------------------------- garden ---- */
+    /**
+     * Placeable objects and the plant bed. Plants tick alongside decor rather
+     * than alongside bugs — they have no Matter.js body beyond a footprint, and
+     * they read the same `behaviourAt()` signal bug behaviour reads.
+     */
+    buildGarden() {
+      const b = this.terrariumBounds;
+      this.bed = new PlantBed({
+        rng: makeRng(this.seed ^ 24301),
+        bounds: { x: b.x + 20, y: b.y + 20, right: b.right - 20, bottom: b.bottom - 20 }
+      });
+      this.objects = [];
+      const r = makeRng(777);
+      const at = (fx, fy) => ({ x: b.x + b.width * fx, y: b.y + b.height * fy });
+      const pond = at(0.18, 0.72);
+      const heap = at(0.82, 0.24);
+      this.objects.push(placeObject("pond", pond.x, pond.y));
+      this.objects.push(placeObject("compost_heap", heap.x, heap.y));
+      this.objects.push(placeObject("training_rock", at(0.5, 0.2).x, at(0.5, 0.2).y));
+      const starters = ["grass_patch", "moss_bed", "fern_cluster", "berry_bush", "flowering_bush"];
+      for (const id of starters) {
+        for (let tries = 0; tries < 12; tries++) {
+          const x = Math.round(b.x + 40 + r() * (b.width - 80));
+          const y = Math.round(b.y + 40 + r() * (b.height - 80));
+          if (this.bed.plant(id, x, y, { state: r() < 0.5 ? "growing" : "mature" })) break;
+        }
+      }
+    }
+    /** Aggregated object influence at a point — passed straight to the plant bed. */
+    fieldFor(x, y) {
+      return fieldAt(this.objects, x, y);
+    }
+    drawGarden() {
+      const g = this.plantLayer;
+      g.clear();
+      for (const p of this.bed?.plants ?? []) {
+        if (p.state === "seed") {
+          g.fillStyle(7033914, 0.9).fillCircle(p.x, p.y, 3);
+          continue;
+        }
+        const wilt = p.wilt;
+        const base = [4160058, 3105584, 5544266][p.id.length % 3];
+        const col = wilt > 0.15 ? mixToward(base, 9075260, Math.min(1, wilt)) : base;
+        const blades = 3 + p.id.length % 4;
+        const len = (18 + 40 * p.scale) * (1 - wilt * 0.35);
+        for (let i = 0; i < blades; i++) {
+          const a = -Math.PI / 2 + (i / blades - 0.5) * 1.9;
+          g.lineStyle(2 + p.scale * 2.5, col, 0.95);
+          g.beginPath();
+          g.moveTo(p.x, p.y);
+          g.lineTo(p.x + Math.cos(a) * len * 0.6, p.y + Math.sin(a) * len * 0.6);
+          g.lineTo(p.x + Math.cos(a + 0.4) * len, p.y + Math.sin(a + 0.4) * len);
+          g.strokePath();
+        }
+        if (p.pendingYield > 0) {
+          g.fillStyle(16765286, 1).fillCircle(p.x, p.y - len * 0.7, 4);
+        }
+      }
+      for (const o of this.objects) {
+        g.fillStyle(2898762, 0.5).fillCircle(o.x, o.y, Math.max(10, o.spec.footprint || 12));
+        g.lineStyle(2, 10476008, 0.35).strokeCircle(o.x, o.y, Math.max(10, o.spec.footprint || 12));
+      }
+    }
+    /* ------------------------------------------------------- vet station --- */
+    /**
+     * Take a bug out for a look-over. It leaves the terrarium for the length of
+     * the visit and cannot go straight back in afterwards, so this is a decision
+     * rather than something you do to every bug constantly.
+     */
+    sendToVet(bug) {
+      if (!bug || !sendToVet(this.knowledge, bug.genome, this.clock)) return false;
+      bug.sprite.setVisible(false);
+      bug.sprite.setStatic(true);
+      this.atVet.push(bug);
+      this.bugs = this.bugs.filter((b) => b !== bug);
+      if (this.selected === bug) this.selected = this.bugs[0] ?? null;
+      this.emitState();
+      return true;
+    }
+    /**
+     * The Vet Station's entire output: a picture, and words about what is in the
+     * picture. This is the ONE sanctioned path from a genome to the player, and
+     * it is deliberately the least useful view for min-maxing — it tells you what
+     * the bug IS, never what it is worth.
+     *
+     * The genome crosses into the UI as pixels and prose, never as data: the
+     * caller gets a canvas and a list of sentences, and no way back to a number.
+     */
+    vetPortrait(bug, { size = 260 } = {}) {
+      if (!bug) return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      ctx.translate(size / 2, size / 2);
+      drawBug(ctx, bug.genome, { phase: 0, state: "idle", ppu: Math.round(size / 8.5) });
+      return { canvas, readout: vetReadout(bug.genome) };
+    }
+    /** Anyone whose visit has elapsed comes home. Cooldown starts on return. */
+    returnFromVet() {
+      if (!this.atVet.length) return;
+      const back = [];
+      this.atVet = this.atVet.filter((bug) => {
+        const rec = this.knowledge.recordFor(bug.genome);
+        if (isAway(rec, this.clock)) return true;
+        back.push(bug);
+        return false;
+      });
+      for (const bug of back) {
+        const b = this.terrariumBounds;
+        bug.sprite.setVisible(true);
+        bug.sprite.setStatic(false);
+        bug.sprite.setPosition(b.x + this.rng() * b.width, b.y + this.rng() * b.height);
+        bug.wander = bug.pickWanderPoint();
+        this.bugs.push(bug);
+      }
+      if (back.length) this.emitState();
+    }
+    /** Record a fight for both parties — this is how combat impressions unlock. */
+    noteFight(winner, loser) {
+      if (winner) this.knowledge.fought(winner.genome, { won: true });
+      if (loser) this.knowledge.fought(loser.genome, { won: false });
+    }
     /* ------------------------------------------------------ population ---- */
     spawnGeneration(population) {
       for (const b of this.bugs) b.destroy();
@@ -2660,13 +4673,27 @@
       this.selected = this.bugs[0] ?? null;
       this.emitState();
     }
-    /** Breed the CURRENT genomes into the next generation and respawn. */
+    /**
+     * Breed the CURRENT genomes into the next generation and respawn.
+     *
+     * `at` is where the breeding happens — the modifiers of whatever structures
+     * cover that point are read HERE, at the moment the call runs. Nothing was
+     * written onto any bug beforehand; that is the whole distinction the objects
+     * doc draws between a rate multiplier and a gene write.
+     */
     breed(opts = {}) {
       const genomes = this.bugs.map((b) => b.genome);
+      const at = opts.at ?? { x: this.terrariumBounds.centerX, y: this.terrariumBounds.centerY };
+      const mods = breedingModifiers(this.objects, at.x, at.y);
+      const dominant = this.bugs[0]?.classification ?? null;
       const { population, report } = breedGeneration(genomes, {
         preset: this.preset,
         rng: this.rng,
         size: this.popSize,
+        mutationScale: 0.1 * mods.mutationScale,
+        selection: mods.selection,
+        locked: mods.lockChoices > 0 ? dominant?.locks ?? [] : [],
+        unlocked: dominant?.unlocks ?? [],
         ...opts
       });
       this.generation++;
@@ -2700,6 +4727,7 @@
       bug.sprite.setAlpha(0.35);
       bug.sprite.setStatic(true);
       this.flash(bug.sprite.x, bug.sprite.y, 16735050, 26);
+      this.noteFight(bug.poisonBy ?? bug.lastAttacker ?? null, bug);
       if (this.selected === bug) this.selected = this.bugs.find((b) => b.alive) ?? bug;
       if (this.bugs.filter((b) => b.alive).length <= 1) this.events.emit("roundOver");
     }
@@ -2725,9 +4753,24 @@
     /* ------------------------------------------------------------ loop ---- */
     update(_time, delta) {
       const dt = Math.min(0.05, delta / 1e3);
+      this.clock += dt;
       this.env = behaviourAt(dayFraction(/* @__PURE__ */ new Date(), this.timeScale));
       const alive = this.bugs.filter((b) => b.alive);
       for (const b of alive) b.update(dt, alive);
+      for (const b of alive) this.knowledge.observe(b.genome, dt);
+      if (this.bed) {
+        this.gardenTick = (this.gardenTick ?? 0) + dt;
+        this.bed.tick(
+          dt,
+          { light: this.env.light, disturbance: alive.length * 0.05 },
+          (x, y) => this.fieldFor(x, y)
+        );
+        if (this.gardenTick > 0.5) {
+          this.gardenTick = 0;
+          this.drawGarden();
+        }
+      }
+      this.returnFromVet();
       this.fxLayer.clear();
       this.fx = this.fx.filter((f) => (f.life -= dt) > 0);
       for (const f of this.fx) {
@@ -2749,9 +4792,27 @@
         this.emitState();
       }
     }
+    /**
+     * The population's direction of travel, as a phrase. The GA still ranks by a
+     * numeric fitness internally — it has to — but the number never leaves this
+     * method. Comparing this generation's mean against the last two is enough to
+     * say "coming along" without ever printing a score.
+     */
+    poolTrend() {
+      const h = this.history;
+      if (h.length < 2) return "too early to say";
+      const last = h[h.length - 1];
+      const prev = h[h.length - 2];
+      const d = (last.mean ?? 0) - (prev.mean ?? 0);
+      const scale = Math.max(1, Math.abs(prev.mean ?? 1)) * 0.02;
+      if (d > scale) return "the pool is coming along";
+      if (d < -scale) return "the pool has slipped";
+      return "the pool is holding steady";
+    }
     emitState() {
       const alive = this.bugs.filter((b) => b.alive);
       const ranked = this.bugs.length ? rank(this.bugs.map((b) => b.genome), this.preset) : [];
+      const sel = this.selected;
       this.events.emit("state", {
         clock: clockLabel(/* @__PURE__ */ new Date(), this.timeScale),
         env: this.env,
@@ -2759,17 +4820,38 @@
         preset: this.preset,
         seed: this.seed,
         alive: alive.length,
-        total: this.bugs.length,
+        total: this.bugs.length + this.atVet.length,
         popSize: this.popSize,
         tier: this.settings?.tier ?? "desktop",
-        bestFitness: ranked[0]?.fitness ?? 0,
-        meanFitness: ranked.length ? ranked.reduce((a, e) => a + e.fitness, 0) / ranked.length : 0,
-        selected: this.selected?.snapshot() ?? null,
+        trend: this.poolTrend(),
+        diversity: ranked.length ? describeDiversity(ranked) : "nothing to compare yet",
+        garden: this.bed?.snapshot() ?? [],
+        atVet: this.atVet.map((b) => ({
+          ...b.snapshot(),
+          remaining: Math.ceil(vetStatus(this.knowledge.recordFor(b.genome), this.clock).remaining)
+        })),
+        vetCapacity: VET,
+        selected: sel ? {
+          ...sel.snapshot(),
+          impressions: this.knowledge.known(sel.genome).map((i) => i.phrase),
+          familiarity: this.knowledge.familiarity(sel.genome),
+          moments: this.knowledge.recordFor(sel.genome).moments.slice(-5),
+          vet: vetStatus(this.knowledge.recordFor(sel.genome), this.clock)
+        } : null,
         roster: this.bugs.map((b) => b.snapshot()),
         history: this.history.slice(-40)
       });
     }
   };
+  function describeDiversity(ranked) {
+    const vals = ranked.map((r) => r.fitness);
+    const mean = vals.reduce((a, v) => a + v, 0) / vals.length;
+    const sd = Math.sqrt(vals.reduce((a, v) => a + (v - mean) ** 2, 0) / vals.length);
+    const cv = Math.abs(mean) > 1e-6 ? sd / Math.abs(mean) : 0;
+    if (cv < 0.06) return "they are all much of a muchness";
+    if (cv < 0.18) return "a few stand out";
+    return "wildly different animals";
+  }
 
   // src/ui/glass.js
   var DEFAULT_OPTICS = {
@@ -3147,7 +5229,7 @@
 
   // src/main.js
   var $ = (id) => document.getElementById(id);
-  var fmt = (n, d = 1) => Number(n).toFixed(d);
+  var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   var stage = $("stage");
   var canvasHost = $("canvasHost");
   var touch = isTouchDevice();
@@ -3192,13 +5274,8 @@
     wire();
     wireViewport();
   });
-  function bar(label, value, max, unit = "") {
-    const pct = Math.max(0, Math.min(100, value / max * 100));
-    return `<div class="row"><span class="k">${label}</span>
-    <span class="track"><i style="width:${pct}%"></i></span>
-    <span class="v">${fmt(value, value < 10 ? 2 : 0)}${unit}</span></div>`;
-  }
   var lastSel = null;
+  var lastVet = null;
   function render(s) {
     $("clock").textContent = s.clock;
     $("phase").textContent = s.env.label;
@@ -3206,39 +5283,89 @@
     $("gen").textContent = s.generation;
     $("alive").textContent = `${s.alive}/${s.total}`;
     $("seedOut").textContent = s.seed;
-    $("bestFit").textContent = fmt(s.bestFitness);
-    $("meanFit").textContent = fmt(s.meanFitness);
+    $("trend").textContent = s.trend;
+    $("spread").textContent = s.diversity;
     $("sun").style.background = s.env.css;
     $("hClock").textContent = s.clock;
     $("hPhase").textContent = s.env.label;
     $("hPhase").style.color = s.env.css;
     $("hGen").textContent = s.generation;
     $("hAlive").textContent = `${s.alive}/${s.total}`;
+    renderVet(s);
     const b = s.selected;
-    const sig2 = b ? `${b.id}|${b.state}|${b.alive}|${Math.round(b.hp)}|${Math.round(b.energy)}|${b.kills}` : "none";
+    const sig2 = b ? `${b.id}|${b.state}|${b.alive}|${b.condition}|${b.vigour}|${b.kills}|${b.impressions.length}` : "none";
     if (sig2 === lastSel) return;
     lastSel = sig2;
     if (!b) {
       $("inspect").innerHTML = `<p class="muted">${touch ? "Tap" : "Click"} a bug.</p>`;
       return;
     }
+    const facts = [
+      ...b.physical.map((f) => `<span class="fact">${esc(f)}</span>`),
+      ...b.traits.map((t) => `<span class="fact trait">${esc(t)}</span>`)
+    ].join("");
+    const tells = b.impressions.length ? `<ul class="tells">${b.impressions.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : `<p class="unknown">You haven't watched this one long enough to say
+       anything about it yet. Leave it be, or put it in a fight.</p>`;
+    const moments = b.moments?.length ? `<ul class="moments">${b.moments.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : "";
     $("inspect").innerHTML = `
-    <h3>${b.name} <span class="kind">${b.kind}</span>${b.alive ? "" : ' <span class="dead">DOWN</span>'}</h3>
-    <p class="muted small">#${b.tag} \xB7 gen ${b.generation} \xB7 ${b.state} \xB7 ${b.kills} kills${b.poison > 0.5 ? ' \xB7 <span class="envenomed">envenomed</span>' : ""}</p>
-    <div class="bars">
-      ${bar("HP", b.hp, b.stats.health)}
-      ${bar("Energy", b.energy, b.stats.stamina)}
-    </div>
-    <h4>Stats <span class="muted small">(pure f(genes))</span></h4>
-    <div class="bars">
-      ${STAT_KEYS.filter((k) => k !== "size" && k !== "attackRate" && k !== "vision").map((k) => bar(k, b.stats[k], 100)).join("")}
-      ${bar("vision", b.stats.vision, 280)}
-      ${bar("bites/s", b.stats.attackRate, 2.6)}
-    </div>
-    <h4>Genes</h4>
-    <div class="genes">
-      ${GENE_ORDER.map((k) => `<span class="gene"><b>${k}</b>${fmt(b.genome[k], 2)}</span>`).join("")}
-    </div>`;
+    <h3>${esc(b.name)} <span class="kind">${esc(b.kind)}</span>${b.alive ? "" : ' <span class="dead">DOWN</span>'}</h3>
+    <p class="muted small">#${esc(b.tag)} \xB7 gen ${b.generation} \xB7 ${esc(b.condition)} \xB7
+       ${esc(b.vigour)}${b.envenomed ? ' \xB7 <span class="envenomed">envenomed</span>' : ""}</p>
+    <div class="facts">${facts}</div>
+    ${tells}
+    <p class="familiar">${esc(b.familiarity)}</p>
+    ${moments}`;
+  }
+  function renderVet(s) {
+    const b = s.selected;
+    const away = s.atVet ?? [];
+    const sig2 = `${b?.id ?? "none"}|${b?.vet?.state ?? "-"}|${away.map((a) => `${a.id}:${a.remaining}`).join(",")}`;
+    if (sig2 === lastVet) return;
+    lastVet = sig2;
+    const btn = $("vetSend");
+    const state = $("vetState");
+    if (!b) {
+      btn.disabled = true;
+      state.textContent = "pick a bug first";
+    } else if (b.vet.state === "available") {
+      btn.disabled = false;
+      state.textContent = `${b.name} can go in`;
+    } else if (b.vet.state === "visiting") {
+      btn.disabled = true;
+      state.textContent = "already there";
+    } else {
+      btn.disabled = true;
+      state.textContent = `${b.name} needs to settle first`;
+    }
+    const list = away.length ? `<p class="vet-away">Away: ${away.map((a) => `${esc(a.name)} (~${Math.max(1, Math.ceil(a.remaining / 60))} min)`).join(", ")}</p>` : "";
+    $("vetAway").innerHTML = list;
+    if (vetCard) $("vetAway").appendChild(vetCard);
+  }
+  var vetCard = null;
+  function showVetPortrait(bug) {
+    const out = scene.vetPortrait(bug);
+    if (!out) return;
+    const card = document.createElement("div");
+    card.className = "vet-card";
+    const cv = out.canvas;
+    cv.style.width = "100%";
+    cv.style.maxWidth = "260px";
+    cv.style.display = "block";
+    cv.style.margin = "8px auto";
+    card.appendChild(cv);
+    const r = out.readout;
+    const facts = [...r.physical, ...r.traits].map((f) => `<span class="fact">${esc(f)}</span>`).join("");
+    const caption = document.createElement("div");
+    caption.innerHTML = `
+    <p class="muted small" style="text-align:center">
+      ${esc(r.name)}${r.hybrid ? " \u2014 an in-between thing" : ""}${r.order ? ` \xB7 ${esc(r.order)}` : ""}
+    </p>
+    <p class="unknown">${esc(r.blurb)}</p>
+    <div class="facts">${facts}</div>
+    ${r.drifting ? `<p class="familiar">${esc(r.drifting)}</p>` : ""}`;
+    card.appendChild(caption);
+    vetCard = card;
+    lastVet = null;
   }
   var isSheetMode = () => getComputedStyle($("handle")).display !== "none";
   function collapseSheet() {
@@ -3343,6 +5470,12 @@
     $("handle").onclick = toggleSheet;
     wireSwipe();
     $("canvasHost").style.gridArea = "1 / 1";
+    $("vetSend").onclick = () => {
+      const bug = scene.selected;
+      if (!bug) return;
+      showVetPortrait(bug);
+      scene.sendToVet(bug);
+    };
     $("breed").onclick = () => scene.breed();
     $("ff").onclick = () => scene.fastForward(Number($("ffN").value) || 10);
     $("reseed").onclick = () => scene.reseed();

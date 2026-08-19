@@ -282,19 +282,36 @@
   }
   #ffN { width: 64px; flex: 0 0 auto; text-align: center; }
 
-  .row { display: grid; grid-template-columns: 74px minmax(0,1fr) 46px;
-         align-items: center; gap: 6px; margin: 3px 0; }
-  .row .k { color: var(--muted); font-size: 11px;
-            overflow: hidden; text-overflow: ellipsis; }
-  .row .v { text-align: right; font-size: 11px; }
-  .track { height: 7px; background: #221d16; border-radius: 4px; overflow: hidden; }
-  .track i { display: block; height: 100%;
-             background: linear-gradient(90deg, #7a6a2a, var(--accent)); }
+  /* No stat bars and no gene chips live here any more — on purpose. The bug is
+     described, not tabulated. See src/core/impressions.js. */
+  .tells { list-style: none; margin: 6px 0 0; padding: 0; }
+  .tells li { position: relative; padding: 4px 0 4px 14px; font-size: 12.5px;
+              line-height: 1.45; }
+  .tells li::before { content: '·'; position: absolute; left: 3px;
+                      color: var(--accent); }
+  .tells li.faint { color: var(--muted); }
 
-  .genes { display: flex; flex-wrap: wrap; gap: 3px; }
-  .gene { font-size: 10px; background: #1e1a14; border: 1px solid var(--line);
-          border-radius: 3px; padding: 3px 5px; }
-  .gene b { color: var(--muted); font-weight: 400; margin-right: 5px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .fact { font-size: 10.5px; background: #1e1a14; border: 1px solid var(--line);
+          border-radius: 999px; padding: 3px 8px; color: var(--muted); }
+  .fact.trait { color: var(--accent); border-color: #4a3f20; }
+
+  .familiar { font-size: 11px; color: var(--muted); font-style: italic;
+              margin-top: 8px; }
+  .moments { font-size: 11px; color: var(--muted); margin-top: 6px;
+             padding-left: 14px; }
+  .unknown { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .vet-row { display: flex; align-items: center; gap: 8px; margin-top: 8px;
+             flex-wrap: wrap; }
+  .vet-row button { flex: 0 0 auto; }
+  .vet-state { font-size: 11px; color: var(--muted); }
+  .vet-away { font-size: 11.5px; color: var(--muted); margin: 4px 0 0;
+              padding-left: 14px; }
+  .vet-card { margin-top: 10px; padding: 10px; border: 1px solid var(--line);
+              border-radius: 12px; background:
+                radial-gradient(120% 90% at 50% 0%, #221c14 0%, #171310 70%); }
+  .vet-card canvas { image-rendering: auto; }
 
   /* --------------------------------------------------- sheet handle ---- */
   #handle { display: none; }
@@ -453,7 +470,7 @@
 
     <div id="sheetBody">
       <h1>Terrarium</h1>
-      <p class="muted small lede">genes → stats → physics. Stats never read back from the sim.</p>
+      <p class="muted small lede">You learn a bug by watching it. Nothing here will tell you a number.</p>
 
       <div class="block">
         <div class="stat-grid">
@@ -461,10 +478,10 @@
           <div><span>phase</span><b id="phase">—</b></div>
           <div><span>gen</span><b id="gen">0</b></div>
           <div><span>alive</span><b id="alive">0/0</b></div>
-          <div><span>best fit</span><b id="bestFit">0</b></div>
-          <div><span>mean fit</span><b id="meanFit">0</b></div>
           <div><span>seed</span><b id="seedOut">—</b></div>
         </div>
+        <p class="muted small" id="trend">too early to say</p>
+        <p class="muted small" id="spread">nothing to compare yet</p>
         <div id="sun"></div>
       </div>
 
@@ -472,7 +489,7 @@
         <label class="ffn-row">generations
           <input id="ffN" type="number" value="10" min="1" max="500"
                  inputmode="numeric" pattern="[0-9]*"></label>
-        <label>fitness <select id="preset"></select></label>
+        <label>breeding for <select id="preset"></select></label>
         <label>population <input id="pop" type="range" min="4" max="30" value="12">
           <b id="popOut">12</b></label>
         <label>time scale <input id="tscale" type="range" min="1" max="400" value="1">
@@ -480,6 +497,17 @@
       </div>
 
       <div class="block" id="inspect"><p class="muted">Tap a bug.</p></div>
+
+      <div class="block" id="vetBlock">
+        <h4>Vet station</h4>
+        <p class="muted small">The only place you see what a bug actually is —
+          and only ever as a picture. A visit costs you the bug for a while.</p>
+        <div class="vet-row">
+          <button id="vetSend" type="button">Take it in</button>
+          <span class="vet-state" id="vetState">—</span>
+        </div>
+        <div id="vetAway"></div>
+      </div>
     </div>
   </aside>
 

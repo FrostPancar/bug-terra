@@ -2,12 +2,17 @@
 
 import { TerrariumScene, WORLD } from './sim/terrarium.js';
 import { computeWorld, tierSettings, isTouchDevice, setViewport } from './sim/viewport.js';
-import { GENE_ORDER } from './core/genes.js';
-import { STAT_KEYS, FITNESS } from './core/stats.js';
+import { FITNESS } from './core/stats.js';
 import { glassify, supportsLensBackdrop } from './ui/glass.js';
 
+// NOTE: this module deliberately imports no gene list and no stat list. The
+// panel is not given the vocabulary to print a gene value or a stat, so it
+// cannot drift back into being a spreadsheet. `tests/hidden.test.js` fails the
+// build if either import reappears here or anywhere under src/ui.
+
 const $ = (id) => document.getElementById(id);
-const fmt = (n, d = 1) => Number(n).toFixed(d);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 const stage = $('stage');
 const canvasHost = $('canvasHost');
@@ -61,14 +66,8 @@ game.events.once('ready', () => {
 
 /* ------------------------------------------------------------ render ---- */
 
-function bar(label, value, max, unit = '') {
-  const pct = Math.max(0, Math.min(100, (value / max) * 100));
-  return `<div class="row"><span class="k">${label}</span>
-    <span class="track"><i style="width:${pct}%"></i></span>
-    <span class="v">${fmt(value, value < 10 ? 2 : 0)}${unit}</span></div>`;
-}
-
 let lastSel = null;
+let lastVet = null;
 
 function render(s) {
   $('clock').textContent = s.clock;
@@ -77,8 +76,8 @@ function render(s) {
   $('gen').textContent = s.generation;
   $('alive').textContent = `${s.alive}/${s.total}`;
   $('seedOut').textContent = s.seed;
-  $('bestFit').textContent = fmt(s.bestFitness);
-  $('meanFit').textContent = fmt(s.meanFitness);
+  $('trend').textContent = s.trend;
+  $('spread').textContent = s.diversity;
   $('sun').style.background = s.env.css;
 
   // collapsed-sheet summary
@@ -88,33 +87,112 @@ function render(s) {
   $('hGen').textContent = s.generation;
   $('hAlive').textContent = `${s.alive}/${s.total}`;
 
+  renderVet(s);
+
   const b = s.selected;
   // Only rebuild the inspect panel when something meaningful changed — on a
   // phone, re-rendering this markup 5x/sec is a measurable frame cost.
-  const sig = b ? `${b.id}|${b.state}|${b.alive}|${Math.round(b.hp)}|${Math.round(b.energy)}|${b.kills}` : 'none';
+  const sig = b
+    ? `${b.id}|${b.state}|${b.alive}|${b.condition}|${b.vigour}|${b.kills}|${b.impressions.length}`
+    : 'none';
   if (sig === lastSel) return;
   lastSel = sig;
 
   if (!b) { $('inspect').innerHTML = `<p class="muted">${touch ? 'Tap' : 'Click'} a bug.</p>`; return; }
 
+  // Physical facts are free — they are literally drawn on the sprite. Traits
+  // are earned. Performance is only ever a phrase, and only once you've seen it.
+  const facts = [
+    ...b.physical.map((f) => `<span class="fact">${esc(f)}</span>`),
+    ...b.traits.map((t) => `<span class="fact trait">${esc(t)}</span>`),
+  ].join('');
+
+  const tells = b.impressions.length
+    ? `<ul class="tells">${b.impressions.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`
+    : `<p class="unknown">You haven't watched this one long enough to say
+       anything about it yet. Leave it be, or put it in a fight.</p>`;
+
+  const moments = b.moments?.length
+    ? `<ul class="moments">${b.moments.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>`
+    : '';
+
   $('inspect').innerHTML = `
-    <h3>${b.name} <span class="kind">${b.kind}</span>${b.alive ? '' : ' <span class="dead">DOWN</span>'}</h3>
-    <p class="muted small">#${b.tag} · gen ${b.generation} · ${b.state} · ${b.kills} kills${b.poison > 0.5 ? ' · <span class="envenomed">envenomed</span>' : ''}</p>
-    <div class="bars">
-      ${bar('HP', b.hp, b.stats.health)}
-      ${bar('Energy', b.energy, b.stats.stamina)}
-    </div>
-    <h4>Stats <span class="muted small">(pure f(genes))</span></h4>
-    <div class="bars">
-      ${STAT_KEYS.filter((k) => k !== 'size' && k !== 'attackRate' && k !== 'vision')
-        .map((k) => bar(k, b.stats[k], 100)).join('')}
-      ${bar('vision', b.stats.vision, 280)}
-      ${bar('bites/s', b.stats.attackRate, 2.6)}
-    </div>
-    <h4>Genes</h4>
-    <div class="genes">
-      ${GENE_ORDER.map((k) => `<span class="gene"><b>${k}</b>${fmt(b.genome[k], 2)}</span>`).join('')}
-    </div>`;
+    <h3>${esc(b.name)} <span class="kind">${esc(b.kind)}</span>${b.alive ? '' : ' <span class="dead">DOWN</span>'}</h3>
+    <p class="muted small">#${esc(b.tag)} · gen ${b.generation} · ${esc(b.condition)} ·
+       ${esc(b.vigour)}${b.envenomed ? ' · <span class="envenomed">envenomed</span>' : ''}</p>
+    <div class="facts">${facts}</div>
+    ${tells}
+    <p class="familiar">${esc(b.familiarity)}</p>
+    ${moments}`;
+}
+
+/** The vet block: who is away, how long, and whether this one can go in. */
+function renderVet(s) {
+  const b = s.selected;
+  const away = s.atVet ?? [];
+  const sig = `${b?.id ?? 'none'}|${b?.vet?.state ?? '-'}|${away.map((a) => `${a.id}:${a.remaining}`).join(',')}`;
+  if (sig === lastVet) return;
+  lastVet = sig;
+
+  const btn = $('vetSend');
+  const state = $('vetState');
+  if (!b) {
+    btn.disabled = true;
+    state.textContent = 'pick a bug first';
+  } else if (b.vet.state === 'available') {
+    btn.disabled = false;
+    state.textContent = `${b.name} can go in`;
+  } else if (b.vet.state === 'visiting') {
+    btn.disabled = true;
+    state.textContent = 'already there';
+  } else {
+    btn.disabled = true;
+    state.textContent = `${b.name} needs to settle first`;
+  }
+
+  const list = away.length
+    ? `<p class="vet-away">Away: ${away.map((a) =>
+        `${esc(a.name)} (~${Math.max(1, Math.ceil(a.remaining / 60))} min)`).join(', ')}</p>`
+    : '';
+  $('vetAway').innerHTML = list;
+  if (vetCard) $('vetAway').appendChild(vetCard);
+}
+
+/* --------------------------------------------------------- vet portrait -- */
+
+let vetCard = null;
+
+/**
+ * The look-over itself. The scene hands back a canvas and a few sentences; this
+ * function has no access to the genome and no way to turn any of it into a
+ * number, which is the point.
+ */
+function showVetPortrait(bug) {
+  const out = scene.vetPortrait(bug);
+  if (!out) return;
+  const card = document.createElement('div');
+  card.className = 'vet-card';
+  const cv = out.canvas;
+  cv.style.width = '100%';
+  cv.style.maxWidth = '260px';
+  cv.style.display = 'block';
+  cv.style.margin = '8px auto';
+  card.appendChild(cv);
+
+  const r = out.readout;
+  const facts = [...r.physical, ...r.traits]
+    .map((f) => `<span class="fact">${esc(f)}</span>`).join('');
+  const caption = document.createElement('div');
+  caption.innerHTML = `
+    <p class="muted small" style="text-align:center">
+      ${esc(r.name)}${r.hybrid ? ' — an in-between thing' : ''}${r.order ? ` · ${esc(r.order)}` : ''}
+    </p>
+    <p class="unknown">${esc(r.blurb)}</p>
+    <div class="facts">${facts}</div>
+    ${r.drifting ? `<p class="familiar">${esc(r.drifting)}</p>` : ''}`;
+  card.appendChild(caption);
+  vetCard = card;
+  lastVet = null;                 // force the block to redraw with the card in it
 }
 
 /* -------------------------------------------------- bottom sheet -------- */
@@ -256,6 +334,15 @@ function wire() {
   $('handle').onclick = toggleSheet;
   wireSwipe();
   $('canvasHost').style.gridArea = '1 / 1';
+
+  $('vetSend').onclick = () => {
+    const bug = scene.selected;
+    if (!bug) return;
+    // Draw the portrait BEFORE the bug leaves — the look-over is the reason
+    // it's gone, so the picture is what you get in exchange for the wait.
+    showVetPortrait(bug);
+    scene.sendToVet(bug);
+  };
 
   $('breed').onclick = () => scene.breed();
   $('ff').onclick = () => scene.fastForward(Number($('ffN').value) || 10);
