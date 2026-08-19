@@ -1,25 +1,51 @@
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>Archetypes</title>
-<style>body{background:#141019;margin:0;padding:14px;display:flex;flex-wrap:wrap;
-justify-content:center;font:12px ui-monospace,Menlo,monospace;color:#ece3d4}
-figure{width:150px;margin:0;text-align:center;padding:6px 0}
-canvas{width:134px;height:134px}figcaption{margin-top:2px;letter-spacing:.04em}</style>
-</head><body><script type="module">
-import { ARCHETYPES, genomeFromArchetype } from './src/core/archetypes.js';
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bugs</title>
+<style>
+body{background:#f4f1ea;margin:0;padding:20px 12px;font:12px ui-monospace,Menlo,monospace;color:#2b2620}
+h2{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#8a8078;
+   margin:6px 0 10px;text-align:center;font-weight:500}
+.row{display:flex;flex-wrap:wrap;justify-content:center}
+figure{width:186px;margin:0;text-align:center;padding:6px 0}
+canvas{width:168px;height:168px}
+figcaption{margin-top:2px;letter-spacing:.06em;text-transform:uppercase;font-size:11px}
+small{display:block;color:#8a8078;font-size:9px;letter-spacing:.03em}
+</style></head><body><script type="module">
+import { ARCHETYPES, genomeFromArchetype, seededPopulation, nearestArchetype } from './src/core/archetypes.js';
 import { makeRng } from './src/core/rng.js';
-import { drawBug } from './src/render/bugArt.js';
-const rng = makeRng(11);
-for (const a of ARCHETYPES) {
-  const g = genomeFromArchetype(a, rng);
+import { drawBug, bodyPlan, HORN_TYPES, WING_TYPES } from './src/render/bugArt.js';
+
+function card(g, title) {
   const f = document.createElement('figure');
   const c = document.createElement('canvas');
-  c.width = 268; c.height = 268;
+  c.width = 336; c.height = 336;
   const ctx = c.getContext('2d');
-  ctx.translate(134, 134);
-  drawBug(ctx, g, { phase: 0.2, state: 'walk', ppu: 40 });
-  const cap = document.createElement('figcaption');
-  cap.textContent = a.name;
-  f.append(c, cap);
-  document.body.appendChild(f);
+  ctx.translate(168, 168);
+  drawBug(ctx, g, { phase: 0.15, state: 'walk', ppu: 62 });
+  const cap = document.createElement('figcaption'); cap.textContent = title;
+  const sub = document.createElement('small');
+  sub.textContent = `${bodyPlan(g)} · ${HORN_TYPES[g.horn_type]} · ${WING_TYPES[g.wing_type]}`;
+  f.append(c, cap, sub);
+  return f;
 }
+function section(label, nodes) {
+  const h = document.createElement('h2'); h.textContent = label;
+  const r = document.createElement('div'); r.className = 'row';
+  nodes.forEach(n => r.appendChild(n));
+  document.body.append(h, r);
+}
+
+const rng = makeRng(11);
+section('the eight archetypes', ARCHETYPES.map(a => card(genomeFromArchetype(a, rng), a.name)));
+
+const rng2 = makeRng(2026);
+const wild = seededPopulation(8, rng2, { wildcards: 1 });
+section('wild genomes — no archetype', wild.map((g, i) => card(g, 'Wild ' + (i + 1))));
+
+const rng3 = makeRng(77);
+const mixed = seededPopulation(8, rng3, { wildcards: 0.2 });
+section('a collection', mixed.map(g => {
+  const na = nearestArchetype(g);
+  return card(g, na.confident ? na.archetype.name : 'Hybrid');
+}));
+
 document.title = 'ready';
 </script></body></html>

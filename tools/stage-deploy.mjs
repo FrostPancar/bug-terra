@@ -25,5 +25,6 @@ writeFileSync(resolve(out, 'dev.html'),
 
 // dev-only archetype sheet, handy for eyeballing gene diversity
 cpSync(resolve(root, 'tools/gallery.html'), resolve(out, 'gallery.html'));
+cpSync(resolve(root, 'tools/hero.html'), resolve(out, 'hero.html'));
 
 console.log('staged deploy/');

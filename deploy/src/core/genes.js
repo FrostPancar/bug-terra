@@ -27,13 +27,15 @@ export const GENE_SPECS = {
 
   /* ---- wings ---- */
   wing_count:         { min: 0, max: 4, integer: true, step: 2 },
+  wing_type:          { min: 0, max: 3, integer: true },   // 0 membranous 1 elytra 2 broad 3 narrow
   wing_area:          { min: 0, max: 1 },
   wing_beat:          { min: 0, max: 1 },
 
   /* ---- weapons & defence ---- */
   mandible_size:      { min: 0, max: 1 },
   mandible_serration: { min: 0, max: 1 },
-  horn_size:          { min: 0, max: 1 },                  // rostrum / pronotal horn
+  horn_size:          { min: 0, max: 1 },
+  horn_type:          { min: 0, max: 3, integer: true },   // 0 rhino 1 stag 2 rostrum 3 trident
   spine_density:      { min: 0, max: 1 },                  // defensive spikes
   tail_length:        { min: 0, max: 1 },                  // cerci / metasoma
   stinger_size:       { min: 0, max: 1 },

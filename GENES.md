@@ -1,6 +1,6 @@
 # Gene and archetype reference
 
-The pool went from **20 genes to 37**, and generation 0 is now seeded from eight
+The pool went from **20 genes to 39**, and generation 0 is now seeded from eight
 body-plan archetypes instead of uniform random noise.
 
 Every gene below is a scalar on a fixed range, clamped on every write — an
@@ -10,7 +10,7 @@ GLB mapping all read it.
 
 ---
 
-## The 37 genes
+## The 39 genes
 
 ### Body plan — 8
 
@@ -41,6 +41,7 @@ GLB mapping all read it.
 | Gene | Range | What it does |
 |---|---|---|
 | `wing_count` | int 0/2/4 | **0 means flightless, full stop** — no wings, no lift, whatever the area. |
+| `wing_type` | int 0–3 | membranous / **elytra** / broad / narrow. Categorical — see below. |
 | `wing_area` | 0–1 | Wing size. Four small wings beat two large ones of the same total area. |
 | `wing_beat` | 0–1 | Beat rate. |
 
@@ -50,7 +51,8 @@ GLB mapping all read it.
 |---|---|---|
 | `mandible_size` | 0–1 | Jaw mass. Raises attack, *lowers* attack rate. |
 | `mandible_serration` | 0–1 | Cutting edge. Multiplies the bite. |
-| `horn_size` | 0–1 | Rostrum / pronotal horn. Second-largest attack input. |
+| `horn_size` | 0–1 | Horn length. Second-largest attack input. |
+| `horn_type` | int 0–3 | rhino / stag / rostrum / crown. Categorical — see below. |
 | `spine_density` | 0–1 | Defensive spikes along the abdomen. Adds to defense. |
 | `tail_length` | 0–1 | Cerci / metasoma. Gives the stinger reach. |
 | `stinger_size` | 0–1 | Below 0.08 there is no stinger and venom is exactly 0. |
@@ -148,3 +150,37 @@ cuticle.
 
 A bug hit by a stinger shows **envenomed** in the inspector and keeps losing
 health after the attacker has moved on.
+
+
+---
+
+## Kinds, not amounts
+
+`horn_type` and `wing_type` are **categorical**. Horn type 2 isn't "between" 1
+and 3, it's a different horn — so they don't take Gaussian jitter like the other
+genes. An archetype holds its kind exactly, with a 12% chance per birth of
+stepping to an adjacent kind. Enough for a lineage to drift; not enough for a
+wasp to sprout a rhino horn at random.
+
+**Horns** — `rhino` a single thick curved blade · `stag` paired antlers that
+hook inward · `rostrum` a slim weevil snout · `crown` three short prongs.
+
+**Wings** — `membranous` clear teardrops with veins · `elytra` hard glossy cases
+that close over the abdomen with a seam · `broad` big soft moth petals ·
+`narrow` slim fast blades.
+
+---
+
+## Body plans
+
+The renderer picks one of three constructions from the genes. This is derived,
+not stored, so it can't drift out of sync with the body it describes.
+
+| Plan | When | Shape |
+|---|---|---|
+| `insect` | fewer than 8 legs | head + thorax + abdomen, legs on the thorax |
+| `arachnid` | 8+ legs, compact body | cephalothorax + abdomen, four leg pairs up front |
+| `myriapod` | 8+ legs, long body | head + 6–10 repeating segments, **one leg pair per segment** |
+
+A centipede is built as a real centipede — a train of round segments each
+carrying its own pair of legs — rather than a beetle stretched lengthwise.

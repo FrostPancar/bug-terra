@@ -1,0 +1,21 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Hero</title>
+<style>body{background:#f4f1ea;margin:0;padding:0;display:grid;
+grid-template-columns:repeat(2,1fr);width:1000px}
+canvas{width:500px;height:500px;display:block}</style></head><body><script type="module">
+import { ARCHETYPES, genomeFromArchetype } from './src/core/archetypes.js';
+import { makeRng } from './src/core/rng.js';
+import { drawBug } from './src/render/bugArt.js';
+const pick = ['beetle','wasp','centipede','moth'];
+const rng = makeRng(11);
+const genomes = {};
+for (const a of ARCHETYPES) genomes[a.key] = genomeFromArchetype(a, rng);
+for (const k of pick) {
+  const c = document.createElement('canvas');
+  c.width = 1000; c.height = 1000;
+  const ctx = c.getContext('2d');
+  ctx.translate(500, 500);
+  drawBug(ctx, genomes[k], { phase: 0.15, state: 'walk', ppu: 190 });
+  document.body.appendChild(c);
+}
+document.title = 'ready';
+</script></body></html>

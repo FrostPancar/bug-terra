@@ -533,13 +533,16 @@
     claw_size: { min: 0, max: 1 },
     /* ---- wings ---- */
     wing_count: { min: 0, max: 4, integer: true, step: 2 },
+    wing_type: { min: 0, max: 3, integer: true },
+    // 0 membranous 1 elytra 2 broad 3 narrow
     wing_area: { min: 0, max: 1 },
     wing_beat: { min: 0, max: 1 },
     /* ---- weapons & defence ---- */
     mandible_size: { min: 0, max: 1 },
     mandible_serration: { min: 0, max: 1 },
     horn_size: { min: 0, max: 1 },
-    // rostrum / pronotal horn
+    horn_type: { min: 0, max: 3, integer: true },
+    // 0 rhino 1 stag 2 rostrum 3 trident
     spine_density: { min: 0, max: 1 },
     // defensive spikes
     tail_length: { min: 0, max: 1 },
@@ -779,11 +782,13 @@
         leg_joints: 3,
         claw_size: 0.5,
         wing_count: 2,
+        wing_type: 1,
         wing_area: 0.2,
         wing_beat: 0.35,
         mandible_size: 0.55,
         mandible_serration: 0.45,
         horn_size: 0.85,
+        horn_type: 0,
         spine_density: 0.3,
         tail_length: 0.1,
         stinger_size: 0.02,
@@ -819,11 +824,13 @@
         leg_joints: 3,
         claw_size: 0.3,
         wing_count: 4,
+        wing_type: 0,
         wing_area: 0.8,
         wing_beat: 0.9,
         mandible_size: 0.3,
         mandible_serration: 0.3,
         horn_size: 0.02,
+        horn_type: 3,
         spine_density: 0.1,
         tail_length: 0.55,
         stinger_size: 0.9,
@@ -862,11 +869,13 @@
         leg_joints: 3,
         claw_size: 0.65,
         wing_count: 0,
+        wing_type: 0,
         wing_area: 0,
         wing_beat: 0,
         mandible_size: 0.62,
         mandible_serration: 0.7,
         horn_size: 0.05,
+        horn_type: 1,
         spine_density: 0.25,
         tail_length: 0.15,
         stinger_size: 0.55,
@@ -902,11 +911,13 @@
         leg_joints: 3,
         claw_size: 0.55,
         wing_count: 2,
+        wing_type: 1,
         wing_area: 0.35,
         wing_beat: 0.45,
         mandible_size: 0.25,
         mandible_serration: 0.25,
         horn_size: 0.02,
+        horn_type: 3,
         spine_density: 0.45,
         tail_length: 0.45,
         stinger_size: 0.05,
@@ -944,11 +955,13 @@
         leg_joints: 3,
         claw_size: 0.95,
         wing_count: 2,
+        wing_type: 3,
         wing_area: 0.45,
         wing_beat: 0.3,
         mandible_size: 0.7,
         mandible_serration: 0.85,
         horn_size: 0.1,
+        horn_type: 1,
         spine_density: 0.55,
         tail_length: 0.25,
         stinger_size: 0.05,
@@ -984,11 +997,13 @@
         leg_joints: 2,
         claw_size: 0.25,
         wing_count: 4,
+        wing_type: 2,
         wing_area: 0.98,
         wing_beat: 0.55,
         mandible_size: 0.08,
         mandible_serration: 0.05,
         horn_size: 0.02,
+        horn_type: 3,
         spine_density: 0.05,
         tail_length: 0.2,
         stinger_size: 0.02,
@@ -1025,11 +1040,13 @@
         leg_joints: 2,
         claw_size: 0.45,
         wing_count: 0,
+        wing_type: 0,
         wing_area: 0,
         wing_beat: 0,
         mandible_size: 0.48,
         mandible_serration: 0.6,
         horn_size: 0.05,
+        horn_type: 1,
         spine_density: 0.8,
         tail_length: 0.75,
         stinger_size: 0.65,
@@ -1065,11 +1082,13 @@
         leg_joints: 2,
         claw_size: 0.4,
         wing_count: 2,
+        wing_type: 1,
         wing_area: 0.15,
         wing_beat: 0.25,
         mandible_size: 0.2,
         mandible_serration: 0.15,
         horn_size: 0.95,
+        horn_type: 2,
         spine_density: 0.35,
         tail_length: 0.08,
         stinger_size: 0.02,
@@ -1088,6 +1107,7 @@
     }
   ];
   var ARCHETYPE_KEYS = ARCHETYPES.map((a) => a.key);
+  var isCategorical = (name) => name.endsWith("_type");
   function genomeFromArchetype(archetype, rng = makeRng(1)) {
     const g = {};
     for (const name of GENE_ORDER) {
@@ -1095,6 +1115,11 @@
       const target = archetype.bias[name];
       if (target === void 0) {
         g[name] = clampGene(name, rng.range(spec.min, spec.max));
+        continue;
+      }
+      if (isCategorical(name)) {
+        const drift = rng() < 0.12 ? rng() < 0.5 ? -1 : 1 : 0;
+        g[name] = clampGene(name, target + drift);
         continue;
       }
       const span = spec.max - spec.min;
@@ -1147,101 +1172,272 @@
 
   // src/render/bugArt.js
   var TAU = Math.PI * 2;
-  function hsl(h, s, l, a = 1) {
-    return `hsla(${(h * 360).toFixed(1)}, ${(s * 100).toFixed(1)}%, ${(l * 100).toFixed(1)}%, ${a})`;
-  }
+  var clamp2 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  var lerp = (a, b, t) => a + (b - a) * t;
+  var BAUHAUS = [
+    { h: 0.01, s: 0.78, l: 0.55 },
+    // vermilion
+    { h: 0.055, s: 0.85, l: 0.57 },
+    // orange
+    { h: 0.108, s: 0.88, l: 0.58 },
+    // amber
+    { h: 0.145, s: 0.82, l: 0.6 },
+    // yellow
+    { h: 0.255, s: 0.55, l: 0.48 },
+    // leaf
+    { h: 0.41, s: 0.62, l: 0.46 },
+    // jade
+    { h: 0.495, s: 0.68, l: 0.5 },
+    // teal
+    { h: 0.57, s: 0.72, l: 0.53 },
+    // cobalt
+    { h: 0.66, s: 0.6, l: 0.56 },
+    // periwinkle
+    { h: 0.76, s: 0.55, l: 0.54 },
+    // violet
+    { h: 0.88, s: 0.62, l: 0.58 },
+    // magenta
+    { h: 0.955, s: 0.7, l: 0.6 }
+    // rose
+  ];
+  var hsl = (h, s, l, a = 1) => `hsla(${((h % 1 + 1) % 1 * 360).toFixed(1)}, ${(clamp2(s, 0, 1) * 100).toFixed(1)}%, ${(clamp2(l, 0, 1) * 100).toFixed(1)}%, ${a})`;
   function palette(g) {
-    const h = g.hue;
-    const s = 0.15 + g.saturation * 0.7;
-    const l = 0.18 + g.lightness * 0.5;
-    const alpha = 1 - g.translucency * 0.45;
+    const swatch = BAUHAUS[Math.floor(clamp2(g.hue, 0, 0.999) * BAUHAUS.length)];
+    const h = swatch.h + (g.pattern_scale - 0.5) * 0.04;
+    const s = clamp2(swatch.s * (0.72 + g.saturation * 0.45), 0.3, 0.95);
+    const l = clamp2(swatch.l * (0.8 + g.lightness * 0.42), 0.34, 0.74);
+    const alpha = 1 - g.translucency * 0.28;
+    const accentH = swatch.h + (g.pattern > 0.5 ? 0.33 : -0.33);
     return {
       shell: hsl(h, s, l, alpha),
-      shellHi: hsl(h, s * 0.9, Math.min(0.92, l + 0.16), alpha),
-      shellLo: hsl(h, s, Math.max(0.04, l - 0.13), alpha),
-      limb: hsl((h + 0.03) % 1, s * 0.8, Math.max(0.06, l - 0.08), alpha),
-      // marking colour: contrast gene pushes it away from the shell
-      mark: hsl((h + 0.5) % 1, s * 0.85, Math.min(0.95, l + 0.12 + g.pattern_contrast * 0.35)),
-      iris: hsl((h + 0.35) % 1, 0.85, 0.62),
-      eye: hsl((h + 0.12) % 1, 0.15, 0.06),
-      eyeShine: "rgba(255,255,255,0.85)",
-      outline: hsl(h, s * 0.6, Math.max(0.03, l - 0.16), alpha),
-      setae: hsl((h + 0.02) % 1, s * 0.5, Math.min(0.8, l + 0.22), 0.55),
+      shellHi: hsl(h - 0.02, s * 0.85, Math.min(0.88, l + 0.2), alpha),
+      shellLo: hsl(h + 0.02, s * 1.05, Math.max(0.16, l - 0.16), alpha),
+      limb: hsl(h + 0.01, s * 0.95, Math.max(0.16, l - 0.19), alpha),
+      limbDark: hsl(h + 0.01, s * 0.9, Math.max(0.13, l - 0.22), alpha),
+      accent: hsl(accentH, 0.78, 0.62),
+      accentLo: hsl(accentH, 0.72, 0.44),
+      horn: hsl(h + 0.03, s * 0.5, Math.max(0.22, l - 0.08)),
+      hornHi: hsl(h + 0.03, s * 0.4, Math.min(0.86, l + 0.24)),
+      eye: "#15121b",
+      eyeRim: hsl(h, s * 0.7, Math.max(0.12, l - 0.26)),
+      shine: "rgba(255,255,255,0.92)",
+      outline: hsl(h + 0.01, s * 0.55, Math.max(0.1, l - 0.3), alpha),
+      setae: hsl(h, s * 0.45, Math.min(0.82, l + 0.26), 0.5),
+      wing: hsl(h - 0.04, s * 0.45, Math.min(0.9, l + 0.28)),
+      baseH: h,
+      baseS: s,
+      baseL: l,
       alpha
     };
   }
+  function bodyPlan(g) {
+    if (g.leg_count >= 8 && g.body_length > 0.7) return "myriapod";
+    if (g.leg_count >= 8) return "arachnid";
+    return "insect";
+  }
+  var HORN_TYPES = ["rhino", "stag", "rostrum", "crown"];
+  var WING_TYPES = ["membranous", "elytra", "broad", "narrow"];
   function layout(g, ppu = 26) {
     const m = morphology(g);
-    const bodyLen = m.length * ppu;
-    const bodyWid = m.width * ppu;
-    const headLen = (0.1 + g.head_size * 0.22) * bodyLen;
-    const thoraxLen = (0.16 + g.thorax_ratio * 0.34) * bodyLen;
-    const abdomenLen = Math.max(0.12 * bodyLen, bodyLen * 0.86 - headLen - thoraxLen);
-    const headX = bodyLen * 0.5 - headLen * 0.5;
-    const thoraxX = headX - headLen * 0.5 - thoraxLen * 0.5;
-    const abdomenX = thoraxX - thoraxLen * 0.5 - abdomenLen * 0.5;
-    const seg = {
-      head: { x: headX, rx: headLen * 0.5, ry: bodyWid * (0.26 + g.head_size * 0.24) },
-      thorax: { x: thoraxX, rx: thoraxLen * 0.5, ry: bodyWid * 0.5 },
-      abdomen: { x: abdomenX, rx: abdomenLen * 0.5, ry: bodyWid * (0.5 - g.abdomen_taper * 0.12) }
-    };
-    const segments = g.body_segments;
-    const pairs = g.leg_count / 2;
-    const legLen = m.legLen * ppu * 0.62;
-    const legW = (0.6 + g.leg_thickness * 2.4) * (ppu / 26);
-    const legs = [];
-    for (let p = 0; p < pairs; p++) {
-      const t = pairs === 1 ? 0.5 : p / (pairs - 1);
-      const ax = thoraxX + (0.5 - t) * (thoraxLen + abdomenLen * 0.5);
-      const splay = (0.35 + g.leg_spread * 0.75) * (0.6 + t * 0.8);
-      for (const side of [-1, 1]) {
-        legs.push({
-          ax,
-          ay: side * bodyWid * 0.34,
-          side,
-          pair: p,
-          splay,
-          len: legLen,
-          w: legW,
-          joints: g.leg_joints,
-          claw: g.claw_size * legW * 2.2
-        });
-      }
-    }
-    const tail = g.tail_length * bodyLen * 0.55;
-    const stinger = g.stinger_size * bodyLen * 0.22;
-    return {
+    const plan = bodyPlan(g);
+    const maxRatio = plan === "myriapod" ? 3.4 : 1.85;
+    const minRatio = 0.95;
+    let bodyLen = m.length * ppu * 0.86;
+    let bodyWid = m.width * ppu * 1.25;
+    const ratio = bodyLen / bodyWid;
+    if (ratio > maxRatio) bodyWid = bodyLen / maxRatio;
+    if (ratio < minRatio) bodyLen = bodyWid * minRatio;
+    const unit = (bodyLen + bodyWid) * 0.5;
+    const L = {
+      g,
       m,
+      plan,
       ppu,
       bodyLen,
       bodyWid,
-      seg,
-      legs,
-      pairs,
-      segments,
-      mandible: g.mandible_size * bodyLen * 0.22,
-      serration: g.mandible_serration,
-      horn: g.horn_size * bodyLen * 0.42,
-      spines: g.spine_density,
-      tail,
-      stinger,
-      antenna: g.antenna_length * bodyLen * 0.55,
-      eye: (0.1 + g.eye_size * 0.24) * bodyWid,
-      eyeCount: g.eye_count,
+      unit,
+      parts: [],
+      // filled ellipses/circles making the trunk, rear-to-front
+      legs: [],
+      eyes: [],
+      antennae: [],
+      hornType: HORN_TYPES[g.horn_type ?? 0],
+      wingType: WING_TYPES[g.wing_type ?? 0],
       wingPairs: g.wing_count / 2,
-      wing: g.wing_area,
+      wingArea: g.wing_area,
       setae: g.setae,
-      // Frame size: tight around the real extent. Legs reach furthest in y, horn
-      // and tail in x; padding beyond that is wasted texture on every bug.
-      half: Math.ceil(
-        Math.max(
-          bodyLen * 0.5 + Math.max(g.horn_size * bodyLen * 0.42, tail + stinger) + 4,
-          bodyWid * 0.5 + legLen * 0.92 + legW + 4
-        )
-      )
+      shimmer: g.iridescence
+    };
+    buildTrunk(L);
+    buildLegs(L);
+    buildHead(L);
+    let maxX = 0, maxY = 0;
+    const bump = (x, y) => {
+      maxX = Math.max(maxX, Math.abs(x));
+      maxY = Math.max(maxY, Math.abs(y));
+    };
+    for (const p of L.parts) {
+      bump(p.x + p.rx, p.ry);
+      bump(p.x - p.rx, p.ry);
+    }
+    for (const leg of L.legs) {
+      bump(leg.foot.x, leg.foot.y);
+      bump(leg.knee.x, leg.knee.y);
+    }
+    for (const e of L.eyes) bump(e.x + e.r, e.y + e.r);
+    bump(L.head.x + L.head.rx + L.hornLen, 0);
+    bump(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
+    if (L.wingPairs > 0) bump(L.wingSpan.x, L.wingSpan.y);
+    L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.06 + 3);
+    return L;
+  }
+  function buildTrunk(L) {
+    const { g, plan, bodyLen, bodyWid } = L;
+    if (plan === "myriapod") {
+      const n = clamp2(Math.round(6 + g.body_length * 4), 6, 10);
+      const segR = bodyWid * 0.46;
+      const pitch = segR * 1.42;
+      const total = pitch * (n - 1);
+      const frontX = total * 0.5;
+      L.segCount = n;
+      for (let i = n - 1; i >= 0; i--) {
+        const t = i / (n - 1);
+        const r = segR * lerp(0.74, 1, Math.sin(t * Math.PI * 0.85 + 0.35));
+        L.parts.push({ x: frontX - pitch * i, y: 0, rx: r * 1.02, ry: r, kind: "seg", t });
+      }
+      L.trunkFrontX = frontX;
+      L.trunkFrontR = segR;
+      return;
+    }
+    if (plan === "arachnid") {
+      const abR2 = bodyWid * 0.54;
+      const cephR = bodyWid * 0.44;
+      const gap2 = (abR2 + cephR) * 0.8;
+      L.parts.push({ x: -gap2 * 0.5, y: 0, rx: abR2 * (1 - g.abdomen_taper * 0.1), ry: abR2, kind: "abdomen" });
+      L.parts.push({ x: gap2 * 0.5, y: 0, rx: cephR, ry: cephR * 0.96, kind: "thorax" });
+      L.trunkFrontX = gap2 * 0.5 + cephR;
+      L.trunkFrontR = cephR;
+      return;
+    }
+    const abR = bodyWid * 0.52;
+    const thR = bodyWid * lerp(0.36, 0.46, g.thorax_ratio);
+    const abLen = abR * lerp(1.05, 1.35, g.body_length);
+    const gap = abLen * 0.62 + thR * 0.78;
+    L.parts.push({
+      x: -gap * 0.46,
+      y: 0,
+      rx: abLen,
+      ry: abR * (1 - g.abdomen_taper * 0.14),
+      kind: "abdomen"
+    });
+    L.parts.push({ x: gap * 0.54, y: 0, rx: thR * 1.06, ry: thR, kind: "thorax" });
+    L.trunkFrontX = gap * 0.54 + thR;
+    L.trunkFrontR = thR;
+  }
+  function buildLegs(L) {
+    const { g, plan, bodyWid, unit } = L;
+    const pairs = plan === "myriapod" ? L.segCount : g.leg_count / 2;
+    const len = unit * lerp(0.72, 1.32, g.leg_length) * (plan === "myriapod" ? 0.52 : 1);
+    const w = clamp2(unit * (0.055 + g.leg_thickness * 0.075), 2, 10);
+    for (let i = 0; i < pairs; i++) {
+      const t = pairs === 1 ? 0.5 : i / (pairs - 1);
+      let ax, ay, host;
+      if (plan === "myriapod") {
+        host = L.parts[L.parts.length - 1 - i] ?? L.parts[0];
+        ax = host.x;
+        ay = host.ry * 0.86;
+      } else if (plan === "arachnid") {
+        const ceph = L.parts[1];
+        ax = ceph.x + lerp(ceph.rx * 0.5, -ceph.rx * 0.58, t);
+        ay = ceph.ry * 0.82;
+      } else {
+        const th = L.parts[1];
+        ax = th.x + lerp(th.rx * 0.58, -th.rx * 0.66, t);
+        ay = th.ry * 0.86;
+      }
+      const fan = lerp(-0.5, 0.72, t) * (0.6 + g.leg_spread * 0.55);
+      const droop = lerp(0.1, 0.04, t);
+      for (const side of [-1, 1]) {
+        L.legs.push(buildLeg({
+          ax,
+          ay: ay * side,
+          side,
+          pair: i,
+          t,
+          len: len * lerp(1.06, 0.92, t),
+          w,
+          fan,
+          droop,
+          joints: g.leg_joints,
+          claw: g.claw_size
+        }));
+      }
+    }
+  }
+  function buildLeg(o) {
+    const tilt = clamp2(o.fan, -0.75, 0.95);
+    const bend = 0.34;
+    const out = o.side;
+    const kx = o.ax - Math.sin(tilt) * o.len * 0.5;
+    const ky = o.ay + out * Math.cos(tilt) * o.len * 0.5;
+    const fx = kx - Math.sin(tilt + bend) * o.len * 0.58;
+    const fy = ky + out * Math.cos(tilt + bend) * o.len * 0.58;
+    return {
+      ...o,
+      tilt,
+      attach: { x: o.ax, y: o.ay },
+      knee: { x: kx, y: ky },
+      foot: { x: fx, y: fy }
     };
   }
-  function ellipse(ctx, x, y, rx, ry, fill, stroke, lw = 1.2) {
+  function buildHead(L) {
+    const { g, plan, bodyWid, unit } = L;
+    const headR = bodyWid * (plan === "arachnid" ? 0.34 : lerp(0.4, 0.54, g.head_size));
+    const hx = L.trunkFrontX + headR * (plan === "arachnid" ? 0.1 : 0.62);
+    L.head = { x: hx, y: 0, rx: headR * 1.02, ry: headR, kind: "head" };
+    const eyeR = headR * lerp(0.4, 0.56, g.eye_size);
+    for (const side of [-1, 1]) {
+      L.eyes.push({
+        x: hx + headR * 0.26,
+        y: side * (headR * 0.88),
+        r: eyeR,
+        side,
+        main: true
+      });
+    }
+    const extra = clamp2(Math.round(g.eye_count / 2) - 1, 0, 3);
+    for (let i = 0; i < extra; i++) {
+      const t = extra === 1 ? 0.5 : i / (extra - 1);
+      L.eyes.push({
+        x: hx + headR * lerp(0.52, 0.18, t),
+        y: (i % 2 === 0 ? -1 : 1) * headR * lerp(0.1, 0.34, t),
+        r: eyeR * 0.22,
+        side: 0,
+        main: false
+      });
+    }
+    const antLen = unit * lerp(0.1, 0.62, g.antenna_length);
+    if (antLen > unit * 0.14) {
+      for (const side of [-1, 1]) L.antennae.push({ side, len: antLen, r: headR });
+    }
+    const hornMax = HORN_TYPES[g.horn_type ?? 0] === "rostrum" ? 0.46 : 0.56;
+    L.hornLen = g.horn_size < 0.14 ? 0 : unit * lerp(0.14, hornMax, g.horn_size);
+    L.mandible = g.mandible_size < 0.08 ? 0 : headR * lerp(0.42, 0.88, g.mandible_size);
+    const rear = L.parts[0];
+    const tailLen = unit * lerp(0, 0.5, g.tail_length);
+    if (tailLen > unit * 0.06) {
+      L.tail = { len: tailLen, x0: rear.x - rear.rx * 0.7, sting: g.stinger_size };
+      L.tailTip = { x: rear.x - rear.rx * 0.7 - tailLen, y: -tailLen * 0.28 };
+    }
+    if (L.wingPairs > 0 && L.wingArea > 0.05) {
+      const wl = unit * lerp(0.85, 1.75, L.wingArea);
+      L.wingSpan = { x: Math.abs(L.parts[0].x) + wl * 0.85, y: bodyWid * 0.5 + wl * 0.8 };
+    } else {
+      L.wingPairs = 0;
+      L.wingSpan = { x: 0, y: 0 };
+    }
+  }
+  function ellipse(ctx, x, y, rx, ry, fill, stroke, lw) {
     ctx.beginPath();
     ctx.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, TAU);
     if (fill) {
@@ -1254,142 +1450,432 @@
       ctx.stroke();
     }
   }
-  function drawLeg(ctx, leg, phase, col) {
-    const swing = Math.sin(phase * TAU) * 0.55;
-    const lift = Math.max(0, Math.cos(phase * TAU)) * 0.18;
-    const dir1 = leg.side * (Math.PI / 2) - leg.side * (0.55 * leg.splay) + swing;
-    const n = leg.joints;
-    const sect = leg.len / n;
-    const pts = [{ x: leg.ax, y: leg.ay }];
-    let dir = dir1;
+  function shadeFill(ctx, part, col) {
+    const gr = ctx.createRadialGradient(
+      part.x - part.rx * 0.34,
+      -part.ry * 0.4,
+      part.ry * 0.1,
+      part.x,
+      0,
+      Math.max(part.rx, part.ry) * 1.18
+    );
+    gr.addColorStop(0, col.shellHi);
+    gr.addColorStop(0.52, col.shell);
+    gr.addColorStop(1, col.shellLo);
+    return gr;
+  }
+  function drawShimmer(ctx, part, col, amount, seedX) {
+    if (amount < 0.3) return;
+    const k = (amount - 0.3) / 0.7;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(part.x, 0, part.rx, part.ry, 0, 0, TAU);
+    ctx.clip();
+    const gr = ctx.createLinearGradient(
+      part.x - part.rx,
+      -part.ry,
+      part.x + part.rx,
+      part.ry
+    );
+    const h = col.baseH;
+    gr.addColorStop(0, hsl(h + 0.4, 0.85, 0.62, 0));
+    gr.addColorStop(0.28, hsl(h + 0.4, 0.85, 0.66, 0.42 * k));
+    gr.addColorStop(0.5, hsl(h + 0.62, 0.9, 0.72, 0.55 * k));
+    gr.addColorStop(0.72, hsl(h + 0.84, 0.85, 0.66, 0.4 * k));
+    gr.addColorStop(1, hsl(h + 0.84, 0.85, 0.62, 0));
+    ctx.fillStyle = gr;
+    ctx.fillRect(part.x - part.rx, -part.ry, part.rx * 2, part.ry * 2);
+    ctx.restore();
+    const n = 1 + Math.round(k * 2);
     for (let i = 0; i < n; i++) {
-      if (i > 0) dir += leg.side * (0.55 + lift * 1.8) / (n - 1 || 1);
-      const prev = pts[pts.length - 1];
-      pts.push({ x: prev.x + Math.cos(dir) * sect, y: prev.y + Math.sin(dir) * sect });
-    }
-    ctx.strokeStyle = col.limb;
-    ctx.lineCap = "round";
-    ctx.lineWidth = leg.w;
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.stroke();
-    const foot = pts[pts.length - 1];
-    const knee = pts[pts.length - 2];
-    ctx.fillStyle = col.outline;
-    ctx.beginPath();
-    ctx.arc(foot.x, foot.y, leg.w * 0.55, 0, TAU);
-    ctx.fill();
-    if (leg.claw > 0.6) {
-      const a = Math.atan2(foot.y - knee.y, foot.x - knee.x);
-      ctx.strokeStyle = col.outline;
-      ctx.lineWidth = Math.max(0.8, leg.w * 0.6);
+      const a = (i * 2.399 + seedX) % TAU;
+      const rr = part.rx * 0.42 * (0.4 + i * 7 % 5 / 6);
+      const sx = part.x + Math.cos(a) * rr;
+      const sy = Math.sin(a) * part.ry * 0.42;
+      const s = Math.max(1.4, part.ry * 0.13) * (0.7 + k * 0.6);
+      ctx.fillStyle = `rgba(255,255,255,${0.55 + k * 0.35})`;
       ctx.beginPath();
-      ctx.moveTo(foot.x, foot.y);
-      ctx.lineTo(foot.x + Math.cos(a + 0.9) * leg.claw, foot.y + Math.sin(a + 0.9) * leg.claw);
-      ctx.stroke();
+      ctx.moveTo(sx, sy - s);
+      ctx.quadraticCurveTo(sx + s * 0.22, sy - s * 0.22, sx + s, sy);
+      ctx.quadraticCurveTo(sx + s * 0.22, sy + s * 0.22, sx, sy + s);
+      ctx.quadraticCurveTo(sx - s * 0.22, sy + s * 0.22, sx - s, sy);
+      ctx.quadraticCurveTo(sx - s * 0.22, sy - s * 0.22, sx, sy - s);
+      ctx.fill();
     }
   }
-  function drawMarkings(ctx, g, L, col) {
-    const { seg, bodyWid } = L;
-    if (g.pattern_contrast < 0.08) return;
+  function drawPattern(ctx, L, col) {
+    const { g } = L;
+    if (g.pattern_contrast < 0.12) return;
+    const body = L.parts.find((p) => p.kind === "abdomen") ?? L.parts[0];
+    const style = Math.floor(g.pattern * 3);
+    const alpha = 0.35 + g.pattern_contrast * 0.5;
     ctx.save();
-    ctx.globalAlpha = 0.3 + g.pattern_contrast * 0.55;
-    const style = g.pattern;
-    const density = 0.35 + g.pattern_scale * 0.65;
-    if (style < 0.33) {
-      const n = Math.max(2, Math.round(2 + density * 8));
+    ctx.beginPath();
+    ctx.ellipse(body.x, 0, body.rx, body.ry, 0, 0, TAU);
+    ctx.clip();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = col.accent;
+    if (style === 0) {
+      const n = clamp2(Math.round(2 + g.pattern_scale * 3), 2, 5);
+      const bw = body.rx * 2 / (n * 2 + 1);
       for (let i = 0; i < n; i++) {
-        const t = (i + 1) / (n + 1);
-        const x = seg.abdomen.x + (t - 0.5) * seg.abdomen.rx * 1.7;
-        const ry = seg.abdomen.ry * Math.sqrt(Math.max(0, 1 - ((x - seg.abdomen.x) / seg.abdomen.rx) ** 2));
-        ctx.strokeStyle = col.mark;
-        ctx.lineWidth = Math.max(1, bodyWid * 0.09 * density);
-        ctx.beginPath();
-        ctx.moveTo(x, -ry * 0.92);
-        ctx.lineTo(x, ry * 0.92);
-        ctx.stroke();
+        const x = body.x - body.rx + bw * (i * 2 + 1);
+        ctx.fillRect(x, -body.ry, bw, body.ry * 2);
       }
-    } else if (style < 0.66) {
-      const n = Math.max(3, Math.round(3 + density * 16));
+    } else if (style === 1) {
+      const n = clamp2(Math.round(2 + g.pattern_scale * 4), 2, 6);
+      const r = body.ry * lerp(0.3, 0.17, g.pattern_scale);
       for (let i = 0; i < n; i++) {
-        const a = i / n * TAU * 1.6;
-        const r = 0.3 + i * 7 % 5 / 9;
-        ctx.fillStyle = col.mark;
+        const a = i / n * TAU + 0.6;
         ctx.beginPath();
         ctx.arc(
-          seg.abdomen.x + Math.cos(a) * seg.abdomen.rx * r,
-          Math.sin(a) * seg.abdomen.ry * r,
-          bodyWid * 0.06 * (0.6 + density),
+          body.x + Math.cos(a) * body.rx * 0.42,
+          Math.sin(a) * body.ry * 0.46,
+          r,
           0,
           TAU
         );
         ctx.fill();
       }
     } else {
-      ctx.strokeStyle = col.mark;
-      ctx.lineWidth = Math.max(1, bodyWid * 0.12 * density);
       ctx.beginPath();
-      ctx.moveTo(seg.head.x, 0);
-      ctx.lineTo(seg.abdomen.x - seg.abdomen.rx * 0.7, 0);
-      ctx.stroke();
+      ctx.arc(body.x, 0, body.ry * 0.92, -Math.PI / 2, Math.PI / 2);
+      ctx.fill();
     }
     ctx.restore();
   }
-  function drawSegments(ctx, L, col) {
-    if (L.segments < 2) return;
-    const a = L.seg.abdomen;
-    ctx.save();
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = col.outline;
-    ctx.lineWidth = Math.max(0.8, L.bodyWid * 0.035);
-    for (let i = 1; i < L.segments; i++) {
-      const t = i / L.segments;
-      const x = a.x + a.rx - t * a.rx * 2;
-      const ry = a.ry * Math.sqrt(Math.max(0, 1 - ((x - a.x) / a.rx) ** 2));
-      ctx.beginPath();
-      ctx.moveTo(x, -ry * 0.95);
-      ctx.lineTo(x, ry * 0.95);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-  function drawSpines(ctx, L, col) {
-    if (L.spines < 0.12) return;
-    const a = L.seg.abdomen;
-    const n = Math.round(2 + L.spines * 9);
-    const len = L.bodyWid * (0.1 + L.spines * 0.26);
-    ctx.strokeStyle = col.outline;
-    ctx.lineWidth = Math.max(0.9, L.bodyWid * 0.05);
-    ctx.lineCap = "round";
-    for (let i = 0; i < n; i++) {
-      const t = (i + 0.5) / n;
-      const x = a.x + a.rx - t * a.rx * 2;
-      const ry = a.ry * Math.sqrt(Math.max(0, 1 - ((x - a.x) / a.rx) ** 2));
+  function drawSoftWings(ctx, L, col, phase, state) {
+    if (L.wingPairs < 1 || L.wingType === "elytra") return;
+    const { g } = L;
+    const flap = state === "walk" || state === "attack" ? Math.sin(phase * TAU * (1 + g.wing_beat * 2.5)) * 0.18 : 0.02;
+    const type = L.wingType;
+    const wl = L.unit * lerp(0.85, 1.75, L.wingArea) * (type === "broad" ? 1.15 : 1);
+    const anchor = L.parts[L.parts.length - 1];
+    for (let p = L.wingPairs - 1; p >= 0; p--) {
+      const scale = 1 - p * 0.24;
       for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.translate(anchor.x - L.unit * 0.1, side * anchor.ry * 0.3);
+        ctx.rotate(side * (1.02 + flap + p * 0.3));
+        const len = wl * scale;
+        const wid = len * (type === "narrow" ? 0.26 : type === "broad" ? 0.62 : 0.4);
+        const grad = ctx.createLinearGradient(0, 0, len * 0.2, side * wid);
+        grad.addColorStop(0, hsl(col.baseH - 0.03, 0.3, 0.96, 0.62));
+        grad.addColorStop(0.55, hsl(col.baseH + 0.06, 0.45, 0.86, 0.4));
+        grad.addColorStop(1, hsl(col.baseH + 0.16, 0.6, 0.78, 0.26));
         ctx.beginPath();
-        ctx.moveTo(x, side * ry * 0.95);
-        ctx.lineTo(x - len * 0.35, side * (ry + len));
+        ctx.moveTo(0, 0);
+        if (type === "broad") {
+          ctx.quadraticCurveTo(len * 0.1, side * wid * 1.3, len * 0.62, side * wid * 1.1);
+          ctx.quadraticCurveTo(len * 1.02, side * wid * 0.8, len * 0.94, side * wid * 0.28);
+          ctx.quadraticCurveTo(len * 0.6, side * wid * 0.02, 0, 0);
+        } else {
+          ctx.quadraticCurveTo(len * 0.16, side * wid * 1.12, len * 0.8, side * wid * 0.74);
+          ctx.quadraticCurveTo(len * 1, side * wid * 0.4, len * 0.72, side * wid * 0.12);
+          ctx.quadraticCurveTo(len * 0.4, side * wid * 0.02, 0, 0);
+        }
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = Math.max(1, L.unit * 0.02);
+        ctx.stroke();
+        ctx.save();
+        ctx.clip();
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = col.limb;
+        ctx.lineWidth = Math.max(0.8, L.unit * 0.014);
+        for (const k of [0.42, 0.72]) {
+          ctx.beginPath();
+          ctx.moveTo(len * 0.04, side * wid * 0.06);
+          ctx.quadraticCurveTo(len * 0.5, side * wid * k, len * 0.88, side * wid * k * 0.75);
+          ctx.stroke();
+        }
+        ctx.restore();
+        ctx.restore();
+      }
+    }
+  }
+  function drawElytra(ctx, L, col) {
+    if (L.wingPairs < 1 || L.wingType !== "elytra") return;
+    const body = L.parts.find((p) => p.kind === "abdomen") ?? L.parts[0];
+    const cover = lerp(0.72, 1.02, L.wingArea);
+    const rx = body.rx * cover;
+    const ry = body.ry * cover;
+    const outlineW = Math.max(1.1, L.unit * 0.03);
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(body.x, side * ry * 0.3, rx, ry * 0.74, 0, 0, TAU);
+      ctx.fillStyle = side < 0 ? col.shell : col.shellLo;
+      ctx.fill();
+      ctx.strokeStyle = col.outline;
+      ctx.lineWidth = outlineW;
+      ctx.stroke();
+      if (side < 0) {
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.ellipse(body.x - rx * 0.18, -ry * 0.1, rx * 0.46, ry * 0.2, -0.18, 0, TAU);
+        ctx.fillStyle = col.shellHi;
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.strokeStyle = col.outline;
+    ctx.lineWidth = outlineW * 0.9;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(body.x - rx * 0.94, 0);
+    ctx.lineTo(body.x + rx * 0.88, 0);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  function drawLegs(ctx, L, col, phase) {
+    for (const leg of L.legs) {
+      const off = (leg.pair * 0.34 + (leg.side > 0 ? 0.5 : 0)) % 1;
+      const ph = (phase + off) % 1;
+      const swing = Math.sin(ph * TAU) * 0.13;
+      const lift = Math.max(0, Math.cos(ph * TAU)) * 0.08;
+      const rot = swing * leg.side * -1;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      const rel = (p) => ({
+        x: leg.attach.x + (p.x - leg.attach.x) * cos - (p.y - leg.attach.y) * sin,
+        y: leg.attach.y + (p.x - leg.attach.x) * sin + (p.y - leg.attach.y) * cos
+      });
+      const knee = rel(leg.knee);
+      const foot = rel(leg.foot);
+      foot.y += leg.side * lift * L.unit * 0.1;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = col.limb;
+      ctx.lineWidth = leg.w * 1.25;
+      ctx.beginPath();
+      ctx.moveTo(leg.attach.x, leg.attach.y);
+      ctx.quadraticCurveTo(
+        lerp(leg.attach.x, knee.x, 0.55),
+        lerp(leg.attach.y, knee.y, 0.42),
+        knee.x,
+        knee.y
+      );
+      ctx.stroke();
+      ctx.lineWidth = leg.w * 0.82;
+      ctx.beginPath();
+      ctx.moveTo(knee.x, knee.y);
+      ctx.quadraticCurveTo(
+        lerp(knee.x, foot.x, 0.42),
+        lerp(knee.y, foot.y, 0.72),
+        foot.x,
+        foot.y
+      );
+      ctx.stroke();
+      if (leg.claw > 0.22) {
+        const cl = leg.w * (0.9 + leg.claw * 2);
+        ctx.strokeStyle = col.limbDark;
+        ctx.lineWidth = leg.w * 0.62;
+        ctx.beginPath();
+        ctx.moveTo(foot.x, foot.y);
+        ctx.quadraticCurveTo(
+          foot.x + cl * 0.7,
+          foot.y + leg.side * cl * 0.2,
+          foot.x + cl,
+          foot.y - leg.side * cl * 0.18
+        );
         ctx.stroke();
       }
     }
   }
+  function drawHorn(ctx, L, col) {
+    if (!L.hornLen) return;
+    const h = L.head;
+    const x0 = h.x + h.rx * 0.62;
+    const len = L.hornLen;
+    const w = Math.max(1.6, L.unit * 0.05);
+    ctx.strokeStyle = col.horn;
+    ctx.fillStyle = col.horn;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    if (L.hornType === "rhino") {
+      ctx.beginPath();
+      ctx.moveTo(x0, -h.ry * 0.16);
+      ctx.quadraticCurveTo(x0 + len * 0.55, -h.ry * 0.42, x0 + len, -h.ry * 0.92);
+      ctx.lineTo(x0 + len * 0.86, -h.ry * 0.52);
+      ctx.quadraticCurveTo(x0 + len * 0.45, -h.ry * 0.06, x0, h.ry * 0.18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = col.outline;
+      ctx.lineWidth = w * 0.5;
+      ctx.stroke();
+      ctx.fillStyle = col.hornHi;
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.moveTo(x0 + len * 0.16, -h.ry * 0.2);
+      ctx.quadraticCurveTo(x0 + len * 0.55, -h.ry * 0.44, x0 + len * 0.88, -h.ry * 0.74);
+      ctx.lineTo(x0 + len * 0.8, -h.ry * 0.5);
+      ctx.quadraticCurveTo(x0 + len * 0.48, -h.ry * 0.26, x0 + len * 0.14, -h.ry * 0.08);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (L.hornType === "stag") {
+      for (const side of [-1, 1]) {
+        ctx.lineWidth = w * 1.15;
+        ctx.strokeStyle = col.horn;
+        ctx.beginPath();
+        ctx.moveTo(x0 - h.rx * 0.1, side * h.ry * 0.44);
+        ctx.quadraticCurveTo(
+          x0 + len * 0.66,
+          side * h.ry * 1.15,
+          x0 + len,
+          side * h.ry * 0.3
+        );
+        ctx.stroke();
+        ctx.lineWidth = w * 0.7;
+        ctx.beginPath();
+        ctx.moveTo(x0 + len * 0.56, side * h.ry * 0.86);
+        ctx.lineTo(x0 + len * 0.74, side * h.ry * 0.24);
+        ctx.stroke();
+      }
+    } else if (L.hornType === "rostrum") {
+      ctx.beginPath();
+      ctx.moveTo(x0, -h.ry * 0.17);
+      ctx.quadraticCurveTo(x0 + len * 0.7, -h.ry * 0.1, x0 + len, -h.ry * 0.03);
+      ctx.quadraticCurveTo(x0 + len * 0.7, h.ry * 0.1, x0, h.ry * 0.17);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = col.outline;
+      ctx.lineWidth = w * 0.45;
+      ctx.stroke();
+      ctx.fillStyle = col.hornHi;
+      ctx.globalAlpha = 0.4;
+      ctx.beginPath();
+      ctx.ellipse(x0 + len * 0.5, -h.ry * 0.1, len * 0.34, h.ry * 0.06, 0, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else {
+      for (const [dy, scale] of [[-0.62, 0.78], [0, 1], [0.62, 0.78]]) {
+        ctx.lineWidth = w * 1.05;
+        ctx.strokeStyle = col.horn;
+        ctx.beginPath();
+        ctx.moveTo(x0 - h.rx * 0.05, dy * h.ry * 0.55);
+        ctx.quadraticCurveTo(
+          x0 + len * 0.5 * scale,
+          dy * h.ry * 0.95,
+          x0 + len * scale,
+          dy * h.ry * 1.05
+        );
+        ctx.stroke();
+      }
+    }
+  }
+  function drawMandibles(ctx, L, col, state, lunge) {
+    if (!L.mandible) return;
+    const h = L.head;
+    const open = state === "attack" ? 0.3 + lunge * 0.75 : 0.2;
+    const m = L.mandible;
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.translate(h.x + h.rx * 0.74, side * h.ry * 0.26);
+      ctx.rotate(side * open);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(m * 0.95, side * m * 0.42, m * 1.05, side * m * -0.1);
+      ctx.quadraticCurveTo(m * 0.7, side * m * 0.16, 0, side * m * 0.42);
+      ctx.closePath();
+      ctx.fillStyle = col.hornHi;
+      ctx.fill();
+      ctx.strokeStyle = col.outline;
+      ctx.lineWidth = Math.max(0.9, L.unit * 0.022);
+      ctx.lineJoin = "round";
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  function drawAntennae(ctx, L, col, phase) {
+    const h = L.head;
+    for (const a of L.antennae) {
+      const wag = Math.sin(phase * TAU + a.side) * 0.1;
+      ctx.strokeStyle = col.limb;
+      ctx.lineWidth = Math.max(1, L.unit * 0.03);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(h.x + h.rx * 0.45, a.side * h.ry * 0.52);
+      ctx.quadraticCurveTo(
+        h.x + a.len * 0.72,
+        a.side * (h.ry * 1.05 + a.len * 0.1 + wag * a.len),
+        h.x + a.len * 1.02,
+        a.side * (h.ry * 0.55 + a.len * 0.34 + wag * a.len)
+      );
+      ctx.stroke();
+      ctx.fillStyle = col.limbDark;
+      ctx.beginPath();
+      ctx.arc(
+        h.x + a.len * 1.02,
+        a.side * (h.ry * 0.55 + a.len * 0.34 + wag * a.len),
+        Math.max(1, L.unit * 0.026),
+        0,
+        TAU
+      );
+      ctx.fill();
+    }
+  }
+  function drawTail(ctx, L, col, phase, state, lunge) {
+    if (!L.tail) return;
+    const t = L.tail;
+    const curl = Math.sin(phase * TAU) * 0.1 - (state === "attack" ? lunge * 0.5 : 0);
+    const tipX = t.x0 - t.len;
+    const tipY = -t.len * (0.26 + curl);
+    ctx.strokeStyle = col.limb;
+    ctx.lineWidth = Math.max(1.4, L.unit * 0.055);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(t.x0, 0);
+    ctx.quadraticCurveTo(t.x0 - t.len * 0.62, tipY * 0.35, tipX, tipY);
+    ctx.stroke();
+    if (t.sting > 0.18) {
+      const s = L.unit * (0.05 + t.sting * 0.1);
+      const ang = Math.atan2(tipY - tipY * 0.35, -t.len * 0.38);
+      ctx.save();
+      ctx.translate(tipX, tipY);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(-s * 1.7, 0);
+      ctx.lineTo(s * 0.4, -s * 0.55);
+      ctx.lineTo(s * 0.4, s * 0.55);
+      ctx.closePath();
+      ctx.fillStyle = col.accentLo;
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  function drawEyes(ctx, L, col) {
+    for (const e of L.eyes) {
+      ellipse(ctx, e.x, e.y, e.r, e.r, col.eyeRim, null);
+      ellipse(ctx, e.x, e.y, e.r * 0.86, e.r * 0.86, col.eye, null);
+      ctx.fillStyle = col.shine;
+      ctx.beginPath();
+      ctx.arc(e.x + e.r * 0.28, e.y - e.r * 0.32, e.r * 0.3, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.arc(e.x - e.r * 0.26, e.y + e.r * 0.24, e.r * 0.14, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
   function drawSetae(ctx, L, col) {
-    if (L.setae < 0.15) return;
-    const n = Math.round(10 + L.setae * 46);
-    const len = L.bodyWid * (0.12 + L.setae * 0.3);
+    if (L.setae < 0.25) return;
+    const body = L.parts.find((p) => p.kind === "abdomen") ?? L.parts[0];
+    const n = Math.round(8 + L.setae * 18);
+    const len = body.ry * (0.14 + L.setae * 0.22);
     ctx.strokeStyle = col.setae;
-    ctx.lineWidth = Math.max(0.5, L.bodyWid * 0.022);
+    ctx.lineWidth = Math.max(0.7, L.unit * 0.02);
     ctx.lineCap = "round";
     for (let i = 0; i < n; i++) {
       const a = i / n * TAU;
-      const rx = L.bodyLen * 0.34, ry = L.bodyWid * 0.46;
-      const x = Math.cos(a) * rx - L.bodyLen * 0.08;
-      const y = Math.sin(a) * ry;
-      const nx = Math.cos(a), ny = Math.sin(a);
+      const x = body.x + Math.cos(a) * body.rx;
+      const y = Math.sin(a) * body.ry;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(x + nx * len, y + ny * len);
+      ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
       ctx.stroke();
     }
   }
@@ -1397,159 +1883,44 @@
     const { phase = 0, state = "idle", ppu = 26 } = opts;
     const L = layout(g, ppu);
     const col = palette(g);
-    const breathe = state === "idle" ? 1 + Math.sin(phase * TAU) * 0.025 : 1;
+    const breathe = state === "idle" ? 1 + Math.sin(phase * TAU) * 0.02 : 1;
     const lunge = state === "attack" ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
+    const outlineW = Math.max(1.1, L.unit * 0.03);
     ctx.save();
-    ctx.translate(lunge * L.bodyLen * 0.18, 0);
+    ctx.translate(lunge * L.unit * 0.14, 0);
     ctx.scale(breathe, breathe);
-    if (L.wingPairs > 0 && L.wing > 0.05) {
-      const flap = state === "walk" || state === "attack" ? Math.sin(phase * TAU * (1 + g.wing_beat * 3)) * 0.25 : 0.04;
-      for (let p = 0; p < L.wingPairs; p++) {
-        const back = p * L.bodyLen * 0.14;
-        const scale = 1 - p * 0.22;
-        for (const side of [-1, 1]) {
-          ctx.save();
-          ctx.translate(L.seg.thorax.x - back, side * L.bodyWid * 0.22);
-          ctx.rotate(side * (0.35 + flap + p * 0.18));
-          ellipse(
-            ctx,
-            -L.bodyLen * 0.16,
-            side * L.bodyWid * 0.5,
-            L.bodyLen * 0.36 * (0.5 + L.wing) * scale,
-            L.bodyWid * 0.34 * (0.5 + L.wing) * scale,
-            hsl(g.hue, 0.25 + g.iridescence * 0.5, 0.85, 0.24 + g.iridescence * 0.16),
-            "rgba(255,255,255,0.26)",
-            1
-          );
-          ctx.restore();
-        }
-      }
-    }
-    drawSetae(ctx, L, col);
-    for (const leg of L.legs) {
-      const off = (leg.pair * 0.37 + (leg.side > 0 ? 0.5 : 0)) % 1;
-      drawLeg(ctx, leg, (phase + off) % 1, col);
-    }
-    if (L.tail > 1) {
-      const curl = Math.sin(phase * TAU) * 0.12 + (state === "attack" ? -0.5 * lunge : 0);
-      const bx = L.seg.abdomen.x - L.seg.abdomen.rx;
-      ctx.strokeStyle = col.limb;
-      ctx.lineWidth = Math.max(1, L.bodyWid * 0.13);
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(bx, 0);
-      ctx.quadraticCurveTo(bx - L.tail * 0.6, curl * L.tail * 0.5, bx - L.tail, curl * L.tail);
-      ctx.stroke();
-      if (L.stinger > 0.8) {
-        const tipX = bx - L.tail, tipY = curl * L.tail;
-        ctx.fillStyle = col.outline;
-        ctx.beginPath();
-        ctx.moveTo(tipX, tipY - L.stinger * 0.4);
-        ctx.lineTo(tipX - L.stinger * 1.5, tipY + curl * 2);
-        ctx.lineTo(tipX, tipY + L.stinger * 0.4);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-    ellipse(ctx, L.seg.abdomen.x, 0, L.seg.abdomen.rx, L.seg.abdomen.ry, col.shell, col.outline, 1.4);
-    drawSpines(ctx, L, col);
-    drawSegments(ctx, L, col);
-    drawMarkings(ctx, g, L, col);
-    ellipse(ctx, L.seg.thorax.x, 0, L.seg.thorax.rx, L.seg.thorax.ry, col.shellLo, col.outline, 1.4);
-    ellipse(ctx, L.seg.head.x, 0, L.seg.head.rx, L.seg.head.ry, col.shell, col.outline, 1.4);
+    ctx.lineJoin = "round";
     ctx.save();
-    ctx.globalAlpha = 0.2 + g.carapace_thickness * 0.45;
-    ellipse(
-      ctx,
-      L.seg.abdomen.x + L.seg.abdomen.rx * 0.15,
-      -L.seg.abdomen.ry * 0.34,
-      L.seg.abdomen.rx * 0.55,
-      L.seg.abdomen.ry * 0.24,
-      col.shellHi,
-      null
-    );
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = "#000";
+    for (const p of L.parts) ellipse(ctx, p.x + L.unit * 0.05, L.unit * 0.1, p.rx * 0.95, p.ry * 0.8, "#000", null);
     ctx.restore();
-    if (g.iridescence > 0.25) {
-      ctx.save();
-      ctx.globalAlpha = (g.iridescence - 0.25) * 0.5;
-      ellipse(
-        ctx,
-        L.seg.abdomen.x - L.seg.abdomen.rx * 0.2,
-        L.seg.abdomen.ry * 0.2,
-        L.seg.abdomen.rx * 0.5,
-        L.seg.abdomen.ry * 0.3,
-        col.iris,
-        null
-      );
-      ctx.restore();
+    drawSoftWings(ctx, L, col, phase, state);
+    drawSetae(ctx, L, col);
+    drawLegs(ctx, L, col, phase);
+    drawTail(ctx, L, col, phase, state, lunge);
+    for (const p of L.parts) {
+      ellipse(ctx, p.x, p.y, p.rx, p.ry, shadeFill(ctx, p, col), col.outline, outlineW);
     }
-    if (L.antenna > 1) {
-      ctx.strokeStyle = col.limb;
-      ctx.lineWidth = Math.max(0.8, (L.legs[0]?.w ?? 1) * 0.55);
-      for (const side of [-1, 1]) {
-        const wag = Math.sin(phase * TAU + side) * 0.18;
+    drawPattern(ctx, L, col);
+    drawElytra(ctx, L, col);
+    for (const p of L.parts) drawShimmer(ctx, p, col, L.shimmer, p.x);
+    if (L.plan === "myriapod") {
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = col.outline;
+      ctx.lineWidth = outlineW * 0.8;
+      for (const p of L.parts) {
         ctx.beginPath();
-        ctx.moveTo(L.seg.head.x + L.seg.head.rx * 0.5, side * L.bodyWid * 0.16);
-        ctx.quadraticCurveTo(
-          L.seg.head.x + L.antenna * 0.7,
-          side * (L.bodyWid * 0.5 + L.antenna * 0.25) + wag * 6,
-          L.seg.head.x + L.antenna,
-          side * (L.bodyWid * 0.4 + L.antenna * 0.55) + wag * 10
-        );
+        ctx.arc(p.x, 0, p.ry * 0.99, -Math.PI * 0.42, Math.PI * 0.42);
         ctx.stroke();
       }
+      ctx.globalAlpha = 1;
     }
-    if (L.horn > 1.5) {
-      const hx = L.seg.head.x + L.seg.head.rx * 0.7;
-      ctx.fillStyle = col.shellLo;
-      ctx.strokeStyle = col.outline;
-      ctx.lineWidth = 1.1;
-      ctx.beginPath();
-      ctx.moveTo(hx, -L.bodyWid * 0.13);
-      ctx.quadraticCurveTo(hx + L.horn * 0.7, -L.bodyWid * 0.3, hx + L.horn, -L.bodyWid * 0.05);
-      ctx.quadraticCurveTo(hx + L.horn * 0.7, L.bodyWid * 0.06, hx, L.bodyWid * 0.13);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
-    const eyesPerSide = Math.max(1, L.eyeCount / 2);
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < eyesPerSide; i++) {
-        const t = eyesPerSide === 1 ? 0.5 : i / (eyesPerSide - 1);
-        const ex = L.seg.head.x + L.seg.head.rx * (0.55 - t * 0.75);
-        const ey = side * L.seg.head.ry * (0.62 - t * 0.16);
-        const r = L.eye * (1 - t * 0.35);
-        ellipse(ctx, ex, ey, r, r, col.eye, null);
-        ellipse(ctx, ex + r * 0.3, ey - r * 0.3, r * 0.32, r * 0.32, col.eyeShine, null);
-      }
-    }
-    if (L.mandible > 0.5) {
-      const open = state === "attack" ? 0.25 + lunge * 0.9 : 0.18 + Math.sin(phase * TAU) * 0.04;
-      ctx.strokeStyle = col.outline;
-      ctx.fillStyle = col.shellLo;
-      for (const side of [-1, 1]) {
-        ctx.save();
-        ctx.translate(L.seg.head.x + L.seg.head.rx * 0.85, side * L.seg.head.ry * 0.35);
-        ctx.rotate(side * open);
-        ctx.lineWidth = 1.1;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.quadraticCurveTo(L.mandible * 0.8, side * L.mandible * 0.55, L.mandible, side * L.mandible * 0.08);
-        ctx.quadraticCurveTo(L.mandible * 0.7, side * L.mandible * 0.05, 0, side * L.mandible * 0.22);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        const teeth = Math.round(L.serration * 4);
-        for (let i = 1; i <= teeth; i++) {
-          const t = i / (teeth + 1);
-          ctx.beginPath();
-          ctx.moveTo(L.mandible * t, side * L.mandible * (0.3 - t * 0.2));
-          ctx.lineTo(L.mandible * t, side * L.mandible * (0.3 - t * 0.2) + side * L.mandible * 0.22);
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-    }
+    drawHorn(ctx, L, col);
+    ellipse(ctx, L.head.x, 0, L.head.rx, L.head.ry, shadeFill(ctx, L.head, col), col.outline, outlineW);
+    drawAntennae(ctx, L, col, phase);
+    drawMandibles(ctx, L, col, state, lunge);
+    drawEyes(ctx, L, col);
     ctx.restore();
   }
   var ANIM_FRAMES = { idle: 4, walk: 8, attack: 6 };
@@ -1881,7 +2252,7 @@
     { t: 1, rgb: [26, 32, 66], light: 0.16 }
     // wraps to night
   ];
-  var lerp = (a, b, t) => a + (b - a) * t;
+  var lerp2 = (a, b, t) => a + (b - a) * t;
   function dayFraction(date = /* @__PURE__ */ new Date(), timeScale = 1) {
     const secs = date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds() + date.getMilliseconds() / 1e3;
     return secs / 86400 * timeScale % 1;
@@ -1903,8 +2274,8 @@
     }
     const span = b.t - a.t || 1;
     const k = (x - a.t) / span;
-    const rgb = [0, 1, 2].map((i) => Math.round(lerp(a.rgb[i], b.rgb[i], k)));
-    const light = lerp(a.light, b.light, k);
+    const rgb = [0, 1, 2].map((i) => Math.round(lerp2(a.rgb[i], b.rgb[i], k)));
+    const light = lerp2(a.light, b.light, k);
     const phase = phaseAt(x);
     return {
       t: x,

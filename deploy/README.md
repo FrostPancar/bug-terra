@@ -57,17 +57,19 @@ npm run build      # regenerates dist/terrarium.html
 
 ### 1. Genetics — `src/core/genes.js`, `genes.schema.json`
 
-A genome is a flat object of 20 scalar genes. `GENE_ORDER` is the canonical
-vector order — crossover, serialization, and any future GLB mapping all read it.
+A genome is a flat object of **37 scalar genes** across six groups — body plan,
+limbs, wings, weapons/defence, sensory, and surface/colour. `GENE_ORDER` is the
+canonical vector order; crossover, serialization and any future GLB mapping all
+read it.
 
-```
-leg_count (int, even 4–10)   body_length     mandible_size        hue
-leg_length                   body_width      mandible_serration   saturation
-leg_thickness                body_mass       antenna_length       lightness
-leg_spread                   carapace_thick  eye_size             pattern
-                             wing_area       metabolism
-                             wing_beat       aggression
-```
+**[GENES.md](./GENES.md) is the full reference** — every gene, its range, what it
+drives, and the eight starting archetypes.
+
+Generation 0 is seeded from archetypes (beetle, wasp, spider, roach, mantis,
+moth, centipede, weevil) rather than uniform random, so the pool starts visibly
+diverse instead of converging on mid-range blobs. 15% of each pool is drawn at
+random as wildcards. Archetypes are starting points, not classes — nothing in
+the sim branches on them, and after one crossover the lineages blend.
 
 Every write goes through `clampGene()`, so an illegal genome can't exist —
 `hue` wraps, `leg_count` snaps to even, everything else clamps.
@@ -159,7 +161,7 @@ per-sprite tint (blended toward white so bugs stay legible after dark).
 
 ## Tests
 
-`npm test` — 14 tests, all passing:
+`npm test` — 20 tests, all passing:
 
 - RNG determinism; genome range/quantisation invariants over 500 random genomes
 - Stats identical across 50 recomputes; finite and bounded over 2000 genomes
@@ -169,6 +171,13 @@ per-sprite tint (blended toward white so bugs stay legible after dark).
 - Elitism ⇒ best fitness never regresses (checked for all six presets, 25 gens)
 - Selection ⇒ mean fitness up >15% over 40 generations
 - Evolution reproducible from a seed; immigrants prevent clone collapse
+- Every archetype yields a legal genome and finite stats
+- Archetypes stay distinguishable: every headline stat spans >25 points across
+  the set, and no two sit within 20 units of each other in stat space
+- Seeded pools are diverse, and `nearestArchetype` classifies >85% back correctly
+- New genes drive their stats: no stinger ⇒ zero venom, no wings ⇒ zero flight,
+  spines ⇒ defense, horn ⇒ attack, claws ⇒ grip, more eyes ⇒ vision,
+  iridescence ⇒ *less* camouflage
 
 ---
 
@@ -179,6 +188,7 @@ index.html                 dev entry (Phaser from CDN)
 dist/terrarium.html        self-contained build — just open it
 src/core/rng.js            seeded mulberry32
 src/core/genes.js          gene specs, clamping, vector I/O, ids, names
+src/core/archetypes.js     eight body plans + seeding + nearest-archetype label
 src/core/genes.schema.json JSON Schema for the genome
 src/core/stats.js          morphology + pure stat formulas + fitness presets
 src/core/breeding.js       crossover, mutation, selection, generation loop
@@ -187,7 +197,9 @@ src/sim/animator.js        animation state machine
 src/sim/dayNight.js        real-clock day/night + behaviour modifiers
 src/sim/bug.js             entity: stats -> body, animator, behaviour
 src/sim/terrarium.js       Phaser scene, decor, generation control
+src/ui/glass.js            liquid-glass port (see THIRD-PARTY.md)
 src/main.js                boot + HUD
+GENES.md                   full gene and archetype reference
 tests/core.test.js         genetics/stats/breeding tests
 tools/build-single.mjs     bundles + inlines into dist/terrarium.html
 ```
@@ -306,3 +318,25 @@ web-platform limit, not a shortcut. Chrome and Edge bend the live scene. Safari
 and Firefox fall back to frost + tint + edge-light, which still reads as glass,
 and the buttons carry `data-glass="frost"` so the CSS can lean on the rim a
 little harder there.
+
+---
+
+## The panel is not a card
+
+On narrow screens the panel has no background, border, radius or shadow. What it
+sits on is `#scrim` — a black gradient in `mix-blend-mode: multiply` that crushes
+the scene beneath it toward black rather than covering it. The terrarium stays
+visible through the top of the fade and dissolves into true black behind the
+text.
+
+The scrim is a **sibling of `#stage`, not a child of `<aside>`** — `mix-blend-mode`
+composites against the nearest stacking context, so nesting it inside a
+z-indexed panel would blend it against the panel and the effect would vanish.
+For the same reason `#stage` and `#scrim` both claim their grid cell explicitly:
+explicitly-placed items are placed before auto-placed ones, so leaving `#stage`
+to auto-placement pushed it into the panel column.
+
+Swipe up anywhere on the panel to reveal it, swipe down to dismiss. The gesture
+is only claimed once it's clearly vertical and clearly a drag, so it never
+fights the panel's own scrolling or a tap on a control; the grab bar still works
+as a tap toggle for accessibility.
