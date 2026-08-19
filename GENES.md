@@ -1,6 +1,6 @@
 # Gene and archetype reference
 
-The pool went from **20 genes to 39**, and generation 0 is now seeded from eight
+The pool went from **20 genes to 41**, and generation 0 is now seeded from eight
 body-plan archetypes instead of uniform random noise.
 
 Every gene below is a scalar on a fixed range, clamped on every write — an
@@ -10,7 +10,7 @@ GLB mapping all read it.
 
 ---
 
-## The 39 genes
+## The 41 genes
 
 ### Body plan — 8
 
@@ -41,7 +41,7 @@ GLB mapping all read it.
 | Gene | Range | What it does |
 |---|---|---|
 | `wing_count` | int 0/2/4 | **0 means flightless, full stop** — no wings, no lift, whatever the area. |
-| `wing_type` | int 0–3 | membranous / **elytra** / broad / narrow. Categorical — see below. |
+| `wing_type` | int 0–4 | membranous / elytra / broad / narrow / fan. Categorical. |
 | `wing_area` | 0–1 | Wing size. Four small wings beat two large ones of the same total area. |
 | `wing_beat` | 0–1 | Beat rate. |
 
@@ -50,9 +50,10 @@ GLB mapping all read it.
 | Gene | Range | What it does |
 |---|---|---|
 | `mandible_size` | 0–1 | Jaw mass. Raises attack, *lowers* attack rate. |
+| `mandible_type` | int 0–3 | pincer / tusk / forceps / palps. Categorical. |
 | `mandible_serration` | 0–1 | Cutting edge. Multiplies the bite. |
 | `horn_size` | 0–1 | Horn length. Second-largest attack input. |
-| `horn_type` | int 0–3 | rhino / stag / rostrum / crown. Categorical — see below. |
+| `horn_type` | int 0–4 | rhino / stag / rostrum / crown / crescent. Categorical. |
 | `spine_density` | 0–1 | Defensive spikes along the abdomen. Adds to defense. |
 | `tail_length` | 0–1 | Cerci / metasoma. Gives the stinger reach. |
 | `stinger_size` | 0–1 | Below 0.08 there is no stinger and venom is exactly 0. |
@@ -62,6 +63,7 @@ GLB mapping all read it.
 | Gene | Range | What it does |
 |---|---|---|
 | `eye_count` | int 2–8, even | More eyes widen the field — +11% vision each pair. |
+| `eye_type` | int 0–3 | almond / round / teardrop / compound. Categorical. |
 | `eye_size` | 0–1 | Ommatidium size. Primary vision input. |
 | `antenna_length` | 0–1 | Picks up what the eyes miss. |
 
@@ -162,12 +164,26 @@ genes. An archetype holds its kind exactly, with a 12% chance per birth of
 stepping to an adjacent kind. Enough for a lineage to drift; not enough for a
 wasp to sprout a rhino horn at random.
 
-**Horns** — `rhino` a single thick curved blade · `stag` paired antlers that
-hook inward · `rostrum` a slim weevil snout · `crown` three short prongs.
+**Horns** (5) — `rhino` one heavy blade curving forward · `stag` a tuning-fork
+column splitting into two hooked arms with inner teeth · `rostrum` a long clean
+snout · `crown` three prongs, middle longest · `crescent` paired bull horns
+sweeping out and up.
 
-**Wings** — `membranous` clear teardrops with veins · `elytra` hard glossy cases
-that close over the abdomen with a seam · `broad` big soft moth petals ·
-`narrow` slim fast blades.
+**Wings** (5) — `membranous` two slim blades a side · `elytra` hard cases closed
+over the abdomen with a seam · `broad` two wide moth petals · `narrow` three thin
+blades · `fan` four blades in a wide spread.
+
+**Eyes** (4) — `almond` pointed at both ends, the default · `round` a plain big
+orb · `teardrop` round inboard, drawn to a point outboard · `compound` a lens
+ringed with ommatidia. Saturated bugs get a coloured iris; muted ones stay pure
+white, which reads more graphic.
+
+**Mandibles** (4) — `pincer` a fat comma curving in · `tusk` straight tapered
+spikes · `forceps` long slender arms hooking hard inward · `palps` two soft
+rounded lobes, barely a weapon.
+
+All four are drawn as filled tapered silhouettes, not strokes — mass at the base
+and a point at the tip is what separates a designed horn from a bent line.
 
 ---
 

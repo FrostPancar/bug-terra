@@ -533,16 +533,18 @@
     claw_size: { min: 0, max: 1 },
     /* ---- wings ---- */
     wing_count: { min: 0, max: 4, integer: true, step: 2 },
-    wing_type: { min: 0, max: 3, integer: true },
-    // 0 membranous 1 elytra 2 broad 3 narrow
+    wing_type: { min: 0, max: 4, integer: true },
+    // membranous/elytra/broad/narrow/fan
     wing_area: { min: 0, max: 1 },
     wing_beat: { min: 0, max: 1 },
     /* ---- weapons & defence ---- */
     mandible_size: { min: 0, max: 1 },
+    mandible_type: { min: 0, max: 3, integer: true },
+    // pincer/tusk/forceps/palps
     mandible_serration: { min: 0, max: 1 },
     horn_size: { min: 0, max: 1 },
-    horn_type: { min: 0, max: 3, integer: true },
-    // 0 rhino 1 stag 2 rostrum 3 trident
+    horn_type: { min: 0, max: 4, integer: true },
+    // rhino/stag/rostrum/crown/crescent
     spine_density: { min: 0, max: 1 },
     // defensive spikes
     tail_length: { min: 0, max: 1 },
@@ -550,6 +552,8 @@
     stinger_size: { min: 0, max: 1 },
     /* ---- sensory ---- */
     eye_count: { min: 2, max: 8, integer: true, step: 2 },
+    eye_type: { min: 0, max: 3, integer: true },
+    // almond/round/teardrop/compound
     eye_size: { min: 0, max: 1 },
     antenna_length: { min: 0, max: 1 },
     /* ---- physiology & behaviour ---- */
@@ -789,6 +793,8 @@
         mandible_serration: 0.45,
         horn_size: 0.85,
         horn_type: 0,
+        eye_type: 1,
+        mandible_type: 0,
         spine_density: 0.3,
         tail_length: 0.1,
         stinger_size: 0.02,
@@ -824,13 +830,15 @@
         leg_joints: 3,
         claw_size: 0.3,
         wing_count: 4,
-        wing_type: 0,
+        wing_type: 4,
         wing_area: 0.8,
         wing_beat: 0.9,
         mandible_size: 0.3,
         mandible_serration: 0.3,
         horn_size: 0.02,
-        horn_type: 3,
+        horn_type: 4,
+        eye_type: 0,
+        mandible_type: 3,
         spine_density: 0.1,
         tail_length: 0.55,
         stinger_size: 0.9,
@@ -876,6 +884,8 @@
         mandible_serration: 0.7,
         horn_size: 0.05,
         horn_type: 1,
+        eye_type: 1,
+        mandible_type: 2,
         spine_density: 0.25,
         tail_length: 0.15,
         stinger_size: 0.55,
@@ -918,6 +928,8 @@
         mandible_serration: 0.25,
         horn_size: 0.02,
         horn_type: 3,
+        eye_type: 2,
+        mandible_type: 3,
         spine_density: 0.45,
         tail_length: 0.45,
         stinger_size: 0.05,
@@ -961,7 +973,9 @@
         mandible_size: 0.7,
         mandible_serration: 0.85,
         horn_size: 0.1,
-        horn_type: 1,
+        horn_type: 3,
+        eye_type: 0,
+        mandible_type: 2,
         spine_density: 0.55,
         tail_length: 0.25,
         stinger_size: 0.05,
@@ -1003,7 +1017,9 @@
         mandible_size: 0.08,
         mandible_serration: 0.05,
         horn_size: 0.02,
-        horn_type: 3,
+        horn_type: 4,
+        eye_type: 3,
+        mandible_type: 3,
         spine_density: 0.05,
         tail_length: 0.2,
         stinger_size: 0.02,
@@ -1047,6 +1063,8 @@
         mandible_serration: 0.6,
         horn_size: 0.05,
         horn_type: 1,
+        eye_type: 2,
+        mandible_type: 1,
         spine_density: 0.8,
         tail_length: 0.75,
         stinger_size: 0.65,
@@ -1089,6 +1107,8 @@
         mandible_serration: 0.15,
         horn_size: 0.95,
         horn_type: 2,
+        eye_type: 1,
+        mandible_type: 3,
         spine_density: 0.35,
         tail_length: 0.08,
         stinger_size: 0.02,
@@ -1239,8 +1259,10 @@
     if (g.leg_count >= 8) return "arachnid";
     return "insect";
   }
-  var HORN_TYPES = ["rhino", "stag", "rostrum", "crown"];
-  var WING_TYPES = ["membranous", "elytra", "broad", "narrow"];
+  var HORN_TYPES = ["rhino", "stag", "rostrum", "crown", "crescent"];
+  var WING_TYPES = ["membranous", "elytra", "broad", "narrow", "fan"];
+  var EYE_TYPES = ["almond", "round", "teardrop", "compound"];
+  var MANDIBLE_TYPES = ["pincer", "tusk", "forceps", "palps"];
   function layout(g, ppu = 26) {
     const m = morphology(g);
     const plan = bodyPlan(g);
@@ -1265,6 +1287,8 @@
       antennae: [],
       hornType: HORN_TYPES[g.horn_type ?? 0],
       wingType: WING_TYPES[g.wing_type ?? 0],
+      eyeType: EYE_TYPES[g.eye_type ?? 0],
+      mandibleType: MANDIBLE_TYPES[g.mandible_type ?? 0],
       wingPairs: g.wing_count / 2,
       wingArea: g.wing_area,
       setae: g.setae,
@@ -1378,7 +1402,7 @@
     const headR = bodyWid * (plan === "arachnid" ? 0.32 : lerp(0.36, 0.48, g.head_size));
     const hx = L.trunkFrontX + headR * (plan === "arachnid" ? 0.06 : 0.54);
     L.head = { x: hx, y: 0, rx: headR * 1, ry: headR, kind: "head" };
-    const er = headR * lerp(0.74, 1.02, g.eye_size);
+    const er = headR * lerp(0.62, 0.88, g.eye_size);
     for (const side of [-1, 1]) {
       L.eyes.push({
         x: hx + headR * 0.1,
@@ -1402,9 +1426,9 @@
     }
     const antLen = unit * lerp(0.1, 0.58, g.antenna_length);
     if (antLen > unit * 0.15) for (const side of [-1, 1]) L.antennae.push({ side, len: antLen });
-    const hornMax = L.hornType === "rostrum" ? 0.52 : L.hornType === "stag" ? 0.78 : 0.64;
-    L.hornLen = g.horn_size < 0.14 ? 0 : unit * lerp(0.16, hornMax, g.horn_size);
-    L.mandible = g.mandible_size < 0.1 ? 0 : headR * lerp(0.34, 0.62, g.mandible_size);
+    const hornMax = L.hornType === "rostrum" ? 0.8 : L.hornType === "stag" ? 1.15 : 0.95;
+    L.hornLen = g.horn_size < 0.12 ? 0 : unit * lerp(0.26, hornMax, g.horn_size);
+    L.mandible = g.mandible_size < 0.1 ? 0 : headR * lerp(0.52, 1, g.mandible_size);
     const rear = L.parts[0];
     const tailLen = unit * lerp(0, 0.44, g.tail_length);
     if (tailLen > unit * 0.08) {
@@ -1493,24 +1517,53 @@
     }
     ctx.globalAlpha = 1;
   }
+  function taperedCurve(ctx, p0, p1, p2, w02, w1, fill, steps = 16) {
+    const left = [], right = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps, u = 1 - t;
+      const x = u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x;
+      const y = u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y;
+      const dx = 2 * u * (p1.x - p0.x) + 2 * t * (p2.x - p1.x);
+      const dy = 2 * u * (p1.y - p0.y) + 2 * t * (p2.y - p1.y);
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const w = lerp(w02, w1, t) * 0.5;
+      left.push({ x: x + nx * w, y: y + ny * w });
+      right.push({ x: x - nx * w, y: y - ny * w });
+    }
+    ctx.beginPath();
+    ctx.moveTo(left[0].x, left[0].y);
+    for (const p of left) ctx.lineTo(p.x, p.y);
+    for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
   function drawSoftWings(ctx, L, col, phase, state) {
     if (L.wingPairs < 1 || L.wingType === "elytra") return;
     const { g } = L;
-    const flap = state === "walk" || state === "attack" ? Math.sin(phase * TAU * (1 + g.wing_beat * 2.5)) * 0.14 : 0.02;
+    const flap = state === "walk" || state === "attack" ? Math.sin(phase * TAU * (1 + g.wing_beat * 2.5)) * 0.13 : 0.02;
     const type = L.wingType;
-    const wl = L.unit * lerp(0.9, 1.7, L.wingArea) * (type === "broad" ? 1.12 : 1);
+    const wl = L.unit * lerp(0.95, 1.8, L.wingArea);
     const anchor = L.parts[L.parts.length - 1];
-    for (let p = L.wingPairs - 1; p >= 0; p--) {
-      const scale = 1 - p * 0.22;
-      for (const side of [-1, 1]) {
+    const spec = {
+      membranous: { blades: 2, spread: 0.34, width: 0.2, base: 0.92 },
+      broad: { blades: 2, spread: 0.46, width: 0.4, base: 1.02 },
+      narrow: { blades: 3, spread: 0.26, width: 0.13, base: 0.86 },
+      fan: { blades: 4, spread: 0.3, width: 0.12, base: 0.8 }
+    }[type] ?? { blades: 2, spread: 0.34, width: 0.2, base: 0.92 };
+    const n = Math.min(spec.blades * L.wingPairs, 5);
+    for (const side of [-1, 1]) {
+      for (let i = n - 1; i >= 0; i--) {
+        const t = n === 1 ? 0.5 : i / (n - 1);
         ctx.save();
-        ctx.translate(anchor.x - L.unit * 0.06, side * anchor.ry * 0.28);
-        ctx.rotate(side * (0.96 + flap + p * 0.3));
-        const len = wl * scale;
-        const wid = len * (type === "narrow" ? 0.2 : type === "broad" ? 0.42 : 0.28);
-        ctx.fillStyle = p === 0 ? col.wing : col.wingLo;
+        ctx.translate(anchor.x - L.unit * 0.04, side * anchor.ry * 0.26);
+        ctx.rotate(side * (0.8 + flap + t * spec.spread * 2.2));
+        const len = wl * spec.base * lerp(1, 0.78, t);
+        const wid = len * spec.width;
+        ctx.fillStyle = i % 2 === 0 ? col.wing : col.wingLo;
         ctx.beginPath();
-        ctx.ellipse(len * 0.46, side * wid * 0.42, len * 0.52, wid, side * 0.3, 0, TAU);
+        ctx.ellipse(len * 0.48, side * wid * 0.3, len * 0.52, wid, side * 0.22, 0, TAU);
         ctx.fill();
         ctx.restore();
       }
@@ -1577,66 +1630,149 @@
   function drawHorn(ctx, L, col) {
     if (!L.hornLen) return;
     const h = L.head;
-    const x0 = h.x + h.rx * 0.3;
+    const x0 = h.x + h.rx * 0.52;
     const len = L.hornLen;
-    const w = Math.max(2, L.unit * 0.075);
-    if (L.hornType === "rhino") {
-      capsule(ctx, x0, 0, x0 + len * 0.62, -h.ry * 0.1, x0 + len, -h.ry * 0.34, w * 1.15, col.horn);
-    } else if (L.hornType === "stag") {
-      for (const side of [-1, 1]) {
-        capsule(
+    const base = Math.max(3, L.unit * 0.115);
+    const fill = col.horn;
+    switch (L.hornType) {
+      case "rhino": {
+        taperedCurve(
           ctx,
-          x0,
-          side * h.ry * 0.34,
-          x0 + len * 0.62,
-          side * h.ry * 0.92,
-          x0 + len,
-          side * h.ry * 0.34,
-          w,
-          col.horn
+          { x: x0, y: 0 },
+          { x: x0 + len * 0.6, y: -h.ry * 0.2 },
+          { x: x0 + len, y: -h.ry * 0.44 },
+          base * 1.25,
+          base * 0.12,
+          fill
         );
-        capsule(
-          ctx,
-          x0 + len * 0.6,
-          side * h.ry * 0.72,
-          x0 + len * 0.7,
-          side * h.ry * 0.46,
-          x0 + len * 0.72,
-          side * h.ry * 0.22,
-          w * 0.62,
-          col.horn
-        );
+        break;
       }
-    } else if (L.hornType === "rostrum") {
-      capsule(ctx, x0, 0, x0 + len * 0.6, 0, x0 + len, 0, w * 0.85, col.horn);
-    } else {
-      for (const dy of [-0.62, 0, 0.62]) {
-        const sc = dy === 0 ? 1 : 0.76;
-        capsule(
+      case "stag": {
+        const colLen = len * 0.42;
+        taperedCurve(
           ctx,
-          x0,
-          dy * h.ry * 0.44,
-          x0 + len * 0.5 * sc,
-          dy * h.ry * 0.8,
-          x0 + len * sc,
-          dy * h.ry * 0.96,
-          w * 0.8,
-          col.horn
+          { x: x0, y: 0 },
+          { x: x0 + colLen * 0.6, y: 0 },
+          { x: x0 + colLen, y: 0 },
+          base * 1.5,
+          base * 1.05,
+          fill
         );
+        for (const side of [-1, 1]) {
+          taperedCurve(
+            ctx,
+            { x: x0 + colLen * 0.9, y: side * base * 0.3 },
+            { x: x0 + len * 0.86, y: side * h.ry * 1.05 },
+            { x: x0 + len, y: side * h.ry * 0.3 },
+            base * 1,
+            base * 0.1,
+            fill
+          );
+          taperedCurve(
+            ctx,
+            { x: x0 + len * 0.74, y: side * h.ry * 0.74 },
+            { x: x0 + len * 0.76, y: side * h.ry * 0.48 },
+            { x: x0 + len * 0.74, y: side * h.ry * 0.22 },
+            base * 0.55,
+            base * 0.1,
+            fill
+          );
+        }
+        break;
+      }
+      case "rostrum": {
+        taperedCurve(
+          ctx,
+          { x: x0, y: 0 },
+          { x: x0 + len * 0.55, y: 0 },
+          { x: x0 + len, y: 0 },
+          base * 0.95,
+          base * 0.42,
+          fill
+        );
+        break;
+      }
+      case "crown": {
+        for (const dy of [-1, 0, 1]) {
+          const sc = dy === 0 ? 1 : 0.72;
+          taperedCurve(
+            ctx,
+            { x: x0, y: dy * h.ry * 0.38 },
+            { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.78 },
+            { x: x0 + len * sc, y: dy * h.ry * 1 },
+            base * 0.85,
+            base * 0.1,
+            fill
+          );
+        }
+        break;
+      }
+      default: {
+        for (const side of [-1, 1]) {
+          taperedCurve(
+            ctx,
+            { x: x0, y: side * h.ry * 0.42 },
+            { x: x0 + len * 0.92, y: side * h.ry * 0.98 },
+            { x: x0 + len * 0.82, y: side * h.ry * 0.16 },
+            base * 1.15,
+            base * 0.1,
+            fill
+          );
+        }
+        break;
       }
     }
   }
   function drawMandibles(ctx, L, col, state, lunge) {
     if (!L.mandible) return;
     const h = L.head;
-    const open = state === "attack" ? 0.3 + lunge * 0.7 : 0.18;
+    const open = state === "attack" ? 0.34 + lunge * 0.7 : 0.16;
     const m = L.mandible;
-    const w = Math.max(1.6, L.unit * 0.05);
+    const w = Math.max(2, L.unit * 0.07);
+    const fill = col.limbLo;
+    const ax = h.x + h.rx * 0.6;
     for (const side of [-1, 1]) {
       ctx.save();
-      ctx.translate(h.x + h.rx * 0.66, side * h.ry * 0.3);
+      ctx.translate(ax, side * h.ry * 0.52);
       ctx.rotate(side * open);
-      capsule(ctx, 0, 0, m * 0.72, side * m * 0.34, m * 1.02, side * m * -0.06, w, col.limbLo);
+      switch (L.mandibleType) {
+        case "tusk":
+          taperedCurve(
+            ctx,
+            { x: 0, y: 0 },
+            { x: m * 0.6, y: side * m * 0.18 },
+            { x: m * 1.15, y: side * m * 0.3 },
+            w * 1.1,
+            w * 0.12,
+            fill
+          );
+          break;
+        case "forceps":
+          taperedCurve(
+            ctx,
+            { x: 0, y: 0 },
+            { x: m * 1.05, y: side * m * 0.62 },
+            { x: m * 1.3, y: side * m * -0.04 },
+            w * 0.85,
+            w * 0.1,
+            fill
+          );
+          break;
+        case "palps":
+          fillEllipse(ctx, m * 0.42, side * m * 0.2, m * 0.44, m * 0.3, fill);
+          break;
+        default:
+          taperedCurve(
+            ctx,
+            { x: 0, y: 0 },
+            { x: m * 0.86, y: side * m * 0.5 },
+            { x: m * 1.06, y: side * m * 0.02 },
+            w * 1.3,
+            w * 0.18,
+            fill
+          );
+          break;
+      }
       ctx.restore();
     }
   }
@@ -1677,6 +1813,8 @@
     }
   }
   function drawEyes(ctx, L, col) {
+    const { g } = L;
+    const hasIris = g.saturation > 0.35;
     for (const e of L.eyes) {
       if (e.minor) {
         fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil);
@@ -1684,10 +1822,57 @@
       }
       ctx.save();
       ctx.translate(e.x, e.y);
-      ctx.rotate(e.side * -0.22);
-      fillEllipse(ctx, 0, 0, e.ry, e.rx, col.sclera);
-      fillEllipse(ctx, e.ry * 0.22, e.side * e.rx * 0.1, e.rx * 0.58, e.rx * 0.58, col.iris);
-      fillEllipse(ctx, e.ry * 0.26, e.side * e.rx * 0.1, e.rx * 0.3, e.rx * 0.3, col.pupil);
+      ctx.rotate(e.side * -0.34);
+      const R = e.ry, r = e.rx;
+      switch (L.eyeType) {
+        case "round":
+          fillEllipse(ctx, 0, 0, R * 0.86, R * 0.86, col.sclera);
+          break;
+        case "teardrop": {
+          ctx.beginPath();
+          ctx.moveTo(-R, 0);
+          ctx.quadraticCurveTo(-R * 0.1, -r * 1.15, R * 0.62, -r * 0.44);
+          ctx.quadraticCurveTo(R * 1.05, 0, R * 0.62, r * 0.44);
+          ctx.quadraticCurveTo(-R * 0.1, r * 1.15, -R, 0);
+          ctx.closePath();
+          ctx.fillStyle = col.sclera;
+          ctx.fill();
+          break;
+        }
+        case "compound": {
+          fillEllipse(ctx, 0, 0, R * 0.84, r * 0.98, col.sclera);
+          ctx.fillStyle = col.iris;
+          ctx.globalAlpha = 0.55;
+          for (let i = 0; i < 7; i++) {
+            const a = -0.9 + i / 6 * 1.8;
+            fillEllipse(
+              ctx,
+              Math.cos(a) * R * 0.46,
+              Math.sin(a) * r * 0.46,
+              r * 0.2,
+              r * 0.2,
+              col.iris
+            );
+          }
+          ctx.globalAlpha = 1;
+          break;
+        }
+        default: {
+          ctx.beginPath();
+          ctx.moveTo(-R, 0);
+          ctx.quadraticCurveTo(0, -r * 1.25, R, 0);
+          ctx.quadraticCurveTo(0, r * 1.25, -R, 0);
+          ctx.closePath();
+          ctx.fillStyle = col.sclera;
+          ctx.fill();
+          break;
+        }
+      }
+      if (hasIris && L.eyeType !== "compound") {
+        const ir = Math.min(R, r) * 0.62;
+        fillEllipse(ctx, R * 0.2, 0, ir, ir, col.iris);
+        fillEllipse(ctx, R * 0.2, 0, ir * 0.5, ir * 0.5, col.pupil);
+      }
       ctx.restore();
     }
   }

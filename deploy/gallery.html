@@ -2,29 +2,28 @@
 <style>
 body{background:#4a4f55;margin:0;padding:20px 12px;font:12px ui-monospace,Menlo,monospace;color:#e8e6e2}
 h2{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#a9adb3;
-   margin:6px 0 10px;text-align:center;font-weight:500}
+   margin:14px 0 6px;text-align:center;font-weight:500}
 .row{display:flex;flex-wrap:wrap;justify-content:center}
-figure{width:186px;margin:0;text-align:center;padding:6px 0}
-canvas{width:168px;height:168px}
-figcaption{margin-top:2px;letter-spacing:.06em;text-transform:uppercase;font-size:11px}
-small{display:block;color:#a9adb3;font-size:9px;letter-spacing:.03em}
+figure{width:172px;margin:0;text-align:center;padding:4px 0}
+canvas{width:156px;height:156px}
+figcaption{margin-top:0;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
+small{display:block;color:#a9adb3;font-size:9px}
 </style></head><body><script type="module">
-import { ARCHETYPES, genomeFromArchetype, seededPopulation, nearestArchetype } from './src/core/archetypes.js';
+import { ARCHETYPES, genomeFromArchetype, seededPopulation } from './src/core/archetypes.js';
+import { normalizeGenome } from './src/core/genes.js';
 import { makeRng } from './src/core/rng.js';
-import { drawBug, bodyPlan, HORN_TYPES, WING_TYPES } from './src/render/bugArt.js';
+import { drawBug, HORN_TYPES, WING_TYPES, EYE_TYPES, MANDIBLE_TYPES } from './src/render/bugArt.js';
 
-function card(g, title) {
+function card(g, title, sub) {
   const f = document.createElement('figure');
   const c = document.createElement('canvas');
-  c.width = 336; c.height = 336;
+  c.width = 312; c.height = 312;
   const ctx = c.getContext('2d');
-  ctx.translate(168, 168);
-  drawBug(ctx, g, { phase: 0.15, state: 'walk', ppu: 62 });
+  ctx.translate(156, 156);
+  drawBug(ctx, g, { phase: 0.15, state: 'walk', ppu: 58 });
   const cap = document.createElement('figcaption'); cap.textContent = title;
-  const sub = document.createElement('small');
-  sub.textContent = `${bodyPlan(g)} · ${HORN_TYPES[g.horn_type]} · ${WING_TYPES[g.wing_type]}`;
-  f.append(c, cap, sub);
-  return f;
+  const s = document.createElement('small'); s.textContent = sub || '';
+  f.append(c, cap, s); return f;
 }
 function section(label, nodes) {
   const h = document.createElement('h2'); h.textContent = label;
@@ -33,19 +32,37 @@ function section(label, nodes) {
   document.body.append(h, r);
 }
 
+// a neutral body so the part under test is the only thing changing
+const BASE = normalizeGenome({
+  body_length: 0.42, body_width: 0.60, body_mass: 0.45, head_size: 0.62,
+  thorax_ratio: 0.45, abdomen_taper: 0.25, leg_count: 6, leg_length: 0.55,
+  leg_thickness: 0.55, leg_spread: 0.5, claw_size: 0.4,
+  wing_count: 0, wing_area: 0, mandible_size: 0.62, horn_size: 0.80,
+  eye_count: 2, eye_size: 0.80, antenna_length: 0.25,
+  hue: 0.015, saturation: 0.55, lightness: 0.55, pattern: 0.8,
+  iridescence: 0.1, setae: 0,
+});
+
+section('horn kinds', HORN_TYPES.map((n, i) =>
+  card({ ...BASE, horn_type: i }, n)));
+
+section('eye kinds', EYE_TYPES.map((n, i) =>
+  card({ ...BASE, eye_type: i, horn_size: 0.1, eye_size: 0.95 }, n)));
+
+section('mandible kinds', MANDIBLE_TYPES.map((n, i) =>
+  card({ ...BASE, mandible_type: i, horn_size: 0.1, mandible_size: 0.9 }, n)));
+
+section('wing kinds', WING_TYPES.map((n, i) =>
+  card({ ...BASE, wing_type: i, wing_count: 4, wing_area: 0.8, horn_size: 0.1 }, n)));
+
 const rng = makeRng(11);
-section('the eight archetypes', ARCHETYPES.map(a => card(genomeFromArchetype(a, rng), a.name)));
-
-const rng2 = makeRng(2026);
-const wild = seededPopulation(8, rng2, { wildcards: 1 });
-section('wild genomes — no archetype', wild.map((g, i) => card(g, 'Wild ' + (i + 1))));
-
-const rng3 = makeRng(77);
-const mixed = seededPopulation(8, rng3, { wildcards: 0.2 });
-section('a collection', mixed.map(g => {
-  const na = nearestArchetype(g);
-  return card(g, na.confident ? na.archetype.name : 'Hybrid');
+section('the archetypes', ARCHETYPES.map(a => {
+  const g = genomeFromArchetype(a, rng);
+  return card(g, a.name, `${HORN_TYPES[g.horn_type]} · ${EYE_TYPES[g.eye_type]} · ${MANDIBLE_TYPES[g.mandible_type]}`);
 }));
+
+section('wild', seededPopulation(8, makeRng(2026), { wildcards: 1 }).map((g, i) =>
+  card(g, 'Wild ' + (i + 1), `${HORN_TYPES[g.horn_type]} · ${WING_TYPES[g.wing_type]}`)));
 
 document.title = 'ready';
 </script></body></html>

@@ -95,8 +95,10 @@ export function bodyPlan(g) {
   return 'insect';
 }
 
-export const HORN_TYPES = ['rhino', 'stag', 'rostrum', 'crown'];
-export const WING_TYPES = ['membranous', 'elytra', 'broad', 'narrow'];
+export const HORN_TYPES = ['rhino', 'stag', 'rostrum', 'crown', 'crescent'];
+export const WING_TYPES = ['membranous', 'elytra', 'broad', 'narrow', 'fan'];
+export const EYE_TYPES = ['almond', 'round', 'teardrop', 'compound'];
+export const MANDIBLE_TYPES = ['pincer', 'tusk', 'forceps', 'palps'];
 
 /* ============================================================ layout ===== */
 
@@ -124,6 +126,8 @@ export function layout(g, ppu = 26) {
     parts: [], legs: [], eyes: [], antennae: [],
     hornType: HORN_TYPES[g.horn_type ?? 0],
     wingType: WING_TYPES[g.wing_type ?? 0],
+    eyeType: EYE_TYPES[g.eye_type ?? 0],
+    mandibleType: MANDIBLE_TYPES[g.mandible_type ?? 0],
     wingPairs: g.wing_count / 2,
     wingArea: g.wing_area,
     setae: g.setae,
@@ -240,7 +244,7 @@ function buildHead(L) {
   L.head = { x: hx, y: 0, rx: headR * 1.0, ry: headR, kind: 'head' };
 
   // Big almond eyes, set wide, tucked slightly under the head edge.
-  const er = headR * lerp(0.74, 1.02, g.eye_size);
+  const er = headR * lerp(0.62, 0.88, g.eye_size);
   for (const side of [-1, 1]) {
     L.eyes.push({
       x: hx + headR * 0.10,
@@ -261,9 +265,9 @@ function buildHead(L) {
   const antLen = unit * lerp(0.10, 0.58, g.antenna_length);
   if (antLen > unit * 0.15) for (const side of [-1, 1]) L.antennae.push({ side, len: antLen });
 
-  const hornMax = L.hornType === 'rostrum' ? 0.52 : L.hornType === 'stag' ? 0.78 : 0.64;
-  L.hornLen = g.horn_size < 0.14 ? 0 : unit * lerp(0.16, hornMax, g.horn_size);
-  L.mandible = g.mandible_size < 0.10 ? 0 : headR * lerp(0.34, 0.62, g.mandible_size);
+  const hornMax = L.hornType === 'rostrum' ? 0.80 : L.hornType === 'stag' ? 1.15 : 0.95;
+  L.hornLen = g.horn_size < 0.12 ? 0 : unit * lerp(0.26, hornMax, g.horn_size);
+  L.mandible = g.mandible_size < 0.10 ? 0 : headR * lerp(0.52, 1.00, g.mandible_size);
 
   const rear = L.parts[0];
   const tailLen = unit * lerp(0, 0.44, g.tail_length);
@@ -359,29 +363,68 @@ function speckleLimb(ctx, leg, col, amount) {
   ctx.globalAlpha = 1;
 }
 
+/**
+ * A filled shape that follows a quadratic curve and tapers from w0 to w1.
+ * This is what separates a designed horn from a bent line: real silhouettes
+ * need mass at the base and a point at the tip, which a stroke can't give.
+ */
+function taperedCurve(ctx, p0, p1, p2, w0, w1, fill, steps = 16) {
+  const left = [], right = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps, u = 1 - t;
+    const x = u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x;
+    const y = u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y;
+    const dx = 2 * u * (p1.x - p0.x) + 2 * t * (p2.x - p1.x);
+    const dy = 2 * u * (p1.y - p0.y) + 2 * t * (p2.y - p1.y);
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const w = lerp(w0, w1, t) * 0.5;
+    left.push({ x: x + nx * w, y: y + ny * w });
+    right.push({ x: x - nx * w, y: y - ny * w });
+  }
+  ctx.beginPath();
+  ctx.moveTo(left[0].x, left[0].y);
+  for (const p of left) ctx.lineTo(p.x, p.y);
+  for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+}
+
 /* ---------------------------------------------------------------- wings -- */
 
 function drawSoftWings(ctx, L, col, phase, state) {
   if (L.wingPairs < 1 || L.wingType === 'elytra') return;
   const { g } = L;
   const flap = state === 'walk' || state === 'attack'
-    ? Math.sin(phase * TAU * (1 + g.wing_beat * 2.5)) * 0.14 : 0.02;
+    ? Math.sin(phase * TAU * (1 + g.wing_beat * 2.5)) * 0.13 : 0.02;
   const type = L.wingType;
-  const wl = L.unit * lerp(0.90, 1.70, L.wingArea) * (type === 'broad' ? 1.12 : 1);
+  const wl = L.unit * lerp(0.95, 1.80, L.wingArea);
   const anchor = L.parts[L.parts.length - 1];
 
-  for (let p = L.wingPairs - 1; p >= 0; p--) {
-    const scale = 1 - p * 0.22;
-    for (const side of [-1, 1]) {
+  // Blade count and spread per kind. The reference fans SEVERAL slim blades per
+  // side rather than laying down one big leaf — that fan is the whole look.
+  const spec = {
+    membranous: { blades: 2, spread: 0.34, width: 0.20, base: 0.92 },
+    broad:      { blades: 2, spread: 0.46, width: 0.40, base: 1.02 },
+    narrow:     { blades: 3, spread: 0.26, width: 0.13, base: 0.86 },
+    fan:        { blades: 4, spread: 0.30, width: 0.12, base: 0.80 },
+  }[type] ?? { blades: 2, spread: 0.34, width: 0.20, base: 0.92 };
+
+  const n = Math.min(spec.blades * L.wingPairs, 5);
+  for (const side of [-1, 1]) {
+    for (let i = n - 1; i >= 0; i--) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
       ctx.save();
-      ctx.translate(anchor.x - L.unit * 0.06, side * anchor.ry * 0.28);
-      ctx.rotate(side * (0.96 + flap + p * 0.30));
-      const len = wl * scale;
-      const wid = len * (type === 'narrow' ? 0.20 : type === 'broad' ? 0.42 : 0.28);
-      // Flat rounded blade — a stadium, matching the reference's grey wings.
-      ctx.fillStyle = p === 0 ? col.wing : col.wingLo;
+      ctx.translate(anchor.x - L.unit * 0.04, side * anchor.ry * 0.26);
+      // fan outward from the body, always trailing BACKWARD
+      ctx.rotate(side * (0.80 + flap + t * spec.spread * 2.2));
+      const len = wl * spec.base * lerp(1.0, 0.78, t);
+      const wid = len * spec.width;
+      ctx.fillStyle = i % 2 === 0 ? col.wing : col.wingLo;
+      // a long rounded blade: ellipse with its far end pushed out
       ctx.beginPath();
-      ctx.ellipse(len * 0.46, side * wid * 0.42, len * 0.52, wid, side * 0.30, 0, TAU);
+      ctx.ellipse(len * 0.48, side * wid * 0.30, len * 0.52, wid, side * 0.22, 0, TAU);
       ctx.fill();
       ctx.restore();
     }
@@ -443,31 +486,73 @@ function drawLegs(ctx, L, col, phase) {
 function drawHorn(ctx, L, col) {
   if (!L.hornLen) return;
   const h = L.head;
-  const x0 = h.x + h.rx * 0.30;
+  const x0 = h.x + h.rx * 0.52;
   const len = L.hornLen;
-  const w = Math.max(2, L.unit * 0.075);
+  const base = Math.max(3, L.unit * 0.115);      // horns want real mass
+  const fill = col.horn;
 
-  if (L.hornType === 'rhino') {
-    // one thick capsule sweeping up and forward
-    capsule(ctx, x0, 0, x0 + len * 0.62, -h.ry * 0.10, x0 + len, -h.ry * 0.34, w * 1.15, col.horn);
-  } else if (L.hornType === 'stag') {
-    // paired antlers with an inward hook and one notch — the reference's pincer
-    for (const side of [-1, 1]) {
-      capsule(ctx, x0, side * h.ry * 0.34,
-              x0 + len * 0.62, side * h.ry * 0.92,
-              x0 + len, side * h.ry * 0.34, w, col.horn);
-      capsule(ctx, x0 + len * 0.60, side * h.ry * 0.72,
-              x0 + len * 0.70, side * h.ry * 0.46,
-              x0 + len * 0.72, side * h.ry * 0.22, w * 0.62, col.horn);
+  switch (L.hornType) {
+    case 'rhino': {
+      // One heavy blade rising off the head and curving forward to a point.
+      taperedCurve(ctx,
+        { x: x0, y: 0 },
+        { x: x0 + len * 0.60, y: -h.ry * 0.20 },
+        { x: x0 + len, y: -h.ry * 0.44 },
+        base * 1.25, base * 0.12, fill);
+      break;
     }
-  } else if (L.hornType === 'rostrum') {
-    capsule(ctx, x0, 0, x0 + len * 0.6, 0, x0 + len, 0, w * 0.85, col.horn);
-  } else {
-    for (const dy of [-0.62, 0, 0.62]) {
-      const sc = dy === 0 ? 1 : 0.76;
-      capsule(ctx, x0, dy * h.ry * 0.44,
-              x0 + len * 0.5 * sc, dy * h.ry * 0.80,
-              x0 + len * sc, dy * h.ry * 0.96, w * 0.8, col.horn);
+    case 'stag': {
+      // A tuning-fork: one thick central column that splits into two arms,
+      // each curving out then hooking back in, with an inner tooth. This is the
+      // reference's pincer, and it needs the shared column to read as one organ.
+      const colLen = len * 0.42;
+      taperedCurve(ctx,
+        { x: x0, y: 0 }, { x: x0 + colLen * 0.6, y: 0 }, { x: x0 + colLen, y: 0 },
+        base * 1.5, base * 1.05, fill);
+      for (const side of [-1, 1]) {
+        taperedCurve(ctx,
+          { x: x0 + colLen * 0.9, y: side * base * 0.30 },
+          { x: x0 + len * 0.86, y: side * h.ry * 1.05 },
+          { x: x0 + len, y: side * h.ry * 0.30 },
+          base * 1.0, base * 0.10, fill);
+        // inner tooth
+        taperedCurve(ctx,
+          { x: x0 + len * 0.74, y: side * h.ry * 0.74 },
+          { x: x0 + len * 0.76, y: side * h.ry * 0.48 },
+          { x: x0 + len * 0.74, y: side * h.ry * 0.22 },
+          base * 0.55, base * 0.10, fill);
+      }
+      break;
+    }
+    case 'rostrum': {
+      // A long clean snout straight ahead, barely tapering.
+      taperedCurve(ctx,
+        { x: x0, y: 0 }, { x: x0 + len * 0.55, y: 0 }, { x: x0 + len, y: 0 },
+        base * 0.95, base * 0.42, fill);
+      break;
+    }
+    case 'crown': {
+      // Three prongs, the middle one longest — graphic and symmetric.
+      for (const dy of [-1, 0, 1]) {
+        const sc = dy === 0 ? 1 : 0.72;
+        taperedCurve(ctx,
+          { x: x0, y: dy * h.ry * 0.38 },
+          { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.78 },
+          { x: x0 + len * sc, y: dy * h.ry * 1.00 },
+          base * 0.85, base * 0.10, fill);
+      }
+      break;
+    }
+    default: {
+      // crescent — paired bull horns sweeping out and up, thick at the base.
+      for (const side of [-1, 1]) {
+        taperedCurve(ctx,
+          { x: x0, y: side * h.ry * 0.42 },
+          { x: x0 + len * 0.92, y: side * h.ry * 0.98 },
+          { x: x0 + len * 0.82, y: side * h.ry * 0.16 },
+          base * 1.15, base * 0.10, fill);
+      }
+      break;
     }
   }
 }
@@ -477,14 +562,44 @@ function drawHorn(ctx, L, col) {
 function drawMandibles(ctx, L, col, state, lunge) {
   if (!L.mandible) return;
   const h = L.head;
-  const open = state === 'attack' ? 0.30 + lunge * 0.7 : 0.18;
+  const open = state === 'attack' ? 0.34 + lunge * 0.7 : 0.16;
   const m = L.mandible;
-  const w = Math.max(1.6, L.unit * 0.050);
+  const w = Math.max(2, L.unit * 0.070);
+  const fill = col.limbLo;
+  const ax = h.x + h.rx * 0.60;
+
   for (const side of [-1, 1]) {
     ctx.save();
-    ctx.translate(h.x + h.rx * 0.66, side * h.ry * 0.30);
+    ctx.translate(ax, side * h.ry * 0.52);
     ctx.rotate(side * open);
-    capsule(ctx, 0, 0, m * 0.72, side * m * 0.34, m * 1.02, side * m * -0.06, w, col.limbLo);
+
+    switch (L.mandibleType) {
+      case 'tusk':
+        // straight tapered spikes angling out — simple and aggressive
+        taperedCurve(ctx, { x: 0, y: 0 },
+          { x: m * 0.6, y: side * m * 0.18 },
+          { x: m * 1.15, y: side * m * 0.30 },
+          w * 1.1, w * 0.12, fill);
+        break;
+      case 'forceps':
+        // long slender arms that hook hard inward at the tip
+        taperedCurve(ctx, { x: 0, y: 0 },
+          { x: m * 1.05, y: side * m * 0.62 },
+          { x: m * 1.30, y: side * m * -0.04 },
+          w * 0.85, w * 0.10, fill);
+        break;
+      case 'palps':
+        // two soft rounded lobes — the friendliest option, barely a weapon
+        fillEllipse(ctx, m * 0.42, side * m * 0.20, m * 0.44, m * 0.30, fill);
+        break;
+      default:
+        // pincer — a fat comma curving in, mass at the base
+        taperedCurve(ctx, { x: 0, y: 0 },
+          { x: m * 0.86, y: side * m * 0.50 },
+          { x: m * 1.06, y: side * m * 0.02 },
+          w * 1.3, w * 0.18, fill);
+        break;
+    }
     ctx.restore();
   }
 }
@@ -529,18 +644,69 @@ function drawTail(ctx, L, col, state, lunge) {
 /* ----------------------------------------------------------------- eyes -- */
 
 function drawEyes(ctx, L, col) {
+  const { g } = L;
+  // A pure-white eye with no iris reads as graphic; an iris reads as a face.
+  // Bright, saturated bugs get the iris — it's the cyan-on-red of the reference.
+  const hasIris = g.saturation > 0.35;
+
   for (const e of L.eyes) {
-    if (e.minor) {
-      fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil);
-      continue;
-    }
-    // white almond, long axis along the body — reads as a big cartoon eye
+    if (e.minor) { fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil); continue; }
+
     ctx.save();
     ctx.translate(e.x, e.y);
-    ctx.rotate(e.side * -0.22);
-    fillEllipse(ctx, 0, 0, e.ry, e.rx, col.sclera);
-    fillEllipse(ctx, e.ry * 0.22, e.side * e.rx * 0.10, e.rx * 0.58, e.rx * 0.58, col.iris);
-    fillEllipse(ctx, e.ry * 0.26, e.side * e.rx * 0.10, e.rx * 0.30, e.rx * 0.30, col.pupil);
+    // Tilt the long axis: the reference eyes lean, which is most of what stops
+    // them reading as two plain circles stuck on a ball.
+    ctx.rotate(e.side * -0.34);
+
+    const R = e.ry, r = e.rx;   // R along the tilt, r across
+
+    switch (L.eyeType) {
+      case 'round':
+        fillEllipse(ctx, 0, 0, R * 0.86, R * 0.86, col.sclera);
+        break;
+      case 'teardrop': {
+        // round at the inner end, drawn to a point at the outer end
+        ctx.beginPath();
+        ctx.moveTo(-R, 0);
+        ctx.quadraticCurveTo(-R * 0.10, -r * 1.15, R * 0.62, -r * 0.44);
+        ctx.quadraticCurveTo(R * 1.05, 0, R * 0.62, r * 0.44);
+        ctx.quadraticCurveTo(-R * 0.10, r * 1.15, -R, 0);
+        ctx.closePath();
+        ctx.fillStyle = col.sclera;
+        ctx.fill();
+        break;
+      }
+      case 'compound': {
+        // a big lens plus a cluster of ommatidia along the outer rim
+        fillEllipse(ctx, 0, 0, R * 0.84, r * 0.98, col.sclera);
+        ctx.fillStyle = col.iris;
+        ctx.globalAlpha = 0.55;
+        for (let i = 0; i < 7; i++) {
+          const a = -0.9 + (i / 6) * 1.8;
+          fillEllipse(ctx, Math.cos(a) * R * 0.46, Math.sin(a) * r * 0.46,
+                      r * 0.20, r * 0.20, col.iris);
+        }
+        ctx.globalAlpha = 1;
+        break;
+      }
+      default: {
+        // almond — pointed at BOTH ends, the reference's leaf shape
+        ctx.beginPath();
+        ctx.moveTo(-R, 0);
+        ctx.quadraticCurveTo(0, -r * 1.25, R, 0);
+        ctx.quadraticCurveTo(0, r * 1.25, -R, 0);
+        ctx.closePath();
+        ctx.fillStyle = col.sclera;
+        ctx.fill();
+        break;
+      }
+    }
+
+    if (hasIris && L.eyeType !== 'compound') {
+      const ir = Math.min(R, r) * 0.62;
+      fillEllipse(ctx, R * 0.20, 0, ir, ir, col.iris);
+      fillEllipse(ctx, R * 0.20, 0, ir * 0.50, ir * 0.50, col.pupil);
+    }
     ctx.restore();
   }
 }
