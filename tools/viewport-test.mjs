@@ -53,7 +53,7 @@ for (const c of CASES) {
       fillsStage: +(((cr.width*cr.height)/(st.width*st.height))*100).toFixed(0),
       sheet: document.body.classList.contains('sheet-collapsed') ? 'collapsed' : 'expanded',
       // Does the panel cover any of the PLAYABLE box? The canvas deliberately
-      // runs full bleed behind the sheet so the glass has something to refract;
+      // runs full bleed behind the sheet so the floor photograph is unbroken;
       // what must never be hidden is the area bugs can reach.
       occluded: (() => {
         const t = window.__terrarium;

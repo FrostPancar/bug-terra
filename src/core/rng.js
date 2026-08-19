@@ -14,6 +14,10 @@ export function makeRng(seed = 1) {
   rng.range = (lo, hi) => lo + rng() * (hi - lo);
   rng.int = (lo, hi) => Math.floor(rng.range(lo, hi + 1));
   rng.pick = (arr) => arr[rng.int(0, arr.length - 1)];
+  // The whole generator IS `a`, so `makeRng(rng.state())` resumes the exact
+  // same stream. That is what lets a saved run reload without the sequence
+  // silently restarting from the seed.
+  rng.state = () => a;
   // Box-Muller, unit normal.
   rng.normal = () => {
     let u = 0, v = 0;

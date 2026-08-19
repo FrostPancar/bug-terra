@@ -65,10 +65,22 @@ export function mutate(genome, rng, { rate = 0.12, scale = 0.10, locked = [], un
 
 /* ---------------------------------------------------------- selection ---- */
 
-/** Rank the population once; returns entries sorted best-first. */
-export function rank(population, preset = 'balanced') {
+/**
+ * Rank the population once; returns entries sorted best-first.
+ *
+ * `fitnessBonus` is the Mushroom Ring, and it is deliberately NOT a uniform
+ * shift — a bonus every genome gets cancels out of a tournament and changes
+ * nothing. `favoured` carries the indices of the bugs that were actually
+ * standing in the ring, decided by the caller, which is the only thing that
+ * knows where anything is.
+ */
+export function rank(population, preset = 'balanced', { fitnessBonus = 0, favoured = null } = {}) {
   return population
-    .map((genome, index) => ({ genome, index, ...evaluate(genome, preset) }))
+    .map((genome, index) => {
+      const e = evaluate(genome, preset);
+      const lifted = fitnessBonus && (!favoured || favoured.has(index));
+      return { genome, index, ...e, fitness: lifted ? e.fitness * (1 + fitnessBonus) : e.fitness };
+    })
     .sort((x, y) => y.fitness - x.fitness);
 }
 
@@ -122,24 +134,61 @@ export function breedGeneration(population, opts = {}) {
     selection = null,        // 'inverse' = the Compost Heap: breed from the worst
     locked = [],             // genes held steady (classification locks, Prism Chamber)
     unlocked = [],           // genes that mutate harder (classification unlocks)
+    rate = 1,                // generational turnover: Hive 1.6, Cave 0.65
+    fitnessBonus = 0,        // Mushroom Ring, applied only to `favoured`
+    favoured = [],           // indices that were standing in the ring
+    eligible = null,         // indices allowed to parent at all (Pollen Bloom)
+    bypassSelection = false, // the Nest: this pair, no tournament
+    pair = null,             // the two genomes the Nest bonded
   } = opts;
 
-  const ranked = rank(population, preset);
+  const ranked = rank(population, preset, {
+    fitnessBonus,
+    favoured: favoured.length ? new Set(favoured) : null,
+  });
   // Inverse selection preserves diversity by breeding what would otherwise be
   // discarded. Same tournament, reversed ordering — no special-cased path.
   const pool = selection === 'inverse' ? [...ranked].reverse() : ranked;
   const cross = CROSSOVERS[crossover] ?? blendCrossover;
-  const next = [];
 
-  for (let i = 0; i < Math.min(elitism, pool.length) && next.length < size; i++) {
+  // The Pollen Bloom requires a trait; the Cave waives every requirement. The
+  // caller decides who qualifies — it is the only thing that knows where each
+  // bug is standing — and hands the indices down.
+  const allow = eligible ? new Set(eligible) : null;
+  const parents = allow ? pool.filter((e) => allow.has(e.index)) : pool;
+  if (!parents.length) {
+    // Refusing is the honest answer: a structure that gates breeding on a trait
+    // nothing in the pool has should not quietly breed anyway.
+    return {
+      population: population.map((g) => ({ ...g })),
+      report: { preset, refused: 'nothing in the pool can breed here', turnover: 0, diversity: geneDiversity(population) },
+    };
+  }
+
+  // `rate` is generational turnover — how much of the pool a structure lets you
+  // replace this generation. At 1 this is exactly the old behaviour. Below it,
+  // part of the pool simply rides through unchanged (a slow cadence is fewer
+  // new animals, not worse ones); above it, even the elites get bred out.
+  const turnover = Math.max(0, Math.min(2, rate));
+  const effElitism = Math.max(0, Math.round(elitism * (turnover > 1 ? 2 - turnover : 1)));
+  const carried = Math.max(0, Math.round(size * (1 - Math.min(1, turnover))));
+
+  const next = [];
+  for (let i = 0; i < Math.min(effElitism, pool.length) && next.length < size; i++) {
     next.push({ ...pool[i].genome });
+  }
+  for (let i = 0; i < carried && next.length < size; i++) {
+    next.push({ ...pool[(effElitism + i) % pool.length].genome });
   }
   for (let i = 0; i < immigrants && next.length < size; i++) {
     next.push(randomGenome(rng));
   }
+  const bonded = bypassSelection && pair?.length === 2;
   while (next.length < size) {
-    const a = tournament(pool, rng, tournamentK);
-    const b = tournament(pool, rng, tournamentK);
+    // The Nest bonds two chosen bugs: same crossover, same mutation, no
+    // tournament in front of it.
+    const a = bonded ? pair[0] : tournament(parents, rng, tournamentK);
+    const b = bonded ? pair[1] : tournament(parents, rng, tournamentK);
     next.push(mutate(cross(a, b, rng), rng, {
       rate: mutationRate, scale: mutationScale, locked, unlocked,
     }));
@@ -156,6 +205,9 @@ export function breedGeneration(population, opts = {}) {
       bestGenome: ranked[0].genome,
       bestStats: ranked[0].stats,
       diversity: geneDiversity(population),
+      turnover,
+      bonded,
+      refused: null,
     },
   };
 }

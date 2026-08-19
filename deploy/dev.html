@@ -3,35 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0d0b09">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#a37a4f">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Terrarium — procedural bug genetics prototype</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230d0b09'/><g stroke='%23c9a227' stroke-width='2' stroke-linecap='round'><path d='M9 10 4 6M9 16 3 16M9 22 4 26M23 10 28 6M23 16 29 16M23 22 28 26'/></g><ellipse cx='16' cy='16' rx='6' ry='9' fill='%23c9a227'/><circle cx='16' cy='8' r='3.5' fill='%23e0bd4a'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23a37a4f'/><ellipse cx='16' cy='18' rx='7.5' ry='9' fill='%23d9452e'/><circle cx='16' cy='11' r='5.4' fill='%23fff'/><circle cx='16' cy='11' r='2.6' fill='%2317110d'/><g stroke='%23d9452e' stroke-width='2.6' stroke-linecap='round'><path d='M12 4.5 13.6 8M20 4.5 18.4 8'/></g></svg>">
 <style>
+  /* ====================================================================
+     Cut paper on a photograph.
+
+     The floor is a real photo of dirt (src/assets/dirt.jpg) and the bugs are
+     flat vector shapes with no outlines and no gradients. The chrome follows
+     the same rules: filled shapes, hard edges, and shadows that are a solid
+     offset rather than a blur — a sticker laid on the scene, not a pane of
+     glass floating over it.
+     ==================================================================== */
   :root {
-    --bg: #0d0b09; --panel: #16130f; --line: #2a241c;
-    --ink: #ece3d4; --muted: #9a8f7d; --accent: #c9a227;
+    /* pulled off the floor photograph and the bug art, not invented beside them */
+    --dirt: #a37a4f;
+    --dirt-deep: #6d4f30;
+    --red: #d9452e;
+    --blue: #2f52c4;
+    --yellow: #f2be3c;
+    --green: #1e7b5f;
+    --cream: #efe2c9;
+    --ink: #17110d;
+
+    --paper: #f3e7d0;
+    --paper-2: #e6d5b6;
+    --text: #2b1f14;
+    --muted: #8a7050;
+    --line: #d9c5a1;
+
     --sheet: 46vh;              /* expanded bottom-sheet height on phones */
     --sheet-now: 14px;          /* how much panel is below the dock, per layout */
     --safe-b: env(safe-area-inset-bottom, 0px);
     --safe-t: env(safe-area-inset-top, 0px);
     --safe-l: env(safe-area-inset-left, 0px);
     --safe-r: env(safe-area-inset-right, 0px);
+
+    /* the one shadow in the whole design: solid, offset, never blurred */
+    --drop: 0 4px 0 rgba(23, 17, 13, .26);
+    --drop-sm: 0 3px 0 rgba(23, 17, 13, .22);
   }
   * { box-sizing: border-box; }
 
   html, body {
     margin: 0; padding: 0;
-    background: var(--bg); color: var(--ink);
+    background: var(--dirt); color: var(--text);
     overscroll-behavior: none;           /* kill pull-to-refresh + rubber band */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
   body {
-    font: 14px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    /* Rounded and geometric, to match the bug art. System faces only — the
+       single-file build must not make a network request for a font. */
+    font: 500 14px/1.5 ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN",
+          Avenir, "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
     height: 100vh;                        /* fallback for older Safari */
     height: -webkit-fill-available;
     height: 100dvh;                       /* the one that actually behaves on iOS */
@@ -49,19 +79,20 @@
      the content box Phaser measures. Phaser reads the parent's clientHeight,
      which INCLUDES padding — so the canvas must mount one level in, or it
      would happily draw underneath the bottom sheet. */
-  /* No z-index / isolation here: the scrim multiplies against whatever is
-     painted beneath it in the shared stacking context, and that has to include
-     the canvas. */
   #stage {
     position: relative;
-    grid-column: 1; grid-row: 1;      /* explicit: #scrim is placed explicitly
-                                         too, and auto-placement runs after */
+    grid-column: 1; grid-row: 1;
     display: grid;
     grid-template-rows: 100%;
     overflow: hidden;
     min-width: 0; min-height: 0;
     touch-action: none;                   /* no pan/zoom stealing taps */
     padding: var(--safe-t) 0 0 var(--safe-l);
+    /* The same floor photograph as the canvas, set from main.js. Phaser's FIT
+       scaling letterboxes whenever the window is outside the world's clamped
+       aspect, and a flat tan band beside textured dirt is exactly the seam the
+       photo was meant to remove. */
+    background: var(--dirt) center / cover no-repeat;
   }
   #canvasHost {
     display: grid; place-items: center;
@@ -69,190 +100,196 @@
   }
   #canvasHost canvas { display: block; max-width: 100%; max-height: 100%; }
 
-  /* ------------------------------------------------------------ panel -- */
-  /* The scrim is the surface the panel text sits on — a black gradient in
-     MULTIPLY, so it crushes the scene beneath toward black instead of laying an
-     opaque card over it. It's a sibling of #stage (not a child of <aside>) on
-     purpose: mix-blend-mode composites against the nearest stacking context, so
-     nesting it inside a z-indexed panel would blend it against the panel and
-     the effect would vanish. */
-  #scrim {
-    grid-column: 1; grid-row: 1;
-    align-self: end; justify-self: stretch;
-    height: 0;
+  /* --------------------------------------------------------------- hud -- */
+  /* Floats over the terrarium. Only the controls themselves take pointers, so
+     a tap on bare dirt still selects the bug underneath it. */
+  #hud {
+    position: absolute; inset: 0; z-index: 6;
     pointer-events: none;
-    mix-blend-mode: multiply;
-    background: linear-gradient(to top,
-      #000 0%, #000 42%,
-      rgba(0,0,0,.95) 60%,
-      rgba(0,0,0,.74) 76%,
-      rgba(0,0,0,.38) 89%,
-      rgba(0,0,0,0) 100%);
-    transition: height .28s cubic-bezier(.4, 0, .2, 1);
+    padding: calc(14px + var(--safe-t)) calc(14px + var(--safe-r))
+             calc(14px + var(--safe-b)) calc(14px + var(--safe-l));
+  }
+  #hud > * { pointer-events: auto; }
+
+  /* ------------------------------------------------- generation badge -- */
+  /* The one number the terrarium is willing to show you: which generation you
+     are looking at. Everything about the ANIMALS is still words only. */
+  #genBadge {
+    position: absolute; top: calc(14px + var(--safe-t)); left: calc(14px + var(--safe-l));
+    width: 62px; height: 62px; border-radius: 50%;
+    background: var(--yellow);
+    box-shadow: var(--drop);
+    display: grid; place-items: center;
+    pointer-events: none;
+  }
+  #genBadgeNum {
+    font-size: 27px; font-weight: 800; line-height: 1;
+    color: var(--blue);
+    font-variant-numeric: tabular-nums;
+    transform-origin: 50% 50%;
+  }
+  #genBadgeNum.is-bumped { animation: pop .34s cubic-bezier(.34, 1.7, .5, 1); }
+  @keyframes pop { 0% { transform: scale(1); } 42% { transform: scale(1.32); } 100% { transform: scale(1); } }
+
+  /* the little eye clinging to the badge — the same eye the bugs wear */
+  #genEye {
+    position: absolute; right: -7px; bottom: 6px;
+    width: 23px; height: 23px; border-radius: 50%;
+    background: var(--red);
+    display: grid; place-items: center;
+  }
+  #genEye::before {
+    content: ''; width: 15px; height: 15px; border-radius: 50%; background: #fff;
+  }
+  #genEye::after {
+    content: ''; position: absolute; width: 7.5px; height: 7.5px;
+    border-radius: 50%; background: var(--ink);
+    /* the pupil sits low-left, which is what makes it read as looking at you */
+    transform: translate(-1px, 1px);
   }
 
+  /* the phase of the real-clock day, as a colour rather than a label */
+  #sunDot {
+    position: absolute; top: calc(15px + var(--safe-t)); left: calc(86px + var(--safe-l));
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--cream);
+    box-shadow: var(--drop-sm);
+    transition: background .6s linear;
+    pointer-events: none;
+  }
+
+  /* ------------------------------------------------------ flat buttons -- */
+  .chip {
+    -webkit-appearance: none; appearance: none;
+    border: 0; padding: 0; margin: 0;
+    /* the label under each button is positioned against ITS button, not the
+       HUD — without this all three stack in the same place */
+    position: relative;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    cursor: pointer;
+    touch-action: manipulation;
+    color: var(--cream);
+    box-shadow: var(--drop);
+    transition: transform .12s cubic-bezier(.34, 1.5, .5, 1), box-shadow .12s ease;
+  }
+  .chip svg {
+    width: 24px; height: 24px;
+    fill: currentColor; stroke: none;
+    pointer-events: none;
+  }
+  .chip.is-pressed { transform: translateY(4px); box-shadow: 0 0 0 rgba(23,17,13,.26); }
+  .chip:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  @media (hover: hover) { .chip:hover { transform: translateY(-1px); } }
+
+  #pause {
+    position: absolute; top: calc(14px + var(--safe-t)); right: calc(14px + var(--safe-r));
+    width: 62px; height: 62px;
+    background: var(--blue); color: var(--yellow);
+  }
+  #pause[aria-pressed="true"] { background: var(--green); }
+
+  /* the working controls, in a row along the bottom over the dirt */
+  #dock {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    /* +30 rather than +18: the labels hang BELOW each button, and at +18 they
+       clipped the sheet's rounded top edge on a phone. */
+    bottom: calc(var(--sheet-now) + 30px);
+    display: flex; gap: 20px; align-items: flex-start;
+    pointer-events: none;
+    transition: bottom .28s cubic-bezier(.4, 0, .2, 1);
+  }
+  #dock .chip { pointer-events: auto; width: 56px; height: 56px; }
+  #breed { background: var(--red); }
+  #ff { background: var(--green); }
+  #reseed { background: var(--cream); color: var(--dirt-deep); }
+
+  .chip span {
+    position: absolute; top: calc(100% + 7px); left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px; font-weight: 700; letter-spacing: .01em;
+    color: var(--cream); white-space: nowrap; pointer-events: none;
+    /* these labels sit on a photograph, so they carry their own contrast */
+    text-shadow: 0 2px 0 rgba(23, 17, 13, .55);
+  }
+
+  /* ------------------------------------------------------------ panel -- */
+  /* A sheet of paper laid on the dirt. Opaque, with the same hard shadow the
+     buttons use — the old multiply scrim was built to dissolve a dark panel
+     into a dark scene, and there is no dark scene any more. */
   aside {
     grid-column: 2;
-    border-left: 1px solid var(--line);
-    background: rgba(22, 19, 15, .88);
-    -webkit-backdrop-filter: blur(18px) saturate(1.15);
-    backdrop-filter: blur(18px) saturate(1.15);
+    background: var(--paper);
+    border-left: 3px solid var(--paper-2);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: calc(14px + var(--safe-t)) 14px calc(40px + var(--safe-b));
+    padding: calc(16px + var(--safe-t)) 16px calc(40px + var(--safe-b));
     min-height: 0;
   }
 
-  h1 { font-size: 15px; letter-spacing: .06em; text-transform: uppercase;
-       margin: 0 0 4px; color: var(--accent); }
-  h3 { font-size: 14px; margin: 0 0 2px; }
-  h4 { font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-       color: var(--muted); margin: 14px 0 6px; font-weight: 600; }
+  h1 { font-size: 16px; font-weight: 800; letter-spacing: .01em;
+       margin: 0 0 4px; color: var(--red); }
+  h3 { font-size: 15px; font-weight: 800; margin: 0 0 2px; color: var(--text); }
+  h4 { font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
+       color: var(--muted); margin: 14px 0 6px; font-weight: 800; }
   .muted { color: var(--muted); }
-  .small { font-size: 11px; }
-  .dead { color: #ff6b57; font-size: 11px; }
-  .kind { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
-          color: #0d0b09; background: var(--accent);
-          border-radius: 3px; padding: 2px 6px; margin-left: 6px;
-          vertical-align: middle; }
-  .envenomed { color: #9ad36b; }
+  .small { font-size: 11.5px; }
+  .dead { color: var(--red); font-size: 11px; font-weight: 800; }
+  .kind { font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+          color: var(--paper); background: var(--green);
+          border-radius: 999px; padding: 3px 8px; margin-left: 6px;
+          vertical-align: middle; font-weight: 800; }
+  .envenomed { color: var(--green); font-weight: 700; }
 
-  /* Not cards. Content sits directly on the surface, separated by rhythm and a
-     hairline rule rather than boxed off. */
   .block { padding: 0 0 12px; margin-bottom: 12px;
-           border: none; border-bottom: 1px solid rgba(255,255,255,.07); }
+           border: none; border-bottom: 2px solid var(--line); }
   .block:last-child { border-bottom: none; }
 
   .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
   .stat-grid div { display: flex; justify-content: space-between; gap: 6px; }
   .stat-grid span:first-child { color: var(--muted); }
-  #sun { width: 100%; height: 4px; border-radius: 2px; margin-top: 8px;
-         background: #333; transition: background .6s linear; }
+  .stat-grid b { font-variant-numeric: tabular-nums; }
 
   /* --------------------------------------------------------- controls -- */
   button, select, input[type=number] {
-    background: #221d16; color: var(--ink); border: 1px solid var(--line);
-    border-radius: 5px; padding: 9px 11px; font: inherit; cursor: pointer;
+    background: var(--paper-2); color: var(--text); border: 0;
+    border-radius: 10px; padding: 9px 12px; font: inherit; font-weight: 700;
+    cursor: pointer;
     min-height: 40px;                     /* comfortable touch target */
     touch-action: manipulation;           /* no 300ms delay, no double-tap zoom */
     -webkit-appearance: none; appearance: none;
+    box-shadow: var(--drop-sm);
   }
   select {
-    padding-right: 26px;
+    padding-right: 28px;
     background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
                       linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-    background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
     background-size: 5px 5px, 5px 5px;
     background-repeat: no-repeat;
   }
-  button:active { border-color: var(--accent); background: #2c251a; }
-  @media (hover: hover) { button:hover { border-color: var(--accent); } }
-  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button:active { transform: translateY(3px); box-shadow: none; }
+  button:disabled { opacity: .45; box-shadow: none; cursor: default; transform: none; }
+  @media (hover: hover) { button:not(:disabled):hover { background: var(--cream); } }
+  button:focus-visible, select:focus-visible, input:focus-visible {
+    outline: 3px solid var(--red); outline-offset: 2px;
+  }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
   .btns button { flex: 1 1 auto; white-space: nowrap; }
-
-  /* ------------------------------------------------- circular glass dial -- */
-  /* The dial floats OVER the terrarium rather than sitting on the panel.
-     backdrop-filter refracts whatever is painted behind the element, so on an
-     opaque panel there is nothing to bend — over the live scene there is. */
-  #dock {
-    position: absolute; z-index: 6;
-    left: 50%; transform: translateX(-50%);
-    bottom: calc(var(--sheet-now) + 16px);
-    display: grid;
-    grid-template-columns: repeat(4, auto);
-    gap: 16px;
-    justify-items: center;
-    padding: 0;
-    transition: bottom .28s cubic-bezier(.4, 0, .2, 1);
-    pointer-events: none;          /* only the buttons are hit targets */
-  }
-  #dock .glass-btn { pointer-events: auto; }
-  .glass-btn {
-    --d: 58px;
-    width: var(--d); height: var(--d);
-    min-height: var(--d);
-    padding: 0;
-    display: grid; place-items: center; gap: 0;
-    border-radius: 50%;                  /* the lens is a circle */
-    position: relative; isolation: isolate;
-    border: 1px solid rgba(255,255,255,.16);
-    background: rgba(236,227,212,.085); /* the tint the lens carries */
-    color: var(--ink);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.34),   /* top rim catch */
-      inset 0 -1px 0 rgba(0,0,0,.30),        /* bottom shade */
-      inset 0 0 18px rgba(255,255,255,.06),  /* lifts the dome out of the dark */
-      0 4px 16px rgba(0,0,0,.45);            /* float off the scene */
-    transition: transform .16s cubic-bezier(.4,0,.2,1),
-                box-shadow .16s ease, background .16s ease;
-  }
-  /* the crisp layer: icon + label ride on top of the refracted backdrop */
-  .glass-btn svg {
-    width: 21px; height: 21px;
-    fill: none; stroke: currentColor;
-    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
-    filter: drop-shadow(0 1px 1px rgba(0,0,0,.55));
-    pointer-events: none;
-  }
-  .glass-btn span {
-    position: absolute; top: calc(100% + 5px); left: 50%;
-    transform: translateX(-50%);
-    font-size: 10px; letter-spacing: .02em;
-    color: var(--ink); white-space: nowrap; pointer-events: none;
-    /* the labels sit on the live scene, so they need their own contrast */
-    text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.7);
-  }
-
-  .glass-btn:active {
-    transform: scale(.93);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.20),
-      inset 0 -1px 0 rgba(0,0,0,.34),
-      0 2px 7px rgba(0,0,0,.42);
-  }
-  @media (hover: hover) {
-    .glass-btn:hover {
-      background: rgba(236,227,212,.085);
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.38),
-        inset 0 -1px 0 rgba(0,0,0,.30),
-        0 6px 18px rgba(0,0,0,.42);
-    }
-  }
-  .glass-btn:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 3px;
-  }
-  /* toggled state — Pause reads as engaged */
-  .glass-btn[aria-pressed="true"] {
-    background: rgba(201,162,39,.20);
-    border-color: rgba(201,162,39,.55);
-    color: #f4dd93;
-  }
-  /* Safari/Firefox can't bend the live page (backdrop-filter: url() is
-     Chromium-only). They still frost + tint + edge-light, so it reads as
-     glass — lean on the rim a little harder there to compensate. */
-  .glass-btn[data-glass="frost"] {
-    border-color: rgba(255,255,255,.22);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.38),
-      inset 0 -1px 0 rgba(0,0,0,.32),
-      inset 0 0 14px rgba(255,255,255,.07),
-      0 4px 14px rgba(0,0,0,.38);
-  }
+  button.danger { background: var(--red); color: var(--paper); }
+  @media (hover: hover) { button.danger:not(:disabled):hover { background: #c33c27; } }
 
   .ffn-row { justify-content: flex-start; gap: 8px; }
   .ffn-row #ffN { margin-left: auto; }
 
-  @media (prefers-reduced-motion: reduce) {
-    .glass-btn, #dock { transition: none; }
-  }
-
   label { display: flex; align-items: center; justify-content: space-between;
-          gap: 10px; margin: 10px 0 0; color: var(--muted); font-size: 12px; }
-  label > b { color: var(--ink); min-width: 58px; text-align: right; }
+          gap: 10px; margin: 10px 0 0; color: var(--muted); font-size: 12.5px;
+          font-weight: 700; }
+  label > b { color: var(--text); min-width: 58px; text-align: right;
+              font-variant-numeric: tabular-nums; }
   input[type=range] {
-    flex: 1; min-width: 0; accent-color: var(--accent);
+    flex: 1; min-width: 0; accent-color: var(--red);
     height: 44px;                         /* full touch target, thin visual track */
     margin: 0; padding: 0;
     touch-action: manipulation; background: transparent;
@@ -263,18 +300,19 @@
      background — a 4px track clips the thumb's bottom half into a dome. */
   input[type=range]::-webkit-slider-runnable-track {
     height: 24px; border: none;
-    background: linear-gradient(#3a3228, #3a3228) center / 100% 4px no-repeat;
+    background: linear-gradient(var(--line), var(--line)) center / 100% 6px no-repeat;
+    border-radius: 3px;
   }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
     width: 22px; height: 22px; border-radius: 50%;
-    background: var(--accent); border: none; margin-top: 1px;
+    background: var(--red); border: none; margin-top: 1px;
   }
   input[type=range]::-moz-range-track {
-    height: 4px; border-radius: 2px; background: #3a3228; border: none;
+    height: 6px; border-radius: 3px; background: var(--line); border: none;
   }
   input[type=range]::-moz-range-thumb {
-    width: 22px; height: 22px; border: none; border-radius: 50%; background: var(--accent);
+    width: 22px; height: 22px; border: none; border-radius: 50%; background: var(--red);
   }
   @media (pointer: coarse) {
     input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: 0; }
@@ -285,33 +323,37 @@
   /* No stat bars and no gene chips live here any more — on purpose. The bug is
      described, not tabulated. See src/core/impressions.js. */
   .tells { list-style: none; margin: 6px 0 0; padding: 0; }
-  .tells li { position: relative; padding: 4px 0 4px 14px; font-size: 12.5px;
+  .tells li { position: relative; padding: 4px 0 4px 16px; font-size: 13px;
               line-height: 1.45; }
-  .tells li::before { content: '·'; position: absolute; left: 3px;
-                      color: var(--accent); }
-  .tells li.faint { color: var(--muted); }
+  .tells li::before {
+    content: ''; position: absolute; left: 2px; top: 11px;
+    width: 7px; height: 7px; border-radius: 50%; background: var(--red);
+  }
 
-  .facts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-  .fact { font-size: 10.5px; background: #1e1a14; border: 1px solid var(--line);
-          border-radius: 999px; padding: 3px 8px; color: var(--muted); }
-  .fact.trait { color: var(--accent); border-color: #4a3f20; }
+  .facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+  .fact { font-size: 11px; font-weight: 700; background: var(--paper-2);
+          border-radius: 999px; padding: 4px 10px; color: var(--muted); }
+  .fact.trait { color: var(--paper); background: var(--blue); }
 
-  .familiar { font-size: 11px; color: var(--muted); font-style: italic;
+  .familiar { font-size: 11.5px; color: var(--muted); font-style: italic;
               margin-top: 8px; }
-  .moments { font-size: 11px; color: var(--muted); margin-top: 6px;
-             padding-left: 14px; }
-  .unknown { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .moments { font-size: 11.5px; color: var(--muted); margin-top: 6px;
+             padding-left: 16px; }
+  .unknown { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .note { font-size: 11.5px; color: var(--red); font-weight: 700; margin: 6px 0 0; }
 
   .vet-row { display: flex; align-items: center; gap: 8px; margin-top: 8px;
              flex-wrap: wrap; }
   .vet-row button { flex: 0 0 auto; }
-  .vet-state { font-size: 11px; color: var(--muted); }
-  .vet-away { font-size: 11.5px; color: var(--muted); margin: 4px 0 0;
+  .vet-state { font-size: 11.5px; color: var(--muted); }
+  .vet-away { font-size: 12px; color: var(--muted); margin: 4px 0 0;
               padding-left: 14px; }
-  .vet-card { margin-top: 10px; padding: 10px; border: 1px solid var(--line);
-              border-radius: 12px; background:
-                radial-gradient(120% 90% at 50% 0%, #221c14 0%, #171310 70%); }
+  .vet-card { margin-top: 10px; padding: 12px; border: 0;
+              border-radius: 16px; background: var(--dirt);
+              box-shadow: var(--drop); }
   .vet-card canvas { image-rendering: auto; }
+  .vet-card .muted, .vet-card .unknown, .vet-card .familiar { color: var(--cream); }
+  .vet-card .fact { background: rgba(239, 226, 201, .22); color: var(--cream); }
 
   /* --------------------------------------------------- sheet handle ---- */
   #handle { display: none; }
@@ -322,57 +364,52 @@
   @media (max-width: 860px), (orientation: portrait) and (max-width: 1100px) {
     body { grid-template-columns: 100%; grid-template-rows: 100%; }
 
-    /* The canvas runs FULL BLEED behind the sheet on purpose: the glass
-       buttons refract whatever is behind them, so the terrarium has to be
-       there to bend. The bugs are fenced above the sheet in the scene
-       (scene.insetBottom), so nothing playable ever hides under it. */
     #stage {
       grid-column: 1; grid-row: 1;
       padding: var(--safe-t) var(--safe-r) 0 var(--safe-l);
     }
 
-    /* No card: no background, no border, no radius, no shadow. The panel is
-       just text and controls resting on the multiply scrim behind it. */
+    /* The sheet is a sheet of paper: opaque, rounded at the top, with the same
+       hard shadow every other control carries. The bugs are fenced above it in
+       the scene (scene.insetBottom), so nothing playable hides under it. */
     aside {
       grid-column: 1; grid-row: 1;
       align-self: end;
       width: 100%;
       max-height: var(--sheet);
-      border: none; border-radius: 0;
-      background: none;
-      -webkit-backdrop-filter: none; backdrop-filter: none;
-      box-shadow: none;
+      border: none;
+      border-radius: 22px 22px 0 0;
+      background: var(--paper);
+      box-shadow: 0 -4px 0 rgba(23, 17, 13, .22);
       padding: 0 16px calc(16px + var(--safe-b));
       transition: max-height .28s cubic-bezier(.4, 0, .2, 1);
       display: flex; flex-direction: column;
       z-index: 2;
     }
-    /* the scrim grows and shrinks with the sheet */
-    #scrim { height: calc(var(--sheet) + 20vh); }
-    body.sheet-collapsed #scrim { height: calc(54px + var(--safe-b) + 11vh); }
-    body.sheet-collapsed aside { max-height: calc(54px + var(--safe-b)); }
+    body.sheet-collapsed aside { max-height: calc(56px + var(--safe-b)); }
     :root, body { --sheet-now: var(--sheet); }
-    body.sheet-collapsed { --sheet-now: calc(54px + var(--safe-b)); }
+    body.sheet-collapsed { --sheet-now: calc(56px + var(--safe-b)); }
     #sheetBody { transition: opacity .2s ease; }
     body.sheet-collapsed #sheetBody { opacity: 0; pointer-events: none; }
 
     /* grab bar + always-visible summary */
     #handle {
       display: block; flex: 0 0 auto;
-      margin: 0 -16px; padding: 10px 16px 6px;
+      margin: 0 -16px; padding: 10px 16px 8px;
       background: transparent; border: none; width: calc(100% + 32px);
-      min-height: 0; border-radius: 0;
+      min-height: 0; border-radius: 22px 22px 0 0; box-shadow: none;
       position: sticky; top: 0; z-index: 2;
     }
+    #handle:active { transform: none; }
     #handle::before {
-      content: ''; display: block; width: 40px; height: 4px; margin: 0 auto 8px;
-      border-radius: 2px; background: #4a4136;
+      content: ''; display: block; width: 44px; height: 5px; margin: 0 auto 8px;
+      border-radius: 3px; background: var(--line);
     }
     #handleRow {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 10px; font-size: 12px; color: var(--muted);
+      gap: 10px; font-size: 12.5px; color: var(--muted); font-weight: 700;
     }
-    #handleRow b { color: var(--ink); }
+    #handleRow b { color: var(--text); font-variant-numeric: tabular-nums; }
     #chev { color: var(--muted); transition: transform .28s; font-size: 11px; }
     body.sheet-collapsed #chev { transform: rotate(180deg); }
 
@@ -387,24 +424,18 @@
     .lede { display: none; }
     .block { padding: 0 0 10px; margin-bottom: 10px; }
     .btns button { flex: 1 1 30%; }
-    .genes { max-height: 116px; overflow-y: auto; }
   }
 
   /* very short landscape phones — trade the sheet for a slim rail */
   @media (max-height: 430px) and (orientation: landscape) {
     body { grid-template-columns: minmax(0,1fr) 268px; }
-    /* Back to two real columns — the narrow rules above stacked both children
-       into column 1, which in a rail layout means the panel covers the canvas. */
     #stage { grid-column: 1; grid-row: 1; padding-bottom: 0; }
-    body.sheet-collapsed #stage { padding-bottom: 0; }
     aside {
       grid-column: 2; grid-row: 1;
       align-self: stretch; max-height: none;
       position: static; border-radius: 0;
-      border-top: none; border-left: 1px solid var(--line);
-      background: rgba(22, 19, 15, .74); box-shadow: none;
-      -webkit-backdrop-filter: blur(18px) saturate(1.15);
-      backdrop-filter: blur(18px) saturate(1.15);
+      border-left: 3px solid var(--paper-2);
+      background: var(--paper); box-shadow: none;
       padding: calc(10px + var(--safe-t)) 10px calc(20px + var(--safe-b));
       overflow-y: auto;
     }
@@ -412,52 +443,60 @@
     #handle { display: none; }
     #sheetBody { overflow: visible; opacity: 1; pointer-events: auto; }
     body.sheet-collapsed #sheetBody { opacity: 1; pointer-events: auto; }
-    h1 { display: block; font-size: 13px; margin-bottom: 8px; }
+    h1 { display: block; font-size: 14px; margin-bottom: 8px; }
     .lede { display: none; }
     /* 268px is tight — stack the stat pairs and shrink the buttons so
        "02:05 AM" and "Fast-fwd" stop wrapping onto a second line. */
     .stat-grid { grid-template-columns: 1fr; gap: 2px 8px; font-size: 12px; }
-    .block { padding: 8px; margin-bottom: 8px; }
+    .block { padding: 0 0 8px; margin-bottom: 8px; }
     .btns button { font-size: 12px; padding: 8px 6px; min-height: 38px; }
-    /* short landscape: the dock floats over the canvas, panel is beside it */
     body { --sheet-now: 8px; }
-    #dock { gap: 10px; }
-    .glass-btn { --d: 46px; }
-    .glass-btn svg { width: 17px; height: 17px; }
-    .glass-btn span { font-size: 9px; top: calc(100% + 3px); }
+    #dock { gap: 14px; }
+    #dock .chip { width: 46px; height: 46px; }
+    .chip svg { width: 19px; height: 19px; }
+    .chip span { font-size: 10px; top: calc(100% + 4px); }
+    #genBadge, #pause { width: 50px; height: 50px; }
+    #genBadgeNum { font-size: 21px; }
     #ffN { width: 52px; }
-    label { font-size: 11px; margin-top: 6px; }
+    label { font-size: 11.5px; margin-top: 6px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    aside, #chev, #stage { transition: none; }
+    aside, #chev, #dock, .chip, #genBadgeNum { transition: none; animation: none; }
   }
 </style>
 </head>
 <body>
   <div id="stage">
     <div id="canvasHost"></div>
-      <div class="dial" id="dock">
-          <button id="breed" class="glass-btn" aria-label="Breed one generation">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v3a4 4 0 0 0 4 4 4 4 0 0 1 4 4v7M16 3v3a4 4 0 0 1-4 4 4 4 0 0 0-4 4v7"/><path d="M9 7h6M9 17h6"/></svg>
-            <span>Breed</span>
-          </button>
-          <button id="ff" class="glass-btn" aria-label="Fast-forward generations">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 5 8 7-8 7zM13 5l8 7-8 7z"/></svg>
-            <span>Fast-fwd</span>
-          </button>
-          <button id="reseed" class="glass-btn" aria-label="New random population">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 3v5h-5"/></svg>
-            <span>Reseed</span>
-          </button>
-          <button id="pause" class="glass-btn" aria-label="Pause simulation" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
-            <span>Pause</span>
-          </button>
-        </div>
-    </div>
 
-  <div id="scrim" aria-hidden="true"></div>
+    <div id="hud">
+      <div id="genBadge" aria-hidden="true">
+        <b id="genBadgeNum">0</b>
+        <i id="genEye"></i>
+      </div>
+      <div id="sunDot" aria-hidden="true"></div>
+
+      <button id="pause" class="chip" aria-label="Pause simulation" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5h2.6v15H9zM12.4 4.5H15v15h-2.6z"/></svg>
+      </button>
+
+      <div id="dock">
+        <button id="breed" class="chip" aria-label="Breed one generation">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2a4.4 4.4 0 0 1 4.4 4.4c0 1.6-.9 3-2.2 3.8 2.7.8 4.6 3.2 4.6 6.1v3.3h-3v-3.3c0-2.1-1.7-3.8-3.8-3.8s-3.8 1.7-3.8 3.8v3.3h-3v-3.3c0-2.9 1.9-5.3 4.6-6.1a4.4 4.4 0 0 1-2.2-3.8A4.4 4.4 0 0 1 12 3.2zm0 3a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z"/></svg>
+          <span>Breed</span>
+        </button>
+        <button id="ff" class="chip" aria-label="Fast-forward generations">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 5.2 12 12l-8.6 6.8zM12.6 5.2 21.2 12l-8.6 6.8z"/></svg>
+          <span>Fast-fwd</span>
+        </button>
+        <button id="reseed" class="chip" aria-label="New random population">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.4c4.2 0 7.6 3.4 7.6 7.6s-3.4 7.6-7.6 7.6A7.6 7.6 0 0 1 4.6 13h3.1a4.5 4.5 0 1 0 1.5-4.7l2.3 2.3H4.2V3.4l2.4 2.4A7.5 7.5 0 0 1 12 4.4z"/></svg>
+          <span>Reseed</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <aside>
     <button id="handle" aria-label="Toggle control panel" aria-expanded="true">
@@ -482,7 +521,7 @@
         </div>
         <p class="muted small" id="trend">too early to say</p>
         <p class="muted small" id="spread">nothing to compare yet</p>
-        <div id="sun"></div>
+        <p class="note" id="breedNote" hidden></p>
       </div>
 
       <div class="block">
@@ -507,6 +546,15 @@
           <span class="vet-state" id="vetState">—</span>
         </div>
         <div id="vetAway"></div>
+      </div>
+
+      <div class="block" id="runBlock">
+        <h4>This run</h4>
+        <p class="muted small" id="saveNote">—</p>
+        <div class="vet-row">
+          <button id="forget" class="danger" type="button">Start over</button>
+          <span class="vet-state">clears everything you have learned</span>
+        </div>
       </div>
     </div>
   </aside>

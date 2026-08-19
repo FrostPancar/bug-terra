@@ -80,7 +80,15 @@ phrase too: *a stranger* → *starting to get a sense of it* → *you know its
 habits* → *few surprises left* → *you know this one*.
 
 Records are keyed by `genomeId`, a pure hash of the gene vector, and export to
-plain JSON for storage.
+plain JSON for storage — and that storage now exists. `src/sim/save.js` writes
+the whole run to `localStorage` on a debounce, so the impressions you earned are
+still there after a reload. Before that they were not, which made the earning
+loop a strange thing to ask of anyone.
+
+`training` also has a caller now: standing inside a Training Rock, Obstacle
+Course, Feeding Trough or Root Tangle for a full session advances the channel.
+It is the only way to earn `grip`, so before it was wired that phrase could not
+be reached at all.
 
 ---
 

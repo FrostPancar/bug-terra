@@ -43,8 +43,9 @@ is inlined.
 ```bash
 npm install        # only needed for the single-file build + tests
 npm run dev        # serves on http://localhost:5173
-npm test           # 14 tests over genes / stats / breeding
-npm run build      # regenerates dist/terrarium.html
+npm test           # 134 tests over genes / stats / breeding / classification /
+                   # objects / world / hidden / session
+npm run build      # re-embeds src/assets/ and regenerates dist/terrarium.html
 ```
 
 ---
@@ -60,6 +61,7 @@ npm run build      # regenerates dist/terrarium.html
 | New random population | `Reseed`, or `r` |
 | Change selection pressure | the `breeding for` dropdown |
 | Watch a full day in minutes | `time scale` slider (1 = real time) |
+| Throw the run away | `Start over` in the panel — it asks first |
 
 ---
 
@@ -67,8 +69,10 @@ npm run build      # regenerates dist/terrarium.html
 
 ### 1. Genetics — `src/core/genes.js`, `genes.schema.json`
 
-A genome is a flat object of **37 scalar genes** across six groups — body plan,
-limbs, wings, weapons/defence, sensory, and surface/colour. `GENE_ORDER` is the
+A genome is a flat object of **41 scalar genes** across six groups — body plan,
+limbs, wings, weapons/defence, sensory, and surface/colour. Four of them
+(`wing_type`, `mandible_type`, `horn_type`, `eye_type`) are categorical "kind"
+genes rather than continuous amounts. `GENE_ORDER` is the
 canonical vector order; crossover, serialization and any future GLB mapping all
 read it.
 
@@ -107,7 +111,8 @@ Sample formulas:
   bite. **attackRate** moves the opposite way — big jaws swing slower.
 - **flight** = 0 below a wing-area threshold; above it, wing loading vs. beat rate.
 
-Six fitness presets (`balanced`, `brawler`, `sprinter`, `tank`, `flier`, `ghost`)
+Seven fitness presets (`balanced`, `brawler`, `sprinter`, `tank`, `flier`,
+`ghost`, `venomous`)
 are pure functions of stats, swappable live from the HUD.
 
 ### 3. Breeding — `src/core/breeding.js`
@@ -124,9 +129,28 @@ Textbook GA, no neural nets:
 - **Diagnostics:** `geneDiversity()` returns mean normalized per-gene σ — 0 means
   the population has collapsed to clones.
 
+**What the terrarium feeds in.** `breedingModifiers()` reads the structures
+covering the breeding site at the moment the call runs, and `breedGeneration()`
+now consumes all of it:
+
+| Field | What it does |
+|---|---|
+| `rate` | generational turnover. Below 1 part of the pool rides through unchanged (a Cave is a slow cadence, not a worse one); above 1 even the elites get bred out. At exactly 1 the algorithm is byte-identical to what it was. |
+| `selection` | `'inverse'` — the Compost Heap breeds from the worst |
+| `mutationScale` | the Crucible's high-variance gamble |
+| `fitnessBonus` + `favoured` | the Mushroom Ring. Applied **only** to the bugs standing in it — a bonus everyone gets cancels out of a tournament and changes nothing |
+| `eligible` | who may parent at all. A Pollen Bloom requires the Winged trait; a Cave waives every requirement. If nothing qualifies, the call **refuses** and the generation does not advance |
+| `bypassSelection` + `pair` | the Nest, which bonds two bugs with no tournament in front of them |
+| `growthRate` | a well-planted plot supports a bigger brood, a starved one fewer |
+
+Only the scene knows where each bug is standing, so it decides eligibility and
+who was in the ring and hands indices down. `breedGeneration` stays a pure
+function of its arguments.
+
 All randomness runs through the seeded `mulberry32` in `src/core/rng.js`, so a
-run is reproducible from its seed. `evolve(pop, n, opts)` runs headlessly for
-tests and the fast-forward button.
+run is reproducible from its seed — and `rng.state()` lets a saved run resume
+the exact same stream rather than silently restarting it. `evolve(pop, n, opts)`
+runs headlessly for tests and the fast-forward button.
 
 ### 4. Physics — Matter.js via Phaser
 
@@ -141,8 +165,9 @@ Each bug is a circle body. Stats set the parameters and nothing else:
 | `vision` | target acquisition radius |
 | `camouflage` | how much that radius shrinks against *this* bug |
 
-Rocks are static bodies; plants and food are decor. World gravity is off — this
-is a top-down terrarium.
+World gravity is off — this is a top-down terrarium. There are no rock bodies
+any more: the floor is a photograph and the stones in it are in the image, so
+colliding with them would mean colliding with something the renderer never drew.
 
 ### 5. Animation — `src/sim/animator.js`
 
@@ -167,11 +192,51 @@ per-sprite tint (blended toward white so bugs stay legible after dark).
 
 `timeScale` is a debug lever only — at 1 it is exactly real time.
 
+### 7. Objects and plants — `src/sim/objects.js`, `src/sim/plants.js`
+
+Placeable structures and a plant lifecycle FSM (seed → sprout → growing →
+mature → spreading → declining → dead → cleared plot), gated by three upkeep
+meters (hydration, light, nutrients). **No object ever writes a gene or a
+stat** — a Grass Patch contributes a growth multiplier that breeding reads at
+the moment it runs, never an edit to an existing bug. See
+[OBJECTS.md](./OBJECTS.md).
+
+Standing inside a trainer's radius for a full session calls
+`Knowledge.trained()` — the third of the concept doc's three ways to learn a
+bug, and the only route to a `grip` phrase, since you cannot learn how well
+something plants itself by watching it. An Obstacle Course has to be *run*, not
+stood in. The gain lands on that one bug's derived stat block and never on its
+genome, which is exactly what "trains base stats directly, genes stay where they
+were" means; a Feeding Trough's wears off on a timer, a Training Rock's stays.
+
+### 8. Persistence — `src/sim/save.js`
+
+One versioned JSON blob in `localStorage`, written on a debounce and flushed on
+`visibilitychange`, `pagehide` and `beforeunload`. It carries the seed, the rng
+position, the generation, the live population, the preset, and every knowledge
+record.
+
+This is what makes the day/night cycle mean anything. The clock was always real,
+but before this a reload discarded the whole run — which is a strange thing to
+do to a design that asks the player to spend attention on an animal before it
+will tell them anything about it. Restored genomes go back through
+`normalizeGenome`, so a hand-edited or stale save cannot smuggle an illegal
+animal past the one rule. No storage at all is a supported state: the panel says
+so plainly rather than losing an hour of watching quietly.
+
+### 9. World — `src/world/`
+
+Per-player terrariums on a shared grid, connected by a destructible dirt zone.
+`DirtWorld` is the client half — predict locally, apply ops, reconcile —
+against a `LocalAuthority` stand-in that runs in-process; a real transport
+swaps in as one object. Chunks are implicit-solid until first dig, so an
+untouched dirt zone costs zero bytes. See [WORLD.md](./WORLD.md).
+
 ---
 
 ## Tests
 
-`npm test` — **111 tests**, all passing, across four files:
+`npm test` — **134 tests**, all passing, across six files:
 
 | File | Covers |
 |---|---|
@@ -180,6 +245,7 @@ per-sprite tint (blended toward white so bugs stay legible after dark).
 | `plants.test.js` | plant lifecycle, meters, objects (20) |
 | `world.test.js` | chunks, ops, grid, gates, discovery (29) |
 | `hidden.test.js` | the no-numbers rule, impressions, knowledge, vet (21) |
+| `session.test.js` | persistence, the training channel, breeding modifiers (23) |
 
 Highlights beyond the original genetics suite:
 
@@ -196,6 +262,15 @@ Highlights beyond the original genetics suite:
 - **The UI cannot render a number** — `main.js` and `src/ui/` are scanned for
   gene/stat imports, `snapshot()` for a leaked genome or stat block, and every
   impression phrase for a digit
+- **A run round-trips**, a corrupt save starts fresh instead of crashing into a
+  broken one, a save from another version is ignored, and no storage at all is a
+  supported state rather than an error
+- **`rate 1` is byte-identical to the old algorithm**, so wiring the modifiers in
+  could not quietly change breeding for anyone who has no structures placed
+- **A gate nothing satisfies refuses** and leaves the pool exactly as it was,
+  instead of breeding anyway
+- **A fitness bonus lifts only the favoured** — with nobody favoured it cannot
+  reorder the pool at all
 
 Browser matrices (need a static server on `:8899`):
 `npm run test:viewport` (6 viewports, occlusion-checked) and
@@ -239,6 +314,7 @@ src/sim/animator.js        animation state machine
 src/sim/dayNight.js        real-clock day/night + behaviour modifiers
 src/sim/bug.js             entity: stats -> body, animator, behaviour
 src/sim/knowledge.js       what the player has earned + the Vet Station
+src/sim/save.js            the run, kept across reloads
 src/sim/objects.js         placeable object catalog + field aggregation
 src/sim/plants.js          plant lifecycle FSM + three upkeep meters
 src/sim/terrarium.js       Phaser scene, decor, garden, generation control
@@ -247,14 +323,19 @@ src/world/grid.js          cell topology + spiral assignment
 src/world/gates.js         gateOpen / pvpEnabled and the entry rules
 src/world/discovery.js     falloff curve, dig power, borrowed holes
 src/world/index.js         DirtWorld client + LocalAuthority stand-in
-src/ui/glass.js            liquid-glass port (see THIRD-PARTY.md)
+src/ui/chrome.js           flat control behaviour (press, pause, badge)
+src/assets/dirt.jpg        the floor photograph
+src/assets/dirt.js         GENERATED data URI — see tools/embed-assets.mjs
 src/main.js                boot + HUD (cannot render a number)
 GENES.md                   full gene and archetype reference
 TAXONOMY.md                the classification tree, and what it resolved
 OBJECTS.md                 terrarium objects + the plant upkeep loop
 WORLD.md                   multiplayer world, dirt zone, sync authority
 HIDDEN.md                  the no-numbers rule and how it's enforced
-tests/*.test.js            111 tests across five files
+CONCEPT.md                 the plain-language pitch, no source-reading required
+DEPLOY.md                  build + deploy notes
+THIRD-PARTY.md             ported/vendored code and licences
+tests/*.test.js            134 tests across six files
 tools/build-single.mjs     bundles + inlines into dist/terrarium.html
 ```
 
@@ -275,7 +356,8 @@ in the JSON-spec → rigged-GLB pipeline means writing a
 
 - Fitness converges fast (~10 generations) because the presets are smooth and
   the search space is small. Lower `tournamentK` or raise `immigrants` to slow it.
-- Food pellets are drawn but not edible yet — energy only regenerates from rest.
+- Plants still accumulate `pendingYield` that nothing harvests — energy only
+  regenerates from rest. `harvest()` exists and has no caller.
 - Downed bugs stay on the field as static props until the next generation.
 - Combat is contact-only; there's no ranged or ambush behaviour beyond the
   camouflage detection penalty.
@@ -290,7 +372,9 @@ The terrarium reshapes itself to the screen rather than letterboxing a fixed
 **World sizing** — `src/sim/viewport.js` computes world dimensions from the
 viewport's aspect ratio at *constant area*, so a portrait phone gets a tall
 terrarium and a desktop gets a wide one, while bugs stay the same relative size
-in both. Aspect is clamped to 1:2 … 12:5 so extreme windows don't get silly.
+in both. Aspect is clamped to ~1:2.2 … 12:5 so extreme windows don't get silly —
+the low end sits at 0.45 rather than 0.5 so today's tall phones (~0.46) fill the
+stage instead of letterboxing against it.
 
 **Layout modes**
 
@@ -338,59 +422,64 @@ the controls.
 > **Tested in Chromium only.** WebKit couldn't be installed in the build
 > environment, so the Safari-specific CSS above is written to spec but has not
 > been run on a real WebKit engine. Worth a quick look on an actual iPhone.
+>
+> The Playwright matrices also need `npx playwright install chromium`; without
+> the browser binary they fail to launch rather than reporting a failure.
 
 ---
 
-## Glass controls
+## The look: cut paper on a photograph
 
-The four primary actions — Breed, Fast-forward, Reseed, Pause — are circular
-glass buttons in a dock that **floats over the terrarium**, not on the panel.
-That placement is functional, not decorative: `backdrop-filter` refracts whatever
-is painted behind an element, so on an opaque panel there is nothing to bend.
-Over the live scene, each lens genuinely bends the bugs and plants behind it.
+The floor is a real photograph of dirt — `src/assets/dirt.jpg` — and every rock,
+pebble and fleck of grit you can see is *in the image*. The scene draws none of
+them. The procedural scatter that used to sit there laid flat grey circles on
+top of photographed stones, which read exactly as badly as it sounds; deleting
+it removed a whole class of decor code and made the floor better at the same
+time.
 
-`src/ui/glass.js` is a vanilla port of the framework-free half of
-[`@samasante/liquid-glass`](https://github.com/samasante/liquid-glass) (MIT) —
-the upstream package is React-only and this app has no React. See
-[THIRD-PARTY.md](./THIRD-PARTY.md) for exactly what was ported and the licence.
+The photo is embedded as a data URI by `tools/embed-assets.mjs` and imported as
+a module. That keeps the headline of the single-file build honest — open
+`dist/terrarium.html` and there is still no server and no network — and it means
+dev, bundle and deploy all take exactly one code path to the same bytes. The
+`.jpg` stays the source of truth; `src/assets/dirt.js` is generated and should
+never be hand-edited.
 
-How it works: a rounded-rect signed-distance field is rasterized to a
-displacement map where R/G encode X/Y displacement around 128 and B carries a
-specular mask. That map drives `feDisplacementMap` in three passes at slightly
-different scales, giving chromatic aberration at the rim. Because the filter
-runs on the *backdrop*, the icon and label stay perfectly crisp on top.
+Everything drawn on top follows the bugs' own rules: **filled shapes, no
+outlines, no gradients, and one shadow — a solid offset, never a blur.** The
+palette lives twice, once as CSS custom properties in `index.html` and once as
+`PALETTE` in `src/sim/terrarium.js`, because the canvas and the DOM need it in
+different formats; both are pulled off the photograph and the bug art rather
+than invented beside them.
 
-All four buttons are the same circle, so they share **one** rasterized map and
-one SVG filter. The map is regenerated only when the button's box actually
-changes size (a `ResizeObserver` guards it), not per frame.
+The chrome is three things and no more:
 
-Optics are pushed past upstream's defaults — `strength 0.11`, `bend 0.4`,
-`dispersion 0.65` — because at 58px the default reads as a flat tint.
+| Where | What |
+|---|---|
+| top left | a yellow badge with the generation number, and a bug's eye |
+| top right | pause |
+| bottom | Breed · Fast-forward · Reseed |
 
-**Browser support.** `backdrop-filter: url()` is Chromium-only; that is a
-web-platform limit, not a shortcut. Chrome and Edge bend the live scene. Safari
-and Firefox fall back to frost + tint + edge-light, which still reads as glass,
-and the buttons carry `data-glass="frost"` so the CSS can lean on the rim a
-little harder there.
+The generation counter is the **only** number the game shows, and it is about
+the run rather than about any animal — the no-numbers rule is untouched, and
+`tests/hidden.test.js` still enforces it. The day/night phase is a coloured dot
+beside the badge instead of a label, because the sky's own colour is nearly
+white at midday and disappears against paper.
 
----
+Structures on the floor are drawn as damp worked earth with a wash of their
+category's colour, not as solid discs. At full opacity they read as stray UI
+someone left lying on the photograph.
 
-## The panel is not a card
+### What happened to the glass
 
-On narrow screens the panel has no background, border, radius or shadow. What it
-sits on is `#scrim` — a black gradient in `mix-blend-mode: multiply` that crushes
-the scene beneath it toward black rather than covering it. The terrarium stays
-visible through the top of the fade and dissolves into true black behind the
-text.
+`src/ui/glass.js` — the vanilla port of `@samasante/liquid-glass` — **has been
+removed**, along with the multiply scrim the dark panel needed. A lens that
+refracts the live scene behind a button is a genuinely nice instrument, and it
+is the wrong one for this design: there is no dark scene left to dissolve a
+panel into, and a glass dome in the middle of flat cut paper reads as a control
+surface borrowed from another app.
 
-The scrim is a **sibling of `#stage`, not a child of `<aside>`** — `mix-blend-mode`
-composites against the nearest stacking context, so nesting it inside a
-z-indexed panel would blend it against the panel and the effect would vanish.
-For the same reason `#stage` and `#scrim` both claim their grid cell explicitly:
-explicitly-placed items are placed before auto-placed ones, so leaving `#stage`
-to auto-placement pushed it into the panel column.
-
-Swipe up anywhere on the panel to reveal it, swipe down to dismiss. The gesture
-is only claimed once it's clearly vertical and clearly a drag, so it never
-fights the panel's own scrolling or a tap on a control; the grab bar still works
-as a tap toggle for accessibility.
+`src/ui/chrome.js` replaces it and is much smaller: press feedback that survives
+a touch (`:active` is unreliable on iOS), the pause button's two states, and the
+squash the generation badge does when it changes. The panel is now an opaque
+sheet of paper with a rounded top and the same hard shadow every other control
+carries.

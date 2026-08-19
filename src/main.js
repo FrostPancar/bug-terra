@@ -3,7 +3,8 @@
 import { TerrariumScene, WORLD } from './sim/terrarium.js';
 import { computeWorld, tierSettings, isTouchDevice, setViewport } from './sim/viewport.js';
 import { FITNESS } from './core/stats.js';
-import { glassify, supportsLensBackdrop } from './ui/glass.js';
+import { pressable, setPaused, bump } from './ui/chrome.js';
+import { DIRT_URI } from './assets/dirt.js';
 
 // NOTE: this module deliberately imports no gene list and no stat list. The
 // panel is not given the vocabulary to print a gene value or a stat, so it
@@ -17,6 +18,11 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
 const stage = $('stage');
 const canvasHost = $('canvasHost');
 const touch = isTouchDevice();
+
+// The stage sits behind the canvas and shows through wherever FIT letterboxes.
+// Painting it with the same floor photograph makes that band disappear instead
+// of reading as a flat strip of the wrong brown.
+stage.style.backgroundImage = `url("${DIRT_URI}")`;
 
 /* Size the world to the stage's real box, not the window — the bottom sheet
    and the notch both eat into it. */
@@ -39,7 +45,7 @@ const game = new Phaser.Game({
   parent: 'canvasHost',
   width: WORLD.w,
   height: WORLD.h,
-  backgroundColor: '#120d09',
+  backgroundColor: '#a37a4f',
   physics: { default: 'matter', matter: { gravity: { y: 0 }, debug: false } },
   scale: {
     mode: Phaser.Scale.FIT,
@@ -60,8 +66,13 @@ game.events.once('ready', () => {
   window.__terrarium = { game, scene, WORLD };
   scene.events.on('state', render);
   scene.events.on('selected', () => { if (isSheetMode()) expandSheet(); });
-  wire();
-  wireViewport();
+  // `ready` fires when the GAME boots, which is now before the scene has
+  // created — the floor photograph put create() behind the loader. Wiring the
+  // HUD against a scene with no world yet resized a terrarium that did not
+  // exist, so wait for create() unless it has already run.
+  const boot = () => { wire(); wireViewport(); };
+  if (scene.terrariumBounds) boot();
+  else scene.events.once('create', boot);
 });
 
 /* ------------------------------------------------------------ render ---- */
@@ -69,21 +80,40 @@ game.events.once('ready', () => {
 let lastSel = null;
 let lastVet = null;
 
+let lastGen = null;
+
 function render(s) {
   $('clock').textContent = s.clock;
+  // The phase is named in ink and coloured by the dot on the terrarium — the
+  // sky's own colour is near-white at midday and vanishes on paper.
   $('phase').textContent = s.env.label;
-  $('phase').style.color = s.env.css;
   $('gen').textContent = s.generation;
   $('alive').textContent = `${s.alive}/${s.total}`;
   $('seedOut').textContent = s.seed;
   $('trend').textContent = s.trend;
   $('spread').textContent = s.diversity;
-  $('sun').style.background = s.env.css;
+  // The day/night phase reads as a colour on the dirt rather than a bar.
+  $('sunDot').style.background = s.env.css;
+
+  // The badge over the terrarium — the generation you are looking at, and the
+  // only number the game shows. It squashes when it moves so a fast-forward is
+  // something you see rather than something you check.
+  if (s.generation !== lastGen) {
+    lastGen = s.generation;
+    $('genBadgeNum').textContent = s.generation;
+    bump($('genBadgeNum'));
+  }
+
+  // A refused breed is a real outcome and says so; anything else clears it.
+  const note = $('breedNote');
+  note.hidden = !s.breedNote;
+  if (s.breedNote) note.textContent = s.breedNote;
+
+  renderSaveNote(s);
 
   // collapsed-sheet summary
   $('hClock').textContent = s.clock;
   $('hPhase').textContent = s.env.label;
-  $('hPhase').style.color = s.env.css;
   $('hGen').textContent = s.generation;
   $('hAlive').textContent = `${s.alive}/${s.total}`;
 
@@ -124,6 +154,24 @@ function render(s) {
     ${tells}
     <p class="familiar">${esc(b.familiarity)}</p>
     ${moments}`;
+}
+
+/**
+ * Whether this run is being kept. Said plainly rather than assumed: private
+ * browsing and a locked-down profile both leave storage unavailable, and
+ * quietly losing an hour of watching would be the worst possible surprise.
+ */
+let lastSave = null;
+function renderSaveNote(s) {
+  const sig = `${s.persists}|${s.resumed}`;
+  if (sig === lastSave) return;
+  lastSave = sig;
+  $('saveNote').textContent = !s.persists
+    ? 'This browser will not let the terrarium save. Closing the tab loses it.'
+    : s.resumed
+      ? 'Picked up where you left off. It keeps itself saved from here.'
+      : 'Kept automatically. Close the tab and it will be here when you get back.';
+  $('forget').disabled = !s.persists;
 }
 
 /** The vet block: who is away, how long, and whether this one can go in. */
@@ -250,12 +298,12 @@ function wireSwipe() {
 
   const end = () => { tracking = false; };
 
-  for (const el of [sheet, $('scrim')]) {
-    el.addEventListener('touchstart', start, { passive: true });
-    el.addEventListener('touchmove', move, { passive: false });
-    el.addEventListener('touchend', end, { passive: true });
-    el.addEventListener('touchcancel', end, { passive: true });
-  }
+  // Only the sheet itself listens now — the multiply scrim it used to share
+  // the gesture with is gone along with the dark panel it was built to hide.
+  sheet.addEventListener('touchstart', start, { passive: true });
+  sheet.addEventListener('touchmove', move, { passive: false });
+  sheet.addEventListener('touchend', end, { passive: true });
+  sheet.addEventListener('touchcancel', end, { passive: true });
 }
 
 /* ---------------------------------------------------- viewport sync ----- */
@@ -314,12 +362,21 @@ function wireViewport() {
     ro.observe(document.querySelector('aside'));
   }
 
+  // The sheet's own transition ending is the one signal that is guaranteed to
+  // mean "the panel has stopped moving". The ResizeObserver above fires DURING
+  // the animation, so without this the bug fence can settle on a mid-transition
+  // measurement and leave the play area the wrong height.
+  document.querySelector('aside').addEventListener('transitionend', (e) => {
+    if (e.propertyName === 'max-height') queueResize(0);
+  });
+
   window.addEventListener('resize', onChange, { passive: true });
   window.addEventListener('orientationchange', () => queueResize(350), { passive: true });
   window.visualViewport?.addEventListener('resize', onChange, { passive: true });
 
-  // start collapsed on a phone so the terrarium gets the screen
-  if (isSheetMode() && window.innerHeight < 780) collapseSheet();
+  // Start collapsed whenever the panel is a sheet: the terrarium is the thing
+  // worth looking at, and the summary row still carries the clock and the count.
+  if (isSheetMode()) collapseSheet();
   syncViewport();
 }
 
@@ -347,16 +404,24 @@ function wire() {
   $('breed').onclick = () => scene.breed();
   $('ff').onclick = () => scene.fastForward(Number($('ffN').value) || 10);
   $('reseed').onclick = () => scene.reseed();
-  const PAUSE_ICON = 'M9 5v14M15 5v14';
-  const PLAY_ICON = 'M7 4l12 8-12 8z';
   $('pause').onclick = (e) => {
     const running = scene.matter.world.enabled;
     scene.matter.world.enabled = !running;
-    const btn = e.currentTarget;
-    btn.setAttribute('aria-pressed', String(running));
-    btn.setAttribute('aria-label', running ? 'Resume simulation' : 'Pause simulation');
-    btn.querySelector('svg path').setAttribute('d', running ? PLAY_ICON : PAUSE_ICON);
-    btn.querySelector('span').textContent = running ? 'Resume' : 'Pause';
+    setPaused(e.currentTarget, running);
+  };
+
+  // Starting over throws the saved run away, so it asks first — an hour of
+  // watching is exactly the thing you cannot get back.
+  $('forget').onclick = () => {
+    const ok = window.confirm(
+      'Start over? This clears the terrarium and everything you have learned about it.');
+    if (!ok) return;
+    scene.forgetRun();
+    lastSel = null;
+    lastVet = null;
+    lastSave = null;
+    vetCard = null;
+    $('vetAway').innerHTML = '';
   };
 
   $('pop').value = scene.popSize;
@@ -387,6 +452,9 @@ function wire() {
   // clock, so it's correct again the instant we resume.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      // Backgrounding a tab is the most common way a run ends, so it is also
+      // the most important moment to write it down.
+      scene.flushSave();
       game.scene.pause('terrarium');
     } else {
       game.scene.resume('terrarium');
@@ -394,43 +462,15 @@ function wire() {
     }
   });
 
+  // pagehide fires on iOS where unload does not. Both are best-effort; the
+  // periodic autosave is what actually guarantees the run survives.
+  window.addEventListener('pagehide', () => scene.flushSave());
+  window.addEventListener('beforeunload', () => scene.flushSave());
+
   // Belt and braces against iOS double-tap zoom on the canvas.
   stage.addEventListener('dblclick', (e) => e.preventDefault());
   stage.addEventListener('gesturestart', (e) => e.preventDefault());
 
-  wireGlass();
-}
-
-/* ------------------------------------------------------------- glass ---- */
-
-/**
- * Rasterizing a lens needs the button's real box, so this runs after layout.
- * Every button is the same circle, so all four share one filter and one map.
- */
-function wireGlass() {
-  // A 58px button is small, so push the bend and the rim past the library's
-  // default — at this size the default reads as a flat tint.
-  const OPTICS = { strength: 0.11, bend: 0.4, dispersion: 0.65, curvature: 0.55,
-                   frost: 1.2, sheen: 0.42, glow: 0.16 };
-  const install = () => glassify('.glass-btn', { optics: OPTICS });
-  if (document.fonts?.ready) document.fonts.ready.then(install);
-  requestAnimationFrame(() => requestAnimationFrame(install));
-
-  // The dial's diameter changes between the sheet and rail layouts; re-fit when
-  // it does, but only on a real size change — regenerating the map is not free.
-  if (typeof ResizeObserver === 'function') {
-    let last = '';
-    const ro = new ResizeObserver((entries) => {
-      const sig = entries.map((e) => `${Math.round(e.contentRect.width)}`).join(',');
-      if (sig === last) return;
-      last = sig;
-      install();
-    });
-    for (const b of document.querySelectorAll('.glass-btn')) ro.observe(b);
-  }
-
-  if (!supportsLensBackdrop()) {
-    // Not a failure — Safari/Firefox get frost + tint + rim, just no live bend.
-    console.info('[glass] backdrop-filter: url() unsupported; using frost fallback');
-  }
+  // Press feedback that survives a touch — see src/ui/chrome.js.
+  pressable('.chip');
 }

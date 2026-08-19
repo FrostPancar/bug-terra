@@ -96,6 +96,46 @@ export class Bug {
     this.poison = 0;
     this.distance = 0;
     this.alive = true;
+    // Training state. `trainer`/`trainT` are the session in progress; `buffs`
+    // are the temporary gains a Feeding Trough leaves behind.
+    this.trainer = null;
+    this.trainT = 0;
+    this.buffs = [];
+    this.sessions = 0;
+  }
+
+  /**
+   * A completed training session at a Training Rock, Obstacle Course, Feeding
+   * Trough or Root Tangle.
+   *
+   * This is explicitly allowed by the objects doc's hard line: nothing here
+   * writes a GENE. `this.genome` is untouched, `computeStats` stays the pure
+   * read it always was, and the gain lands on this instance's own derived stat
+   * block — which is exactly what "trains base stats directly, genes stay
+   * where they were" means.
+   */
+  train(gains = {}, decaySeconds = 0) {
+    for (const [key, amount] of Object.entries(gains)) {
+      if (typeof this.stats[key] !== 'number') continue;
+      const before = this.stats[key];
+      this.stats[key] = Math.min(100, before + amount);
+      const gained = this.stats[key] - before;
+      // A Feeding Trough is temporary on purpose — a full bug is a better bug
+      // until it is hungry again. A Training Rock's gain simply stays.
+      if (decaySeconds > 0 && gained > 0) this.buffs.push({ key, amount: gained, left: decaySeconds });
+    }
+    this.sessions += 1;
+  }
+
+  /** Let temporary gains expire. Exactly what was added is what comes back off. */
+  tickBuffs(dt) {
+    if (!this.buffs.length) return;
+    this.buffs = this.buffs.filter((b) => {
+      b.left -= dt;
+      if (b.left > 0) return true;
+      this.stats[b.key] = Math.max(0, this.stats[b.key] - b.amount);
+      return false;
+    });
   }
 
   pickWanderPoint() {
@@ -152,6 +192,7 @@ export class Bug {
     if (!this.alive) return;
     const env = this.scene.env;
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+    this.tickBuffs(dt);
 
     // venom tick
     if (this.poison > 0) {

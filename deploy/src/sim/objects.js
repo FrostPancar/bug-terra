@@ -278,6 +278,27 @@ export function fieldAt(objects, x, y) {
 }
 
 /**
+ * The trainer this point is standing in, nearest first. Only objects that
+ * actually declare `trains` count — everything else is scenery as far as
+ * training is concerned.
+ *
+ * Training is the third way the concept doc says you learn a bug (watch, fight,
+ * train), and it is the ONLY route to a `grip` phrase: you cannot learn how
+ * well something plants itself by staring at it.
+ */
+export function trainerAt(objects, x, y) {
+  let best = null;
+  let bestD = Infinity;
+  for (const o of objects) {
+    if (!o.spec.trains) continue;
+    if (!within(o, x, y)) continue;
+    const d = (o.x - x) ** 2 + (o.y - y) ** 2;
+    if (d < bestD) { bestD = d; best = o; }
+  }
+  return best;
+}
+
+/**
  * Modifiers a breed call should read at the moment it runs. Returned as plain
  * multipliers — nothing here is stored on a bug, and nothing is a gene.
  */

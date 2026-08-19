@@ -6,7 +6,10 @@
 const TARGET_AREA = 1280 * 800;
 
 /** Aspect clamps — beyond these the world stops following the window. */
-const MIN_ASPECT = 0.5;   // taller than 1:2 (very narrow phone) stops here
+// 0.45 rather than 0.5 so the current crop of tall phones lands INSIDE the
+// clamp: 430x932, 393x852, 375x812 and 412x915 are all ~0.46, and at 0.5 every
+// one of them got letterboxed against the stage instead of filling it.
+const MIN_ASPECT = 0.45;  // taller than ~1:2.2 (very narrow phone) stops here
 const MAX_ASPECT = 2.4;   // wider than 12:5 (ultrawide) stops here
 
 /**
@@ -45,10 +48,16 @@ export function deviceTier(vw, vh) {
   return 'desktop';
 }
 
+/**
+ * `rocks`, `food` and `speckles` used to live here to size a procedural decor
+ * scatter. The floor is a photograph now and already carries all three, so the
+ * only densities left are the ones that are still actually drawn: how many
+ * animals, and how big a starter garden.
+ */
 export const TIER_DEFAULTS = {
-  phone:   { population: 7,  rocks: 4, plants: 8,  food: 6,  speckles: 320 },
-  tablet:  { population: 10, rocks: 6, plants: 12, food: 8,  speckles: 600 },
-  desktop: { population: 12, rocks: 7, plants: 16, food: 10, speckles: 900 },
+  phone:   { population: 7,  garden: 3 },
+  tablet:  { population: 10, garden: 4 },
+  desktop: { population: 12, garden: 5 },
 };
 
 /** Defaults to the real viewport — pass explicit dimensions only to override. */

@@ -151,7 +151,17 @@ simply not be in the list you pass it.
 ## Where the wiring lands
 
 `TerrariumScene.buildGarden()` creates the `PlantBed` and a starter garden.
-`update()` ticks it beside the day/night read. `breed()` calls
-`breedingModifiers` at the breeding site and passes `mutationScale`, `selection`
-and the classification's `locked`/`unlocked` gene lists into `breedGeneration` —
-all of which change how the next draw is taken, and none of which write a gene.
+`update()` ticks it beside the day/night read, and `trainingTick()` runs there
+too — a bug inside a trainer's radius for a full session advances the training
+channel and takes the non-genetic gain.
+
+`breed()` calls `breedingModifiers` at the breeding site and passes **every**
+field it returns into `breedGeneration`: `rate` as generational turnover,
+`selection`, `mutationScale`, `fitnessBonus` scoped to the bugs actually
+standing in the ring, `growthRate` as the size of the brood, the Nest's bonded
+pair, and the eligibility set a `requires` gate implies. All of them change how
+the next draw is taken; none of them writes a gene.
+
+Lineage locks now apply on their own rather than waiting on a Prism Chamber —
+holding its identity genes steady is what a taxon *is*. The Prism Chamber's
+contribution is to pin the loosened genes too.

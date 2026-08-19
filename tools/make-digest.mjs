@@ -75,13 +75,13 @@ viewport policy.`,
     'src/sim/viewport.js',
   ]);
 
-build('03-ui-and-glass.md', 'bug-terra — UI, glass controls and boot',
+build('03-ui-and-chrome.md', 'bug-terra — UI, chrome and boot',
   `${INTRO}\n\nThis document holds the page shell, the HUD wiring, and the
-vanilla port of the liquid-glass lens used by the circular control dock.`,
+flat cut-paper controls that sit over the terrarium.`,
   [
     'index.html',
     'src/main.js',
-    'src/ui/glass.js',
+    'src/ui/chrome.js',
   ]);
 
 build('04-tests-and-tooling.md', 'bug-terra — tests, tooling and config',

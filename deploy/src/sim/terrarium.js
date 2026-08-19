@@ -6,8 +6,11 @@ import { breedGeneration, rank } from '../core/breeding.js';
 import { seededPopulation } from '../core/archetypes.js';
 import { makeRng } from '../core/rng.js';
 import { PlantBed } from './plants.js';
-import { placeObject, fieldAt, breedingModifiers } from './objects.js';
+import { placeObject, fieldAt, breedingModifiers, trainerAt } from './objects.js';
 import { Knowledge, sendToVet, vetStatus, isAway, VET } from './knowledge.js';
+import { Autosave, loadSave, clearSave, canPersist } from './save.js';
+import { normalizeGenome } from '../core/genes.js';
+import { DIRT_URI } from '../assets/dirt.js';
 import { vetReadout } from '../core/impressions.js';
 import { drawBug } from '../render/bugArt.js';
 import {
@@ -17,8 +20,36 @@ import {
 /** Mutable — the world reshapes itself to the viewport. Read, never cache. */
 export const WORLD = { w: 1280, h: 800 };
 
-/** Inset from the world edge to the glass wall, scaled to the smaller side. */
+/** Inset from the world edge to the wall, scaled to the smaller side. */
 const wallInset = () => Math.max(12, Math.round(Math.min(WORLD.w, WORLD.h) * 0.03));
+
+/**
+ * The terrarium's palette — flat, saturated, cut-paper, pulled off the floor
+ * photograph and the bug art rather than invented alongside them. The HUD in
+ * index.html holds the same values in CSS; these are the ones the canvas needs.
+ */
+export const PALETTE = {
+  ground: 0xa37a4f,   // the photograph's average, used while it decodes
+  red:    0xd9452e,
+  blue:   0x2f52c4,
+  yellow: 0xf2be3c,
+  green:  0x1e7b5f,
+  cream:  0xefe2c9,
+  ink:    0x17110d,
+  leaf:   0x6f7f43,
+  leafDark: 0x4e6234,
+  wilt:   0xb08a3c,
+};
+
+/** One flat colour per object category, so a glance tells you what it is. */
+const CATEGORY_COLOUR = {
+  breeding: 0x2f52c4,
+  gene: 0x7c4bb8,
+  stat: 0xd9452e,
+  traversal: 0xf2be3c,
+  environment: 0x1e7b5f,
+  plant: 0x6f7f43,
+};
 
 /** 0xRRGGBB lerp — used for the wilting palette shift. */
 function mixToward(a, b, k) {
@@ -53,13 +84,25 @@ export class TerrariumScene extends Phaser.Scene {
     this.atVet = [];
     this.clock = 0;                 // seconds of sim time, for vet timers
     // World px hidden behind the bottom sheet. The canvas draws full bleed so
-    // the glass buttons have live terrarium to refract; the playable box stops
-    // short of it so no bug is ever unreachable under the panel.
+    // the floor photograph is unbroken behind the paper sheet; the playable box
+    // stops short of it so no bug is ever unreachable under the panel.
     this.insetBottom = 0;
+    // A run survives the tab closing. Without this the day/night cycle is the
+    // only thing that carries over, and every impression the player earned is
+    // discarded on refresh — see sim/save.js.
+    this.autosave = new Autosave(() => this.serialize());
+    this.resumed = false;
+  }
+
+  /**
+   * The floor is a photograph, embedded as a data URI so the single-file build
+   * stays a single file with no network. See tools/embed-assets.mjs.
+   */
+  preload() {
+    this.load.image('dirt', DIRT_URI);
   }
 
   create() {
-    this.rng = makeRng(this.seed);
     this.touch = isTouchDevice();
 
     // Tier comes from the real screen, not from scale.gameSize — that reports
@@ -69,11 +112,20 @@ export class TerrariumScene extends Phaser.Scene {
     if (!this.popSizeExplicit) this.popSize = this.settings.population;
     this.lastAspect = WORLD.w / WORLD.h;
 
+    // Restore BEFORE the garden is built: the plant bed is seeded off
+    // `this.seed`, so a resumed run has to know its seed first or it would
+    // build a different garden than the one it is resuming.
+    const saved = loadSave();
+    const restored = this.applySaved(saved);
+    this.rng = makeRng(restored?.rngState ?? this.seed);
+
     this.terrariumBounds = new Phaser.Geom.Rectangle(0, 0, 10, 10);
     this.matter.world.disableGravity();
 
-    this.groundLayer = this.add.graphics().setDepth(0);
-    this.decorLayer = this.add.graphics().setDepth(1);
+    // The flat fill sits UNDER the photograph and only ever shows through
+    // while the texture is decoding.
+    this.groundLayer = this.add.graphics().setDepth(-2);
+    this.ground = this.add.image(0, 0, 'dirt').setOrigin(0.5).setDepth(-1);
     this.plantLayer = this.add.graphics().setDepth(2);
     this.fxLayer = this.add.graphics().setDepth(30);
     this.lightLayer = this.add.graphics().setDepth(40);
@@ -81,13 +133,83 @@ export class TerrariumScene extends Phaser.Scene {
 
     this.applyWorldBounds();
     this.drawGround();
-    this.buildDecor();
     this.buildGarden();
-    this.spawnGeneration(seededPopulation(this.popSize, this.rng));
+    // A resumed run spawns the animals it actually had, not a fresh draw from
+    // the same seed — the population is the save's source of truth.
+    this.spawnGeneration(restored?.population ?? seededPopulation(this.popSize, this.rng));
 
     this.input.on('pointerdown', (p) => this.handleClick(p));
     this.scale.on('resize', this.onResize, this);
     this.events.once('shutdown', () => this.scale.off('resize', this.onResize, this));
+  }
+
+  /* ------------------------------------------------------- persistence --- */
+
+  /**
+   * Everything worth keeping between sessions. Genomes travel as plain objects
+   * and are re-validated on the way back in, so a save written by an older
+   * build can never produce an illegal animal.
+   */
+  serialize() {
+    return {
+      seed: this.seed,
+      rngState: this.rng.state(),
+      generation: this.generation,
+      preset: this.preset,
+      popSize: this.popSize,
+      popSizeExplicit: this.popSizeExplicit,
+      timeScale: this.timeScale,
+      clock: this.clock,
+      history: this.history.slice(-40),
+      population: [...this.bugs, ...this.atVet].map((b) => ({ ...b.genome })),
+      knowledge: this.knowledge.export(),
+    };
+  }
+
+  /**
+   * Apply a saved blob. Returns the parts `create()` still needs (the resumed
+   * population and rng position), or null for a fresh terrarium.
+   */
+  applySaved(saved) {
+    if (!saved || !Array.isArray(saved.population) || !saved.population.length) return null;
+    let population;
+    try {
+      // clampGene runs inside normalizeGenome, so an edited or stale save
+      // cannot smuggle an illegal genome past the one-rule.
+      population = saved.population.map((g) => normalizeGenome(g));
+    } catch {
+      clearSave();
+      return null;
+    }
+
+    this.seed = Number.isFinite(saved.seed) ? saved.seed : this.seed;
+    this.generation = Number.isFinite(saved.generation) ? saved.generation : 0;
+    if (typeof saved.preset === 'string') this.preset = saved.preset;
+    if (Number.isFinite(saved.popSize)) this.popSize = saved.popSize;
+    this.popSizeExplicit = Boolean(saved.popSizeExplicit);
+    if (Number.isFinite(saved.timeScale)) this.timeScale = saved.timeScale;
+    if (Number.isFinite(saved.clock)) this.clock = saved.clock;
+    if (Array.isArray(saved.history)) this.history = saved.history;
+    this.knowledge = new Knowledge(saved.knowledge ?? {});
+    this.resumed = true;
+    return { population, rngState: Number.isFinite(saved.rngState) ? saved.rngState : this.seed };
+  }
+
+  /** Something worth keeping happened. The write itself is debounced. */
+  markDirty() { this.autosave.markDirty(); }
+
+  /** Write now — the page is going away and there is no next tick. */
+  flushSave() { return this.autosave.flush(); }
+
+  /** True when a run can actually be kept, so the HUD can say so honestly. */
+  get persists() { return canPersist(); }
+
+  /** Throw the saved run away and start clean. Used by the HUD's reset. */
+  forgetRun() {
+    clearSave();
+    this.knowledge = new Knowledge();
+    this.resumed = false;
+    this.reseed();
   }
 
   /* -------------------------------------------------------- responsive -- */
@@ -111,6 +233,7 @@ export class TerrariumScene extends Phaser.Scene {
 
   /** Re-fence the play area after the sheet opens, closes, or changes layout. */
   setInsetBottom(px) {
+    if (!this.terrariumBounds) return false;
     const next = Math.max(0, Math.round(px));
     if (Math.abs(next - this.insetBottom) < 4) return false;
     this.insetBottom = next;
@@ -132,6 +255,9 @@ export class TerrariumScene extends Phaser.Scene {
    * moved — iOS Safari fires resize constantly as its toolbars slide.
    */
   onResize(gameSize) {
+    // Loading the floor photograph moved create() behind the loader, so a
+    // resize can now arrive before there is a world to reshape.
+    if (!this.terrariumBounds) return false;
     const next = computeWorld(gameSize.width, gameSize.height);
     // Caller already debounced; reshape straight away or not at all.
     if (!aspectChangedMeaningfully(this.lastAspect, next.w / next.h)) return false;
@@ -152,8 +278,6 @@ export class TerrariumScene extends Phaser.Scene {
 
     this.applyWorldBounds();
     this.drawGround();
-    this.decorLayer.clear();
-    this.buildDecor();
     // Keep the garden inside the new walls without restarting its lifecycle.
     if (this.bed) {
       const b = this.terrariumBounds;
@@ -188,77 +312,29 @@ export class TerrariumScene extends Phaser.Scene {
 
   /* --------------------------------------------------------- terrain ---- */
 
+  /**
+   * The floor. Every rock, pebble and fleck of grit is IN the photograph, which
+   * is why nothing here scatters one — the procedural rocks this used to draw
+   * were flat grey circles laid on top of photographed stones, and they read
+   * exactly as badly as that sounds. The bugs are the only thing on the canvas
+   * that is drawn.
+   */
   drawGround() {
     const g = this.groundLayer;
-    const inset = wallInset();
     g.clear();
-    g.fillStyle(0x2b2117, 1).fillRect(0, 0, WORLD.w, WORLD.h);
-    const playH = this.playHeight;
-    const r = makeRng(99);
-    const n = this.settings.speckles;
-    for (let i = 0; i < n; i++) {
-      const shade = [0x3a2c1e, 0x241b12, 0x453425, 0x1d160f][Math.floor(r() * 4)];
-      g.fillStyle(shade, 0.55);
-      g.fillRect(r() * WORLD.w, r() * WORLD.h, 2 + r() * 5, 2 + r() * 4);
-    }
-    // glass frame — traces the PLAYABLE box, not the full canvas, so the wall
-    // sits where the bugs actually stop.
-    g.lineStyle(Math.max(5, inset * 0.4), 0x9fd9e8, 0.16)
-      .strokeRect(inset, inset, WORLD.w - inset * 2, playH - inset * 2);
-  }
+    // Underneath the photo, so a world the photo cannot fill never shows
+    // through to the page background mid-decode.
+    g.fillStyle(PALETTE.ground, 1).fillRect(0, 0, WORLD.w, WORLD.h);
 
-  buildDecor() {
-    const g = this.decorLayer;
-    const r = makeRng(4242);
-    this.decor = [];
-
-    // Drop the previous rocks' bodies first — reshaping the world calls this
-    // again, and orphaned static bodies would pile up invisibly.
-    for (const body of this.rockBodies ?? []) this.matter.world.remove(body);
-    this.rockBodies = [];
-
-    const margin = wallInset() + 40;
-    const spanX = Math.max(60, WORLD.w - margin * 2);
-    const spanY = Math.max(60, WORLD.h - margin * 2);
-
-    // rocks — static physics bodies
-    for (let i = 0; i < this.settings.rocks; i++) {
-      const x = margin + r() * spanX;
-      const y = margin + r() * spanY;
-      const rad = 22 + r() * 34;
-      this.rockBodies.push(this.matter.add.circle(x, y, rad, { isStatic: true, friction: 0.4 }));
-      g.fillStyle(0x5b5b5f, 1).fillCircle(x, y, rad);
-      g.fillStyle(0x7a7a80, 1).fillCircle(x - rad * 0.22, y - rad * 0.26, rad * 0.62);
-      g.fillStyle(0x3f3f45, 1).fillCircle(x + rad * 0.34, y + rad * 0.34, rad * 0.34);
-      this.decor.push({ kind: 'rock', x, y, r: rad });
-    }
-
-    // plants — decorative only, bugs walk under them
-    for (let i = 0; i < this.settings.plants; i++) {
-      const x = margin * 0.6 + r() * (WORLD.w - margin * 1.2);
-      const y = margin * 0.6 + r() * (WORLD.h - margin * 1.2);
-      const blades = 4 + Math.floor(r() * 6);
-      for (let b = 0; b < blades; b++) {
-        const a = -Math.PI / 2 + (b / blades - 0.5) * 1.9;
-        const len = 26 + r() * 46;
-        g.lineStyle(3 + r() * 3, [0x3f7a3a, 0x2f6330, 0x54994a][Math.floor(r() * 3)], 0.95);
-        g.beginPath();
-        g.moveTo(x, y);
-        g.lineTo(x + Math.cos(a) * len * 0.6, y + Math.sin(a) * len * 0.6);
-        g.lineTo(x + Math.cos(a + 0.4) * len, y + Math.sin(a + 0.4) * len);
-        g.strokePath();
-      }
-      this.decor.push({ kind: 'plant', x, y });
-    }
-
-    // food pellets
-    for (let i = 0; i < this.settings.food; i++) {
-      const x = margin * 0.5 + r() * (WORLD.w - margin);
-      const y = margin * 0.5 + r() * (WORLD.h - margin);
-      g.fillStyle(0xd8b25a, 1).fillCircle(x, y, 5);
-      g.fillStyle(0xf0d494, 1).fillCircle(x - 1.4, y - 1.6, 2.2);
-      this.decor.push({ kind: 'food', x, y });
-    }
+    const img = this.ground;
+    if (!img) return;
+    const src = this.textures.get('dirt')?.getSourceImage();
+    if (!src?.width) return;
+    // Cover, not stretch: the shorter axis overflows and is cropped, so the
+    // grit keeps its aspect whatever shape the window is.
+    const scale = Math.max(WORLD.w / src.width, WORLD.h / src.height);
+    img.setPosition(WORLD.w / 2, WORLD.h / 2);
+    img.setDisplaySize(src.width * scale, src.height * scale);
   }
 
   /* ---------------------------------------------------------- garden ---- */
@@ -286,7 +362,8 @@ export class TerrariumScene extends Phaser.Scene {
     this.objects.push(placeObject('compost_heap', heap.x, heap.y));
     this.objects.push(placeObject('training_rock', at(0.5, 0.2).x, at(0.5, 0.2).y));
 
-    const starters = ['grass_patch', 'moss_bed', 'fern_cluster', 'berry_bush', 'flowering_bush'];
+    const starters = ['grass_patch', 'moss_bed', 'fern_cluster', 'berry_bush', 'flowering_bush']
+      .slice(0, this.settings.garden ?? 5);
     for (const id of starters) {
       for (let tries = 0; tries < 12; tries++) {
         const x = Math.round(b.x + 40 + r() * (b.width - 80));
@@ -299,36 +376,66 @@ export class TerrariumScene extends Phaser.Scene {
   /** Aggregated object influence at a point — passed straight to the plant bed. */
   fieldFor(x, y) { return fieldAt(this.objects, x, y); }
 
+  /**
+   * Plants and structures, drawn in the same flat cut-paper language as the
+   * bugs: filled shapes, no outlines, no gradients. They sit low and muted on
+   * purpose — the photograph is the ground and the bugs are the subject, and
+   * neither should have to compete with a garden marker.
+   */
   drawGarden() {
     const g = this.plantLayer;
     g.clear();
+
+    // Structures read as worked ground, not as buttons someone left on the
+    // floor: damp earth first, then a wash of the category's colour. A solid
+    // disc at full alpha looked like stray UI sitting on the photograph.
+    for (const o of this.objects) {
+      const r = Math.max(12, o.spec.footprint || 14);
+      const reach = o.spec.radius ?? 0;
+      if (reach > 0) g.fillStyle(PALETTE.ink, 0.045).fillCircle(o.x, o.y, reach);
+      g.fillStyle(PALETTE.ink, 0.2).fillCircle(o.x, o.y, r * 1.25);
+      g.fillStyle(CATEGORY_COLOUR[o.spec.category] ?? PALETTE.cream, 0.3)
+        .fillCircle(o.x, o.y, r);
+    }
+
     for (const p of this.bed?.plants ?? []) {
       if (p.state === 'seed') {
-        g.fillStyle(0x6b543a, 0.9).fillCircle(p.x, p.y, 3);
+        g.fillStyle(PALETTE.ink, 0.5).fillCircle(p.x, p.y, 3.5);
         continue;
       }
       const wilt = p.wilt;
-      const base = [0x3f7a3a, 0x2f6330, 0x54994a][p.id.length % 3];
       // Wilting is a palette shift, not a label. You are supposed to notice it.
-      const col = wilt > 0.15 ? mixToward(base, 0x8a7a3c, Math.min(1, wilt)) : base;
+      const base = p.id.length % 2 ? PALETTE.leaf : PALETTE.leafDark;
+      const col = wilt > 0.15 ? mixToward(base, PALETTE.wilt, Math.min(1, wilt)) : base;
       const blades = 3 + (p.id.length % 4);
-      const len = (18 + 40 * p.scale) * (1 - wilt * 0.35);
+      const len = (16 + 34 * p.scale) * (1 - wilt * 0.35);
+      const w = 3 + p.scale * 4;
+
+      // A leaf is a filled tapered shape, not a stroked line — mass at the
+      // base and a point at the tip is what separates a drawn plant from a
+      // bent polyline.
       for (let i = 0; i < blades; i++) {
-        const a = -Math.PI / 2 + (i / blades - 0.5) * 1.9;
-        g.lineStyle(2 + p.scale * 2.5, col, 0.95);
+        const a = -Math.PI / 2 + (i / blades - 0.5) * 1.7;
+        const tx = p.x + Math.cos(a) * len;
+        const ty = p.y + Math.sin(a) * len;
+        const nx = Math.cos(a + Math.PI / 2) * w;
+        const ny = Math.sin(a + Math.PI / 2) * w;
+        g.fillStyle(col, 0.95);
         g.beginPath();
-        g.moveTo(p.x, p.y);
-        g.lineTo(p.x + Math.cos(a) * len * 0.6, p.y + Math.sin(a) * len * 0.6);
-        g.lineTo(p.x + Math.cos(a + 0.4) * len, p.y + Math.sin(a + 0.4) * len);
-        g.strokePath();
+        g.moveTo(p.x - nx * 0.5, p.y - ny * 0.5);
+        g.lineTo(p.x + nx * 0.5, p.y + ny * 0.5);
+        g.lineTo(tx, ty);
+        g.closePath();
+        g.fillPath();
       }
+      g.fillStyle(col, 1).fillCircle(p.x, p.y, w * 0.7);
+
+      // A ripe yield is a berry you can see, which is the only reason to grow
+      // a Berry Bush.
       if (p.pendingYield > 0) {
-        g.fillStyle(0xffd166, 1).fillCircle(p.x, p.y - len * 0.7, 4);
+        g.fillStyle(PALETTE.red, 1).fillCircle(p.x, p.y - len * 0.62, 4.5);
+        g.fillStyle(PALETTE.cream, 0.7).fillCircle(p.x - 1.4, p.y - len * 0.62 - 1.5, 1.6);
       }
-    }
-    for (const o of this.objects) {
-      g.fillStyle(0x2c3b4a, 0.5).fillCircle(o.x, o.y, Math.max(10, o.spec.footprint || 12));
-      g.lineStyle(2, 0x9fd9e8, 0.35).strokeCircle(o.x, o.y, Math.max(10, o.spec.footprint || 12));
     }
   }
 
@@ -346,6 +453,7 @@ export class TerrariumScene extends Phaser.Scene {
     this.atVet.push(bug);
     this.bugs = this.bugs.filter((b) => b !== bug);
     if (this.selected === bug) this.selected = this.bugs[0] ?? null;
+    this.markDirty();
     this.emitState();
     return true;
   }
@@ -389,13 +497,50 @@ export class TerrariumScene extends Phaser.Scene {
       bug.wander = bug.pickWanderPoint();
       this.bugs.push(bug);
     }
-    if (back.length) this.emitState();
+    if (back.length) { this.markDirty(); this.emitState(); }
   }
 
   /** Record a fight for both parties — this is how combat impressions unlock. */
   noteFight(winner, loser) {
     if (winner) this.knowledge.fought(winner.genome, { won: true });
     if (loser) this.knowledge.fought(loser.genome, { won: false });
+    this.markDirty();
+  }
+
+  /* ---------------------------------------------------------- training --- */
+
+  /**
+   * The third channel. Watching and fighting were already wired; this is what
+   * makes `Knowledge.trained()` fire, and `grip` is the only stat on it — you
+   * cannot learn how well a bug plants itself by staring at it.
+   *
+   * A session is time spent inside a trainer's radius. Leaving resets it: a bug
+   * that wanders past a Training Rock has not trained on it.
+   */
+  trainingTick(dt, alive) {
+    if (!this.objects.length) return;
+    for (const bug of alive) {
+      const t = trainerAt(this.objects, bug.sprite.x, bug.sprite.y);
+      if (!t) { bug.trainer = null; bug.trainT = 0; continue; }
+
+      // An Obstacle Course has to be run, not stood in.
+      if (t.spec.requiresTraversal) {
+        const v = bug.sprite.body.velocity;
+        if (Math.hypot(v.x, v.y) < 0.12) continue;
+      }
+
+      if (bug.trainer !== t.id) { bug.trainer = t.id; bug.trainT = 0; }
+      bug.trainT += dt;
+      if (bug.trainT < (t.spec.sessionSeconds ?? 45)) continue;
+
+      bug.trainT = 0;
+      this.knowledge.trained(bug.genome, `worked the ${t.spec.name.toLowerCase()}`);
+      // The gain itself is non-genetic and lands on this instance only — a
+      // Feeding Trough's wears off, a Training Rock's stays.
+      bug.train(t.spec.trains, t.spec.temporary ? (t.spec.decaySeconds ?? 300) : 0);
+      this.flash(bug.sprite.x, bug.sprite.y, 0xf2c23e, 20);
+      this.markDirty();
+    }
   }
 
   /* ------------------------------------------------------ population ---- */
@@ -420,26 +565,74 @@ export class TerrariumScene extends Phaser.Scene {
    * written onto any bug beforehand; that is the whole distinction the objects
    * doc draws between a rate multiplier and a gene write.
    */
+  /** Bugs standing inside any object whose breeding spec carries `key`. */
+  bugsInField(key) {
+    const sources = this.objects.filter((o) => o.spec.breeding?.[key]);
+    if (!sources.length) return [];
+    const inside = (o, b) => {
+      const r = o.spec.radius ?? 0;
+      return r > 0 && (o.x - b.sprite.x) ** 2 + (o.y - b.sprite.y) ** 2 <= r * r;
+    };
+    return this.bugs
+      .map((b, i) => (sources.some((o) => inside(o, b)) ? i : -1))
+      .filter((i) => i >= 0);
+  }
+
   breed(opts = {}) {
     const genomes = this.bugs.map((b) => b.genome);
+    if (!genomes.length) return null;
     const at = opts.at ?? { x: this.terrariumBounds.centerX, y: this.terrariumBounds.centerY };
     const mods = breedingModifiers(this.objects, at.x, at.y);
-    // Locks come from what the lineage already is: a Beetle line holds its
-    // wings closed unless you deliberately breed it out of Beetle.
     const dominant = this.bugs[0]?.classification ?? null;
+
+    // A Pollen Bloom gates breeding on a trait; a Cave waives every gate. Only
+    // the scene knows which bug is standing where, so eligibility is decided
+    // here and handed down as indices.
+    let eligible = null;
+    if (mods.requires && !mods.universal) {
+      const want = String(mods.requires).toLowerCase();
+      eligible = this.bugs
+        .map((b, i) => ((b.classification?.traits ?? [])
+          .some((t) => String(t).toLowerCase().includes(want)) ? i : -1))
+        .filter((i) => i >= 0);
+    }
+
+    // The Nest bonds whoever is actually in it — two bugs, no tournament.
+    const nested = mods.bypassSelection ? this.bugsInField('bypassSelection') : [];
+    const pair = nested.length >= 2 ? [genomes[nested[0]], genomes[nested[1]]] : null;
+
+    // A well-planted plot supports a bigger brood; a starved one supports fewer.
+    const brood = Math.max(4, Math.min(30, Math.round(this.popSize * mods.growthRate)));
+
     const { population, report } = breedGeneration(genomes, {
       preset: this.preset,
       rng: this.rng,
-      size: this.popSize,
+      size: brood,
+      rate: mods.rate,
       mutationScale: 0.10 * mods.mutationScale,
       selection: mods.selection,
-      locked: mods.lockChoices > 0 ? (dominant?.locks ?? []) : [],
-      unlocked: dominant?.unlocks ?? [],
+      fitnessBonus: mods.fitnessBonus,
+      favoured: mods.fitnessBonus ? this.bugsInField('fitnessBonus') : [],
+      eligible,
+      bypassSelection: Boolean(pair),
+      pair,
+      // The lineage holds its own identity genes steady — that is what a taxon
+      // IS, and it applies whether or not anything is placed nearby. A Prism
+      // Chamber goes one step further and pins the loosened genes too.
+      locked: dominant?.locks ?? [],
+      unlocked: mods.lockChoices > 0 ? [] : (dominant?.unlocks ?? []),
       ...opts,
     });
+
+    // A refusal is a real outcome, not a silent no-op: the generation does not
+    // advance and the pool is left exactly as it was.
+    this.breedNote = report.refused ?? null;
+    if (report.refused) { this.emitState(); return report; }
+
     this.generation++;
     this.history.push({ gen: this.generation, ...report });
     this.spawnGeneration(population);
+    this.markDirty();
     return report;
   }
 
@@ -455,6 +648,7 @@ export class TerrariumScene extends Phaser.Scene {
       this.history.push({ gen: this.generation, ...step.report });
     }
     this.spawnGeneration(genomes);
+    this.markDirty();
     return last;
   }
 
@@ -464,13 +658,15 @@ export class TerrariumScene extends Phaser.Scene {
     this.generation = 0;
     this.history = [];
     this.spawnGeneration(seededPopulation(this.popSize, this.rng));
+    this.breedNote = null;
+    this.markDirty();
     return this.seed;
   }
 
   onBugDown(bug) {
     bug.sprite.setAlpha(0.35);
     bug.sprite.setStatic(true);
-    this.flash(bug.sprite.x, bug.sprite.y, 0xff5b4a, 26);
+    this.flash(bug.sprite.x, bug.sprite.y, PALETTE.red, 26);
     this.noteFight(bug.poisonBy ?? bug.lastAttacker ?? null, bug);
     if (this.selected === bug) this.selected = this.bugs.find((b) => b.alive) ?? bug;
     if (this.bugs.filter((b) => b.alive).length <= 1) this.events.emit('roundOver');
@@ -507,6 +703,7 @@ export class TerrariumScene extends Phaser.Scene {
     // Watching IS the mechanic. Time on screen is what buys the phrases the
     // panel is allowed to show.
     for (const b of alive) this.knowledge.observe(b.genome, dt);
+    this.trainingTick(dt, alive);
 
     // Plants tick beside the decor, on the same clock the bugs read.
     if (this.bed) {
@@ -528,18 +725,25 @@ export class TerrariumScene extends Phaser.Scene {
 
     // selection ring
     if (this.selected) {
-      this.fxLayer.lineStyle(2, 0xffffff, 0.55);
-      this.fxLayer.strokeCircle(this.selected.sprite.x, this.selected.sprite.y, this.selected.radius + 9);
+      // A chunky ring in the terrarium's own cream, not a hairline highlight.
+      this.fxLayer.lineStyle(3.5, PALETTE.cream, 0.95);
+      this.fxLayer.strokeCircle(this.selected.sprite.x, this.selected.sprite.y, this.selected.radius + 10);
     }
 
     // ambient light overlay — the day/night cycle you can actually see
     const e = this.env;
     this.lightLayer.clear();
-    this.lightLayer.fillStyle((e.rgb[0] << 16) | (e.rgb[1] << 8) | e.rgb[2], e.darkness * 0.62);
+    this.lightLayer.fillStyle((e.rgb[0] << 16) | (e.rgb[1] << 8) | e.rgb[2], e.darkness * 0.5);
     this.lightLayer.fillRect(0, 0, WORLD.w, WORLD.h);
 
     this.hudTick = (this.hudTick ?? 0) + dt;
     if (this.hudTick > 0.2) { this.hudTick = 0; this.emitState(); }
+
+    // Watching is itself progress — the knowledge record moves every frame —
+    // so the run is worth keeping even when nothing was clicked.
+    this.watchedFor = (this.watchedFor ?? 0) + dt;
+    if (this.watchedFor > 10) { this.watchedFor = 0; this.markDirty(); }
+    this.autosave.tick(dt);
   }
 
   /**
@@ -571,6 +775,10 @@ export class TerrariumScene extends Phaser.Scene {
       generation: this.generation,
       preset: this.preset,
       seed: this.seed,
+      // Whether this run is being kept, and whether it was picked back up.
+      persists: this.persists,
+      resumed: this.resumed,
+      breedNote: this.breedNote ?? null,
       alive: alive.length,
       total: this.bugs.length + this.atVet.length,
       popSize: this.popSize,
