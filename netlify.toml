@@ -1,9 +1,14 @@
-# Static site — no build step needed. index.html loads Phaser from cdnjs and
-# src/main.js as an ES module; both work fine served over HTTP.
-# dist/terrarium.html is the self-contained single-file build.
+# Netlify config for repo-based deploys.
+#
+# The site is a static folder — no build step, no functions, no env vars.
+# `deploy/` is the assembled output:
+#   /          self-contained build (Phaser inlined, zero external requests)
+#   /dev.html  ES-module version reading /src/*, Phaser from /vendor
+#
+# Regenerate deploy/ after changing src/ with:  npm run build && npm run stage
 
 [build]
-  publish = "."
+  publish = "deploy"
   command = ""
 
 [[headers]]
@@ -12,8 +17,12 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# Serve ES modules with the right type on any host that guesses wrong.
 [[headers]]
-  for = "/src/*.js"
+  for = "/src/*"
   [headers.values]
     Content-Type = "text/javascript; charset=utf-8"
+
+[[headers]]
+  for = "/vendor/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
