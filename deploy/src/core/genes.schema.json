@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BugGenome",
+  "description": "Flat gene vector. Every gene is a scalar. Integer genes are marked. Order of keys is the canonical vector order used for crossover.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "leg_count", "leg_length", "leg_thickness", "leg_spread",
+    "body_length", "body_width", "body_mass", "carapace_thickness",
+    "wing_area", "wing_beat", "mandible_size", "mandible_serration",
+    "antenna_length", "eye_size", "metabolism", "aggression",
+    "hue", "saturation", "lightness", "pattern"
+  ],
+  "properties": {
+    "leg_count":          { "type": "integer", "minimum": 4, "maximum": 10, "multipleOf": 2, "description": "Legs, always even (pairs)." },
+    "leg_length":         { "type": "number", "minimum": 0, "maximum": 1, "description": "Normalized femur+tibia length relative to body length." },
+    "leg_thickness":      { "type": "number", "minimum": 0, "maximum": 1 },
+    "leg_spread":         { "type": "number", "minimum": 0, "maximum": 1, "description": "How far legs splay from the body axis. Affects stability." },
+    "body_length":        { "type": "number", "minimum": 0, "maximum": 1 },
+    "body_width":         { "type": "number", "minimum": 0, "maximum": 1 },
+    "body_mass":          { "type": "number", "minimum": 0, "maximum": 1, "description": "Density multiplier, independent of volume." },
+    "carapace_thickness": { "type": "number", "minimum": 0, "maximum": 1 },
+    "wing_area":          { "type": "number", "minimum": 0, "maximum": 1, "description": "0 = flightless." },
+    "wing_beat":          { "type": "number", "minimum": 0, "maximum": 1 },
+    "mandible_size":      { "type": "number", "minimum": 0, "maximum": 1 },
+    "mandible_serration": { "type": "number", "minimum": 0, "maximum": 1 },
+    "antenna_length":     { "type": "number", "minimum": 0, "maximum": 1 },
+    "eye_size":           { "type": "number", "minimum": 0, "maximum": 1 },
+    "metabolism":         { "type": "number", "minimum": 0, "maximum": 1, "description": "Energy burn rate. High = fast recovery, fast starvation." },
+    "aggression":         { "type": "number", "minimum": 0, "maximum": 1, "description": "Behavioural gene — biases the AI state machine, not a combat stat." },
+    "hue":                { "type": "number", "minimum": 0, "maximum": 1 },
+    "saturation":         { "type": "number", "minimum": 0, "maximum": 1 },
+    "lightness":          { "type": "number", "minimum": 0, "maximum": 1 },
+    "pattern":            { "type": "number", "minimum": 0, "maximum": 1, "description": "Selects among banded / spotted / plain marking styles." }
+  }
+}

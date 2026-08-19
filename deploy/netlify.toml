@@ -1,0 +1,17 @@
+# Static site, no build step.
+#   /          -> self-contained single-file build (Phaser inlined, works offline)
+#   /dev.html  -> ES-module version, loads Phaser from cdnjs, reads /src/*
+[build]
+  publish = "."
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/src/*"
+  [headers.values]
+    Content-Type = "text/javascript; charset=utf-8"
