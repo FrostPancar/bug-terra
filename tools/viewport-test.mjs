@@ -52,12 +52,20 @@ for (const c of CASES) {
       canvasFits: cr.width <= st.width+1 && cr.height <= st.height+1,
       fillsStage: +(((cr.width*cr.height)/(st.width*st.height))*100).toFixed(0),
       sheet: document.body.classList.contains('sheet-collapsed') ? 'collapsed' : 'expanded',
-      // does the panel physically cover the canvas?
+      // Does the panel cover any of the PLAYABLE box? The canvas deliberately
+      // runs full bleed behind the sheet so the glass has something to refract;
+      // what must never be hidden is the area bugs can reach.
       occluded: (() => {
+        const t = window.__terrarium;
+        if (!t?.scene) return -1;
+        const scale = cr.height / t.WORLD.h;
+        const playBottom = cr.top + t.scene.playHeight * scale;
+        const play = { left: cr.left, right: cr.right, top: cr.top, bottom: playBottom };
         const a = document.querySelector('aside').getBoundingClientRect();
-        const ox = Math.max(0, Math.min(a.right, cr.right) - Math.max(a.left, cr.left));
-        const oy = Math.max(0, Math.min(a.bottom, cr.bottom) - Math.max(a.top, cr.top));
-        return +(((ox * oy) / (cr.width * cr.height)) * 100).toFixed(0);
+        const ox = Math.max(0, Math.min(a.right, play.right) - Math.max(a.left, play.left));
+        const oy = Math.max(0, Math.min(a.bottom, play.bottom) - Math.max(a.top, play.top));
+        const area = (play.right - play.left) * (play.bottom - play.top);
+        return area > 0 ? +(((ox * oy) / area) * 100).toFixed(0) : 0;
       })(),
       handleVisible: getComputedStyle(document.getElementById('handle')).display !== 'none',
       hpageOverflow: overflow, offscreen, small,

@@ -15,6 +15,7 @@
     --bg: #0d0b09; --panel: #16130f; --line: #2a241c;
     --ink: #ece3d4; --muted: #9a8f7d; --accent: #c9a227;
     --sheet: 46vh;              /* expanded bottom-sheet height on phones */
+    --sheet-now: 14px;          /* how much panel is below the dock, per layout */
     --safe-b: env(safe-area-inset-bottom, 0px);
     --safe-t: env(safe-area-inset-top, 0px);
     --safe-l: env(safe-area-inset-left, 0px);
@@ -51,6 +52,7 @@
   #stage {
     position: relative;
     display: grid;
+    grid-template-rows: 100%;
     overflow: hidden;
     min-width: 0; min-height: 0;
     touch-action: none;                   /* no pan/zoom stealing taps */
@@ -66,7 +68,11 @@
   aside {
     grid-column: 2;
     border-left: 1px solid var(--line);
-    background: var(--panel);
+    /* translucent on purpose — the glass buttons refract whatever shows
+       through, so an opaque panel would leave them with nothing to bend */
+    background: rgba(22, 19, 15, .88);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    backdrop-filter: blur(18px) saturate(1.15);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -112,6 +118,103 @@
   @media (hover: hover) { button:hover { border-color: var(--accent); } }
   .btns { display: flex; flex-wrap: wrap; gap: 6px; }
   .btns button { flex: 1 1 auto; white-space: nowrap; }
+
+  /* ------------------------------------------------- circular glass dial -- */
+  /* The dial floats OVER the terrarium rather than sitting on the panel.
+     backdrop-filter refracts whatever is painted behind the element, so on an
+     opaque panel there is nothing to bend — over the live scene there is. */
+  #dock {
+    position: absolute; z-index: 5;
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--sheet-now) + 16px);
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 16px;
+    justify-items: center;
+    padding: 0;
+    transition: bottom .28s cubic-bezier(.4, 0, .2, 1);
+    pointer-events: none;          /* only the buttons are hit targets */
+  }
+  #dock .glass-btn { pointer-events: auto; }
+  .glass-btn {
+    --d: 58px;
+    width: var(--d); height: var(--d);
+    min-height: var(--d);
+    padding: 0;
+    display: grid; place-items: center; gap: 0;
+    border-radius: 50%;                  /* the lens is a circle */
+    position: relative; isolation: isolate;
+    border: 1px solid rgba(255,255,255,.16);
+    background: rgba(236,227,212,.085); /* the tint the lens carries */
+    color: var(--ink);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.34),   /* top rim catch */
+      inset 0 -1px 0 rgba(0,0,0,.30),        /* bottom shade */
+      inset 0 0 18px rgba(255,255,255,.06),  /* lifts the dome out of the dark */
+      0 4px 16px rgba(0,0,0,.45);            /* float off the scene */
+    transition: transform .16s cubic-bezier(.4,0,.2,1),
+                box-shadow .16s ease, background .16s ease;
+  }
+  /* the crisp layer: icon + label ride on top of the refracted backdrop */
+  .glass-btn svg {
+    width: 21px; height: 21px;
+    fill: none; stroke: currentColor;
+    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.55));
+    pointer-events: none;
+  }
+  .glass-btn span {
+    position: absolute; top: calc(100% + 5px); left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px; letter-spacing: .02em;
+    color: var(--ink); white-space: nowrap; pointer-events: none;
+    /* the labels sit on the live scene, so they need their own contrast */
+    text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.7);
+  }
+
+  .glass-btn:active {
+    transform: scale(.93);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.20),
+      inset 0 -1px 0 rgba(0,0,0,.34),
+      0 2px 7px rgba(0,0,0,.42);
+  }
+  @media (hover: hover) {
+    .glass-btn:hover {
+      background: rgba(236,227,212,.085);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.38),
+        inset 0 -1px 0 rgba(0,0,0,.30),
+        0 6px 18px rgba(0,0,0,.42);
+    }
+  }
+  .glass-btn:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px;
+  }
+  /* toggled state — Pause reads as engaged */
+  .glass-btn[aria-pressed="true"] {
+    background: rgba(201,162,39,.20);
+    border-color: rgba(201,162,39,.55);
+    color: #f4dd93;
+  }
+  /* Safari/Firefox can't bend the live page (backdrop-filter: url() is
+     Chromium-only). They still frost + tint + edge-light, so it reads as
+     glass — lean on the rim a little harder there to compensate. */
+  .glass-btn[data-glass="frost"] {
+    border-color: rgba(255,255,255,.22);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.38),
+      inset 0 -1px 0 rgba(0,0,0,.32),
+      inset 0 0 14px rgba(255,255,255,.07),
+      0 4px 14px rgba(0,0,0,.38);
+  }
+
+  .ffn-row { justify-content: flex-start; gap: 8px; }
+  .ffn-row #ffN { margin-left: auto; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .glass-btn, #dock { transition: none; }
+  }
 
   label { display: flex; align-items: center; justify-content: space-between;
           gap: 10px; margin: 10px 0 0; color: var(--muted); font-size: 12px; }
@@ -170,15 +273,14 @@
   @media (max-width: 860px), (orientation: portrait) and (max-width: 1100px) {
     body { grid-template-columns: 100%; grid-template-rows: 100%; }
 
-    /* Reserve the sheet's height so the terrarium is never hidden behind it —
-       a bottom sheet that covers half the world defeats the point. */
+    /* The canvas runs FULL BLEED behind the sheet on purpose: the glass
+       buttons refract whatever is behind them, so the terrarium has to be
+       there to bend. The bugs are fenced above the sheet in the scene
+       (scene.insetBottom), so nothing playable ever hides under it. */
     #stage {
       grid-column: 1; grid-row: 1;
       padding: var(--safe-t) var(--safe-r) 0 var(--safe-l);
-      padding-bottom: var(--sheet);
-      transition: padding-bottom .28s cubic-bezier(.4, 0, .2, 1);
     }
-    body.sheet-collapsed #stage { padding-bottom: calc(54px + var(--safe-b)); }
 
     aside {
       grid-column: 1; grid-row: 1;
@@ -188,15 +290,17 @@
       border-left: none;
       border-top: 1px solid var(--line);
       border-radius: 14px 14px 0 0;
-      background: rgba(22, 19, 15, 0.96);
-      -webkit-backdrop-filter: blur(12px);
-      backdrop-filter: blur(12px);
+      background: rgba(22, 19, 15, 0.86);
+      -webkit-backdrop-filter: blur(20px) saturate(1.2);
+      backdrop-filter: blur(20px) saturate(1.2);
       box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.5);
       padding: 0 12px calc(16px + var(--safe-b));
       transition: max-height .28s cubic-bezier(.4, 0, .2, 1);
       display: flex; flex-direction: column;
     }
     body.sheet-collapsed aside { max-height: calc(54px + var(--safe-b)); }
+    :root, body { --sheet-now: var(--sheet); }
+    body.sheet-collapsed { --sheet-now: calc(54px + var(--safe-b)); }
     #sheetBody { transition: opacity .2s ease; }
     body.sheet-collapsed #sheetBody { opacity: 0; pointer-events: none; }
 
@@ -246,8 +350,9 @@
       align-self: stretch; max-height: none;
       position: static; border-radius: 0;
       border-top: none; border-left: 1px solid var(--line);
-      background: var(--panel); box-shadow: none;
-      -webkit-backdrop-filter: none; backdrop-filter: none;
+      background: rgba(22, 19, 15, .74); box-shadow: none;
+      -webkit-backdrop-filter: blur(18px) saturate(1.15);
+      backdrop-filter: blur(18px) saturate(1.15);
       padding: calc(10px + var(--safe-t)) 10px calc(20px + var(--safe-b));
       overflow-y: auto;
     }
@@ -262,6 +367,12 @@
     .stat-grid { grid-template-columns: 1fr; gap: 2px 8px; font-size: 12px; }
     .block { padding: 8px; margin-bottom: 8px; }
     .btns button { font-size: 12px; padding: 8px 6px; min-height: 38px; }
+    /* short landscape: the dock floats over the canvas, panel is beside it */
+    body { --sheet-now: 8px; }
+    #dock { gap: 10px; }
+    .glass-btn { --d: 46px; }
+    .glass-btn svg { width: 17px; height: 17px; }
+    .glass-btn span { font-size: 9px; top: calc(100% + 3px); }
     #ffN { width: 52px; }
     label { font-size: 11px; margin-top: 6px; }
   }
@@ -272,7 +383,27 @@
 </style>
 </head>
 <body>
-  <div id="stage"><div id="canvasHost"></div></div>
+  <div id="stage">
+    <div id="canvasHost"></div>
+      <div class="dial" id="dock">
+          <button id="breed" class="glass-btn" aria-label="Breed one generation">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v3a4 4 0 0 0 4 4 4 4 0 0 1 4 4v7M16 3v3a4 4 0 0 1-4 4 4 4 0 0 0-4 4v7"/><path d="M9 7h6M9 17h6"/></svg>
+            <span>Breed</span>
+          </button>
+          <button id="ff" class="glass-btn" aria-label="Fast-forward generations">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 5 8 7-8 7zM13 5l8 7-8 7z"/></svg>
+            <span>Fast-fwd</span>
+          </button>
+          <button id="reseed" class="glass-btn" aria-label="New random population">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 3v5h-5"/></svg>
+            <span>Reseed</span>
+          </button>
+          <button id="pause" class="glass-btn" aria-label="Pause simulation" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
+            <span>Pause</span>
+          </button>
+        </div>
+    </div>
 
   <aside>
     <button id="handle" aria-label="Toggle control panel" aria-expanded="true">
@@ -301,14 +432,9 @@
       </div>
 
       <div class="block">
-        <div class="btns">
-          <button id="breed">Breed</button>
-          <button id="ff">Fast-fwd</button>
+        <label class="ffn-row">generations
           <input id="ffN" type="number" value="10" min="1" max="500"
-                 inputmode="numeric" pattern="[0-9]*">
-          <button id="reseed">Reseed</button>
-          <button id="pause">Pause</button>
-        </div>
+                 inputmode="numeric" pattern="[0-9]*"></label>
         <label>fitness <select id="preset"></select></label>
         <label>population <input id="pop" type="range" min="4" max="30" value="12">
           <b id="popOut">12</b></label>
@@ -1291,6 +1417,7 @@
       this.touch = false;
       this.popSize = 12;
       this.popSizeExplicit = false;
+      this.insetBottom = 0;
     }
     create() {
       this.rng = makeRng(this.seed);
@@ -1314,21 +1441,43 @@
       this.events.once("shutdown", () => this.scale.off("resize", this.onResize, this));
     }
     /* -------------------------------------------------------- responsive -- */
+    /** Height of the playable box — the world minus whatever the sheet covers. */
+    get playHeight() {
+      return Math.max(160, WORLD.h - this.insetBottom);
+    }
     applyWorldBounds() {
       const inset = wallInset();
       const pad = inset + 16;
-      this.terrariumBounds.setTo(pad, pad, WORLD.w - pad * 2, WORLD.h - pad * 2);
+      const h = this.playHeight;
+      this.terrariumBounds.setTo(pad, pad, WORLD.w - pad * 2, h - pad * 2);
       this.matter.world.setBounds(
         inset,
         inset,
         WORLD.w - inset * 2,
-        WORLD.h - inset * 2,
+        h - inset * 2,
         Math.max(24, inset * 1.3),
         true,
         true,
         true,
         true
       );
+    }
+    /** Re-fence the play area after the sheet opens, closes, or changes layout. */
+    setInsetBottom(px) {
+      const next = Math.max(0, Math.round(px));
+      if (Math.abs(next - this.insetBottom) < 4) return false;
+      this.insetBottom = next;
+      this.applyWorldBounds();
+      this.drawGround();
+      const b = this.terrariumBounds;
+      for (const bug of this.bugs) {
+        bug.sprite.setPosition(
+          Phaser.Math.Clamp(bug.sprite.x, b.x, b.right),
+          Phaser.Math.Clamp(bug.sprite.y, b.y, b.bottom)
+        );
+        bug.wander = bug.pickWanderPoint();
+      }
+      return true;
     }
     /**
      * The viewport changed. Only reshape the world when the aspect ratio really
@@ -1370,6 +1519,7 @@
       const inset = wallInset();
       g.clear();
       g.fillStyle(2826519, 1).fillRect(0, 0, WORLD.w, WORLD.h);
+      const playH = this.playHeight;
       const r = makeRng(99);
       const n = this.settings.speckles;
       for (let i = 0; i < n; i++) {
@@ -1377,7 +1527,7 @@
         g.fillStyle(shade, 0.55);
         g.fillRect(r() * WORLD.w, r() * WORLD.h, 2 + r() * 5, 2 + r() * 4);
       }
-      g.lineStyle(Math.max(5, inset * 0.4), 10476008, 0.16).strokeRect(inset, inset, WORLD.w - inset * 2, WORLD.h - inset * 2);
+      g.lineStyle(Math.max(5, inset * 0.4), 10476008, 0.16).strokeRect(inset, inset, WORLD.w - inset * 2, playH - inset * 2);
     }
     buildDecor() {
       const g = this.decorLayer;
@@ -1545,6 +1695,380 @@
     }
   };
 
+  // src/ui/glass.js
+  var DEFAULT_OPTICS = {
+    strength: 0.06,
+    depth: 0.65,
+    curvature: 0.6,
+    splay: 0,
+    dispersion: 0.5,
+    bend: 0,
+    bendWidth: 0.16,
+    frost: 0.5,
+    brightness: 0.1,
+    specular: 1,
+    sheenAngle: 45,
+    sheen: 0.3,
+    sheenWidth: 3,
+    sheenFalloff: 1.5,
+    glow: 0.12,
+    glowSpread: 1,
+    glowFalloff: 0.5,
+    clipToShape: true,
+    softEdge: true
+  };
+  var DISPERSION_SPREAD = 0.22;
+  var ERF_K = Math.sqrt(Math.PI);
+  var erf = (x) => Math.tanh(ERF_K * x);
+  var encodeAxis = (signed) => (0.5 + signed) * 255 + 0.5 | 0;
+  var encodeSpec = (spec) => 127 * spec + 128 + 0.5 | 0;
+  var domeGradientMean = (radius, halfExtent) => halfExtent > 0 ? (radius - Math.sqrt(radius * radius - halfExtent * halfExtent)) / halfExtent : 0;
+  function computeDomeConstants(capDepth, halfW, halfH) {
+    const cap = Math.max(0.01, Math.min(capDepth, Math.min(halfW, halfH) - 1));
+    const Rx = (halfW * halfW + cap * cap) / (2 * cap);
+    const Ry = (halfH * halfH + cap * cap) / (2 * cap);
+    const meanX = domeGradientMean(Rx, halfW);
+    const meanY = domeGradientMean(Ry, halfH);
+    return {
+      Rx,
+      Ry,
+      scaleX: meanX > 0 ? 0.5 / meanX : 1,
+      scaleY: meanY > 0 ? 0.5 / meanY : 1
+    };
+  }
+  function domeGradient(distance, radius, scale) {
+    const inside = Math.min(distance, radius * (1 - 1e-3));
+    return inside / Math.sqrt(radius * radius - inside * inside) * scale;
+  }
+  function generateLensMap({
+    size = 256,
+    halfW,
+    halfH,
+    borderRadius,
+    ...opts
+  }) {
+    const o = { ...DEFAULT_OPTICS, ...opts };
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    const image = ctx.createImageData(size, size);
+    const data = image.data;
+    const half = size >> 1;
+    const radius = Math.min(borderRadius, Math.min(halfW, halfH));
+    const minHalf = Math.min(halfW, halfH);
+    const depthPx = Math.min(o.depth * minHalf, minHalf - 1);
+    const innerHalfW = Math.max(0, halfW - depthPx);
+    const innerHalfH = Math.max(0, halfH - depthPx);
+    const innerRadius = Math.max(0, Math.min(borderRadius, Math.min(innerHalfW, innerHalfH)));
+    const falloff = depthPx > 0 ? Math.SQRT1_2 / depthPx : 1e6;
+    const hasSpecular = o.glow > 0 || o.sheen > 0;
+    const angle = o.sheenAngle * Math.PI / 180;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const edgeInv = o.sheenWidth > 0 ? 1 / o.sheenWidth : 0;
+    const glowReachInv = 1 / Math.max(2, o.glowSpread * minHalf);
+    const stepX = 2 * halfW / size;
+    const stepY = 2 * halfH / size;
+    const invW = 1 / halfW;
+    const invH = 1 / halfH;
+    const hasDome = o.curvature > 0;
+    const domeCap = o.curvature * minHalf;
+    const dome = hasDome ? computeDomeConstants(domeCap, halfW, halfH) : null;
+    const hasSplay = o.splay > 0;
+    const hasEdgeRefract = o.bend > 0;
+    const erInv = 1 / Math.max(2, o.bendWidth * minHalf);
+    const splayHalf = 0.5 * minHalf;
+    const splayInv = splayHalf > 0 ? 1 / splayHalf : 0;
+    const sheenNorm = Math.SQRT1_2;
+    let lut = null;
+    if (hasDome) {
+      lut = new Float32Array(half);
+      const r2 = dome.Rx * dome.Rx;
+      const rMax = dome.Rx * (1 - 1e-3);
+      for (let col = 0; col < half; col++) {
+        const px = -((col + 0.5) * stepX - halfW);
+        const clamped = px < rMax ? px : rMax;
+        lut[col] = clamped / Math.sqrt(r2 - clamped * clamped) * dome.scaleX;
+      }
+    }
+    const cornerDistance = (ox, oy) => ox > 0 || oy > 0 ? Math.sqrt(ox * ox + oy * oy) : 0;
+    for (let row = 0; row < half; row++) {
+      const mirrorRow = size - 1 - row;
+      const py = -((row + 0.5) * stepY - halfH);
+      const edgeY = py - halfH + radius;
+      const innerEdgeY = o.softEdge ? py - innerHalfH + innerRadius : 0;
+      const dirYBase = hasDome ? domeGradient(py, dome.Ry, dome.scaleY) : py * invH > 1 ? 1 : py * invH;
+      const normY = py * invH > 1 ? 1 : py * invH;
+      const splayY = hasSplay ? Math.max(0, 1 - (halfH - py) * splayInv) : 0;
+      const rowBase = row * size;
+      const mirrorRowBase = mirrorRow * size;
+      for (let col = 0; col < half; col++) {
+        const mirrorCol = size - 1 - col;
+        const px = -((col + 0.5) * stepX - halfW);
+        const edgeX = px - halfW + radius;
+        const sdf = cornerDistance(edgeX > 0 ? edgeX : 0, edgeY > 0 ? edgeY : 0) + (edgeX > edgeY ? edgeX > 0 ? 0 : edgeX : edgeY > 0 ? 0 : edgeY) - radius;
+        const i00 = (rowBase + col) * 4;
+        const i01 = (rowBase + mirrorCol) * 4;
+        const i10 = (mirrorRowBase + col) * 4;
+        const i11 = (mirrorRowBase + mirrorCol) * 4;
+        if (o.clipToShape && sdf >= 0) {
+          for (const idx of [i00, i01, i10, i11]) {
+            data[idx] = 128;
+            data[idx + 1] = 128;
+            data[idx + 2] = 128;
+            data[idx + 3] = 255;
+          }
+          continue;
+        }
+        let dirX = lut ? lut[col] : px * invW > 1 ? 1 : px * invW;
+        let dirY = dirYBase;
+        if (hasSplay) {
+          const yAtt = splayY * o.splay;
+          const xAtt = Math.max(0, 1 - (halfW - px) * splayInv) * o.splay;
+          if (yAtt > 1e-3 || xAtt > 1e-3) {
+            const prevX = dirX, prevY = dirY;
+            dirX = prevX * (1 - yAtt);
+            dirY = prevY * (1 - xAtt);
+            const prevLen = Math.hypot(prevX, prevY);
+            const nextLen = Math.hypot(dirX, dirY);
+            if (nextLen > 1e-3) {
+              const restore = prevLen / nextLen;
+              dirX *= restore;
+              dirY *= restore;
+            }
+          }
+        }
+        let edgeOpacity = 1;
+        if (o.softEdge) {
+          const ix = px - innerHalfW + innerRadius;
+          const innerSdf = cornerDistance(ix > 0 ? ix : 0, innerEdgeY > 0 ? innerEdgeY : 0) + (ix > innerEdgeY ? ix > 0 ? 0 : ix : innerEdgeY > 0 ? 0 : innerEdgeY) - innerRadius;
+          edgeOpacity = 0.5 * (1 + erf(innerSdf * falloff));
+        }
+        let dx = 0.5 * dirX * edgeOpacity;
+        let dy = 0.5 * dirY * edgeOpacity;
+        if (hasEdgeRefract) {
+          const s = sdf < 0 ? Math.max(0, 1 + sdf * erInv) : 0;
+          if (s > 0) {
+            const len = Math.hypot(dirX, dirY);
+            if (len > 1e-4) {
+              const m = 6.75 * s * s * (1 - s);
+              const a = 0.5 * o.bend * m * edgeOpacity / len;
+              dx += dirX * a;
+              dy += dirY * a;
+            }
+          }
+        }
+        let specMain = 0, specCross = 0;
+        if (hasSpecular) {
+          const normX = px * invW > 1 ? 1 : px * invW;
+          const axisMain = Math.min(1, Math.abs(normX * cosA + normY * sinA) * sheenNorm);
+          const axisCross = Math.min(1, Math.abs(normX * cosA - normY * sinA) * sheenNorm);
+          if (o.sheen > 0) {
+            const band = sdf < 0 ? Math.max(0, 1 + sdf * edgeInv) : 0;
+            const b = o.sheen * Math.pow(band, o.sheenFalloff);
+            specMain += b * (0.16 + 0.84 * Math.pow(axisMain, 1.6));
+            specCross += b * (0.16 + 0.84 * Math.pow(axisCross, 1.6));
+          }
+          if (o.glow > 0) {
+            const reach = sdf < 0 ? Math.min(1, -sdf * glowReachInv) : 1;
+            const t = 1 - reach;
+            const g = o.glow * Math.pow(t * t * (3 - 2 * t), o.glowFalloff) * edgeOpacity;
+            specMain += g * (0.6 + 0.4 * axisMain);
+            specCross += g * (0.6 + 0.4 * axisCross);
+          }
+          specMain = Math.max(-1, Math.min(1, specMain));
+          specCross = Math.max(-1, Math.min(1, specCross));
+        }
+        const rPos = encodeAxis(dx), rNeg = encodeAxis(-dx);
+        const gPos = encodeAxis(dy), gNeg = encodeAxis(-dy);
+        const bMain = encodeSpec(specMain), bCross = encodeSpec(specCross);
+        data[i00] = rPos;
+        data[i00 + 1] = gPos;
+        data[i00 + 2] = bMain;
+        data[i00 + 3] = 255;
+        data[i01] = rNeg;
+        data[i01 + 1] = gPos;
+        data[i01 + 2] = bCross;
+        data[i01 + 3] = 255;
+        data[i10] = rPos;
+        data[i10 + 1] = gNeg;
+        data[i10 + 2] = bCross;
+        data[i10 + 3] = 255;
+        data[i11] = rNeg;
+        data[i11 + 1] = gNeg;
+        data[i11 + 2] = bMain;
+        data[i11 + 3] = 255;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    return canvas.toDataURL();
+  }
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var el = (name, attrs) => {
+    const n = document.createElementNS(SVG_NS, name);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+    return n;
+  };
+  function filterHost() {
+    let host = document.getElementById("glass-filters");
+    if (!host) {
+      host = el("svg", { id: "glass-filters", width: 0, height: 0, "aria-hidden": "true" });
+      host.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;pointer-events:none";
+      document.body.appendChild(host);
+    }
+    return host;
+  }
+  function installLensFilter(id, { w, h, mapUrl, optics = {} }) {
+    const o = { ...DEFAULT_OPTICS, ...optics };
+    const host = filterHost();
+    host.querySelector(`#${id}`)?.remove();
+    const dispNorm = Math.sqrt((w * w + h * h) / 2);
+    const dispScale = o.strength * dispNorm;
+    const f = el("filter", {
+      id,
+      filterUnits: "objectBoundingBox",
+      primitiveUnits: "userSpaceOnUse",
+      "color-interpolation-filters": "sRGB",
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1
+    });
+    f.appendChild(el("feFlood", { "flood-color": "rgb(128,128,128)", "flood-opacity": 1, result: "mapBg" }));
+    f.appendChild(el("feImage", {
+      href: mapUrl,
+      x: 0,
+      y: 0,
+      width: w,
+      height: h,
+      preserveAspectRatio: "none",
+      result: "rawMap"
+    }));
+    f.appendChild(el("feComposite", { in: "rawMap", in2: "mapBg", operator: "over", result: "map" }));
+    const hasBlur = o.frost > 0;
+    if (hasBlur) {
+      f.appendChild(el("feGaussianBlur", {
+        in: "SourceGraphic",
+        stdDeviation: o.frost,
+        result: "blurred"
+      }));
+    }
+    const src = hasBlur ? "blurred" : "SourceGraphic";
+    if (o.dispersion > 0) {
+      const passes = [
+        { scale: dispScale * (1 + DISPERSION_SPREAD * 0.5 * o.dispersion), m: "1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0", out: "refractR" },
+        { scale: dispScale, m: "0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0", out: "refractG" },
+        { scale: dispScale * (1 - DISPERSION_SPREAD * 0.5 * o.dispersion), m: "0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0", out: "refractB" }
+      ];
+      for (const p of passes) {
+        f.appendChild(el("feDisplacementMap", {
+          in: src,
+          in2: "map",
+          scale: p.scale,
+          xChannelSelector: "R",
+          yChannelSelector: "G"
+        }));
+        f.appendChild(el("feColorMatrix", { type: "matrix", values: p.m, result: p.out }));
+      }
+      f.appendChild(el("feComposite", {
+        in: "refractR",
+        in2: "refractG",
+        operator: "arithmetic",
+        k1: 0,
+        k2: 1,
+        k3: 1,
+        k4: 0,
+        result: "refractRG"
+      }));
+      f.appendChild(el("feComposite", {
+        in: "refractRG",
+        in2: "refractB",
+        operator: "arithmetic",
+        k1: 0,
+        k2: 1,
+        k3: 1,
+        k4: 0,
+        result: "lensOut"
+      }));
+    } else {
+      f.appendChild(el("feDisplacementMap", {
+        in: src,
+        in2: "map",
+        scale: dispScale,
+        xChannelSelector: "R",
+        yChannelSelector: "G",
+        result: "lensOut"
+      }));
+    }
+    if (o.glow > 0 || o.sheen > 0) {
+      f.appendChild(el("feColorMatrix", {
+        in: "map",
+        type: "matrix",
+        values: `0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 1 0 ${-128 / 255}`,
+        result: "sheenMask"
+      }));
+      f.appendChild(el("feComposite", {
+        in: "sheenMask",
+        in2: "lensOut",
+        operator: "arithmetic",
+        k1: 0,
+        k2: o.specular,
+        k3: 1,
+        k4: 0,
+        result: "lensOut"
+      }));
+    }
+    host.appendChild(f);
+    return id;
+  }
+  var _supported = null;
+  function supportsLensBackdrop() {
+    if (_supported !== null) return _supported;
+    const ok = typeof CSS !== "undefined" && CSS.supports && (CSS.supports("backdrop-filter", "url(#a)") || CSS.supports("-webkit-backdrop-filter", "url(#a)"));
+    _supported = !!ok;
+    return _supported;
+  }
+  var installed = /* @__PURE__ */ new Map();
+  function applyGlass(node, { radius, optics = {}, mapSize = 256 } = {}) {
+    const r = node.getBoundingClientRect();
+    const w = Math.round(r.width);
+    const h = Math.round(r.height);
+    if (!w || !h) return null;
+    const rad = radius ?? Math.min(w, h) / 2;
+    const key = `${w}x${h}r${Math.round(rad)}-${JSON.stringify(optics)}`;
+    let id = installed.get(key);
+    if (!id) {
+      id = `glass-${installed.size}`;
+      const mapUrl = generateLensMap({
+        size: mapSize,
+        halfW: w / 2,
+        halfH: h / 2,
+        borderRadius: rad,
+        ...optics
+      });
+      installLensFilter(id, { w, h, mapUrl, optics });
+      installed.set(key, id);
+    }
+    if (supportsLensBackdrop()) {
+      node.style.backdropFilter = `url(#${id})`;
+      node.style.webkitBackdropFilter = `url(#${id})`;
+      node.dataset.glass = "lens";
+    } else {
+      const o = { ...DEFAULT_OPTICS, ...optics };
+      const fallback = `blur(${(o.frost * 8).toFixed(1)}px) saturate(1.5)`;
+      node.style.backdropFilter = fallback;
+      node.style.webkitBackdropFilter = fallback;
+      node.dataset.glass = "frost";
+    }
+    return id;
+  }
+  function glassify(selector, opts) {
+    const nodes = [...document.querySelectorAll(selector)];
+    for (const n of nodes) applyGlass(n, opts);
+    return nodes;
+  }
+
   // src/main.js
   var $ = (id) => document.getElementById(id);
   var fmt = (n, d = 1) => Number(n).toFixed(d);
@@ -1584,6 +2108,7 @@
   var scene = null;
   game.events.once("ready", () => {
     scene = game.scene.getScene("terrarium");
+    window.__terrarium = { game, scene, WORLD };
     scene.events.on("state", render);
     scene.events.on("selected", () => {
       if (isSheetMode()) expandSheet();
@@ -1658,12 +2183,23 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(syncViewport, delay);
   }
+  function panelOverlap() {
+    const canvas = document.querySelector("#canvasHost canvas");
+    if (!canvas) return 0;
+    const c = canvas.getBoundingClientRect();
+    const a = document.querySelector("aside").getBoundingClientRect();
+    const overlapX = Math.max(0, Math.min(a.right, c.right) - Math.max(a.left, c.left));
+    if (overlapX < c.width * 0.5) return 0;
+    const overlapY = Math.max(0, c.bottom - Math.max(a.top, c.top));
+    return (overlapY + 10) * (WORLD.h / Math.max(1, c.height));
+  }
   function syncViewport() {
     if (!scene) return;
     const s = stageSize();
     setViewport(s.w, s.h);
     scene.settings = tierSettings();
     if (!scene.onResize({ width: s.w, height: s.h })) scene.scale.refresh();
+    scene.setInsetBottom(panelOverlap());
   }
   function wireViewport() {
     const onChange = () => queueResize();
@@ -1684,13 +2220,20 @@
       scene.emitState();
     };
     $("handle").onclick = toggleSheet;
+    $("canvasHost").style.gridArea = "1 / 1";
     $("breed").onclick = () => scene.breed();
     $("ff").onclick = () => scene.fastForward(Number($("ffN").value) || 10);
     $("reseed").onclick = () => scene.reseed();
+    const PAUSE_ICON = "M9 5v14M15 5v14";
+    const PLAY_ICON = "M7 4l12 8-12 8z";
     $("pause").onclick = (e) => {
       const running = scene.matter.world.enabled;
       scene.matter.world.enabled = !running;
-      e.currentTarget.textContent = running ? "Resume" : "Pause";
+      const btn = e.currentTarget;
+      btn.setAttribute("aria-pressed", String(running));
+      btn.setAttribute("aria-label", running ? "Resume simulation" : "Pause simulation");
+      btn.querySelector("svg path").setAttribute("d", running ? PLAY_ICON : PAUSE_ICON);
+      btn.querySelector("span").textContent = running ? "Resume" : "Pause";
     };
     $("pop").value = scene.popSize;
     $("popOut").textContent = scene.popSize;
@@ -1723,6 +2266,34 @@
     });
     stage.addEventListener("dblclick", (e) => e.preventDefault());
     stage.addEventListener("gesturestart", (e) => e.preventDefault());
+    wireGlass();
+  }
+  function wireGlass() {
+    const OPTICS = {
+      strength: 0.11,
+      bend: 0.4,
+      dispersion: 0.65,
+      curvature: 0.55,
+      frost: 1.2,
+      sheen: 0.42,
+      glow: 0.16
+    };
+    const install = () => glassify(".glass-btn", { optics: OPTICS });
+    if (document.fonts?.ready) document.fonts.ready.then(install);
+    requestAnimationFrame(() => requestAnimationFrame(install));
+    if (typeof ResizeObserver === "function") {
+      let last = "";
+      const ro = new ResizeObserver((entries) => {
+        const sig2 = entries.map((e) => `${Math.round(e.contentRect.width)}`).join(",");
+        if (sig2 === last) return;
+        last = sig2;
+        install();
+      });
+      for (const b of document.querySelectorAll(".glass-btn")) ro.observe(b);
+    }
+    if (!supportsLensBackdrop()) {
+      console.info("[glass] backdrop-filter: url() unsupported; using frost fallback");
+    }
   }
 })();
 

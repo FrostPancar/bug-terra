@@ -4,6 +4,7 @@ import { TerrariumScene, WORLD } from './sim/terrarium.js';
 import { computeWorld, tierSettings, isTouchDevice, setViewport } from './sim/viewport.js';
 import { GENE_ORDER } from './core/genes.js';
 import { STAT_KEYS, FITNESS } from './core/stats.js';
+import { glassify, supportsLensBackdrop } from './ui/glass.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 1) => Number(n).toFixed(d);
@@ -50,6 +51,8 @@ const game = new Phaser.Game({
 let scene = null;
 game.events.once('ready', () => {
   scene = game.scene.getScene('terrarium');
+  // handy in the console, and the viewport test reads the playable box from it
+  window.__terrarium = { game, scene, WORLD };
   scene.events.on('state', render);
   scene.events.on('selected', () => { if (isSheetMode()) expandSheet(); });
   wire();
@@ -140,6 +143,24 @@ function queueResize(delay = 160) {
   resizeTimer = setTimeout(syncViewport, delay);
 }
 
+/**
+ * How much of the canvas the panel actually covers, in WORLD px.
+ * Measured as a real rect intersection, so it's 0 in the side-panel and rail
+ * layouts (where the panel sits beside the canvas) without special-casing them.
+ */
+function panelOverlap() {
+  const canvas = document.querySelector('#canvasHost canvas');
+  if (!canvas) return 0;
+  const c = canvas.getBoundingClientRect();
+  const a = document.querySelector('aside').getBoundingClientRect();
+  const overlapX = Math.max(0, Math.min(a.right, c.right) - Math.max(a.left, c.left));
+  if (overlapX < c.width * 0.5) return 0;      // beside, not over
+  const overlapY = Math.max(0, c.bottom - Math.max(a.top, c.top));
+  // CSS px -> world px (the canvas is FIT-scaled), plus a small margin so the
+  // fence sits clear of the sheet's edge rather than exactly on it.
+  return (overlapY + 10) * (WORLD.h / Math.max(1, c.height));
+}
+
 function syncViewport() {
   if (!scene) return;
   const s = stageSize();
@@ -150,6 +171,8 @@ function syncViewport() {
   // terrain. A same-aspect size change (sheet toggle, window drag) still needs
   // the canvas refitted to its parent, so refresh either way.
   if (!scene.onResize({ width: s.w, height: s.h })) scene.scale.refresh();
+
+  scene.setInsetBottom(panelOverlap());
 }
 
 function wireViewport() {
@@ -181,14 +204,21 @@ function wire() {
   $('preset').onchange = (e) => { scene.preset = e.target.value; scene.emitState(); };
 
   $('handle').onclick = toggleSheet;
+  $('canvasHost').style.gridArea = '1 / 1';
 
   $('breed').onclick = () => scene.breed();
   $('ff').onclick = () => scene.fastForward(Number($('ffN').value) || 10);
   $('reseed').onclick = () => scene.reseed();
+  const PAUSE_ICON = 'M9 5v14M15 5v14';
+  const PLAY_ICON = 'M7 4l12 8-12 8z';
   $('pause').onclick = (e) => {
     const running = scene.matter.world.enabled;
     scene.matter.world.enabled = !running;
-    e.currentTarget.textContent = running ? 'Resume' : 'Pause';
+    const btn = e.currentTarget;
+    btn.setAttribute('aria-pressed', String(running));
+    btn.setAttribute('aria-label', running ? 'Resume simulation' : 'Pause simulation');
+    btn.querySelector('svg path').setAttribute('d', running ? PLAY_ICON : PAUSE_ICON);
+    btn.querySelector('span').textContent = running ? 'Resume' : 'Pause';
   };
 
   $('pop').value = scene.popSize;
@@ -229,4 +259,40 @@ function wire() {
   // Belt and braces against iOS double-tap zoom on the canvas.
   stage.addEventListener('dblclick', (e) => e.preventDefault());
   stage.addEventListener('gesturestart', (e) => e.preventDefault());
+
+  wireGlass();
+}
+
+/* ------------------------------------------------------------- glass ---- */
+
+/**
+ * Rasterizing a lens needs the button's real box, so this runs after layout.
+ * Every button is the same circle, so all four share one filter and one map.
+ */
+function wireGlass() {
+  // A 58px button is small, so push the bend and the rim past the library's
+  // default — at this size the default reads as a flat tint.
+  const OPTICS = { strength: 0.11, bend: 0.4, dispersion: 0.65, curvature: 0.55,
+                   frost: 1.2, sheen: 0.42, glow: 0.16 };
+  const install = () => glassify('.glass-btn', { optics: OPTICS });
+  if (document.fonts?.ready) document.fonts.ready.then(install);
+  requestAnimationFrame(() => requestAnimationFrame(install));
+
+  // The dial's diameter changes between the sheet and rail layouts; re-fit when
+  // it does, but only on a real size change — regenerating the map is not free.
+  if (typeof ResizeObserver === 'function') {
+    let last = '';
+    const ro = new ResizeObserver((entries) => {
+      const sig = entries.map((e) => `${Math.round(e.contentRect.width)}`).join(',');
+      if (sig === last) return;
+      last = sig;
+      install();
+    });
+    for (const b of document.querySelectorAll('.glass-btn')) ro.observe(b);
+  }
+
+  if (!supportsLensBackdrop()) {
+    // Not a failure — Safari/Firefox get frost + tint + rim, just no live bend.
+    console.info('[glass] backdrop-filter: url() unsupported; using frost fallback');
+  }
 }

@@ -28,6 +28,10 @@ export class TerrariumScene extends Phaser.Scene {
     this.touch = false;
     this.popSize = 12;
     this.popSizeExplicit = false;   // true once the user moves the slider
+    // World px hidden behind the bottom sheet. The canvas draws full bleed so
+    // the glass buttons have live terrarium to refract; the playable box stops
+    // short of it so no bug is ever unreachable under the panel.
+    this.insetBottom = 0;
   }
 
   create() {
@@ -62,15 +66,39 @@ export class TerrariumScene extends Phaser.Scene {
 
   /* -------------------------------------------------------- responsive -- */
 
+  /** Height of the playable box — the world minus whatever the sheet covers. */
+  get playHeight() {
+    return Math.max(160, WORLD.h - this.insetBottom);
+  }
+
   applyWorldBounds() {
     const inset = wallInset();
     const pad = inset + 16;
-    this.terrariumBounds.setTo(pad, pad, WORLD.w - pad * 2, WORLD.h - pad * 2);
+    const h = this.playHeight;
+    this.terrariumBounds.setTo(pad, pad, WORLD.w - pad * 2, h - pad * 2);
     // Phaser reuses the existing wall bodies when setBounds is called again.
     this.matter.world.setBounds(
-      inset, inset, WORLD.w - inset * 2, WORLD.h - inset * 2,
+      inset, inset, WORLD.w - inset * 2, h - inset * 2,
       Math.max(24, inset * 1.3), true, true, true, true
     );
+  }
+
+  /** Re-fence the play area after the sheet opens, closes, or changes layout. */
+  setInsetBottom(px) {
+    const next = Math.max(0, Math.round(px));
+    if (Math.abs(next - this.insetBottom) < 4) return false;
+    this.insetBottom = next;
+    this.applyWorldBounds();
+    this.drawGround();
+    const b = this.terrariumBounds;
+    for (const bug of this.bugs) {
+      bug.sprite.setPosition(
+        Phaser.Math.Clamp(bug.sprite.x, b.x, b.right),
+        Phaser.Math.Clamp(bug.sprite.y, b.y, b.bottom)
+      );
+      bug.wander = bug.pickWanderPoint();
+    }
+    return true;
   }
 
   /**
@@ -125,6 +153,7 @@ export class TerrariumScene extends Phaser.Scene {
     const inset = wallInset();
     g.clear();
     g.fillStyle(0x2b2117, 1).fillRect(0, 0, WORLD.w, WORLD.h);
+    const playH = this.playHeight;
     const r = makeRng(99);
     const n = this.settings.speckles;
     for (let i = 0; i < n; i++) {
@@ -132,9 +161,10 @@ export class TerrariumScene extends Phaser.Scene {
       g.fillStyle(shade, 0.55);
       g.fillRect(r() * WORLD.w, r() * WORLD.h, 2 + r() * 5, 2 + r() * 4);
     }
-    // glass frame
+    // glass frame — traces the PLAYABLE box, not the full canvas, so the wall
+    // sits where the bugs actually stop.
     g.lineStyle(Math.max(5, inset * 0.4), 0x9fd9e8, 0.16)
-      .strokeRect(inset, inset, WORLD.w - inset * 2, WORLD.h - inset * 2);
+      .strokeRect(inset, inset, WORLD.w - inset * 2, playH - inset * 2);
   }
 
   buildDecor() {
