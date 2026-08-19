@@ -186,7 +186,9 @@ export class Bug {
 
     // --- facing ---
     if (sp > 0.06) this.facing = Math.atan2(v.y, v.x);
-    this.sprite.setRotation(this.facing);
+    // Art is drawn head-UP; the sim's facing is measured along +x, so the
+    // sprite needs a quarter turn to line the two conventions up.
+    this.sprite.setRotation(this.facing + Math.PI / 2);
 
     // --- lighting ---
     // Blend the ambient colour toward white so bugs stay readable at night;
