@@ -11,7 +11,8 @@
     "stage": "node tools/stage-deploy.mjs",
     "release": "npm run build && npm run stage",
     "test:viewport": "node tools/viewport-test.mjs",
-    "test:interact": "node tools/interaction-test.mjs"
+    "test:interact": "node tools/interaction-test.mjs",
+    "digest": "node tools/make-digest.mjs"
   },
   "devDependencies": {
     "phaser": "3.80.1",
