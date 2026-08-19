@@ -273,6 +273,7 @@ TAXONOMY.md                the classification tree, and what it resolved
 OBJECTS.md                 terrarium objects + the plant upkeep loop
 WORLD.md                   multiplayer world, dirt zone, sync authority
 HIDDEN.md                  the no-numbers rule and how it's enforced
+CONCEPT.md                 the plain-language pitch, no source-reading required
 DEPLOY.md                  build + deploy notes
 THIRD-PARTY.md             ported/vendored code and licences
 tests/*.test.js            111 tests across five files
