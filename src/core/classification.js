@@ -89,9 +89,11 @@ export const CLADE_AXES = {
   legPlan: {
     gene: 'leg_count',
     brackets: [
-      { key: 'hexapod',  label: 'Hexapod',  range: [4, 6] },
+      // leg_count widened to 2..12; the brackets stretch to stay total, so a
+      // two-legger is still a hexapod-bracket bug and a twelve-legger a myriapod.
+      { key: 'hexapod',  label: 'Hexapod',  range: [2, 6] },
       { key: 'arachnid', label: 'Arachnid', range: [8, 8] },
-      { key: 'myriapod', label: 'Myriapod', range: [10, 10] },
+      { key: 'myriapod', label: 'Myriapod', range: [10, 12] },
     ],
   },
   wingPlan: {
@@ -99,7 +101,7 @@ export const CLADE_AXES = {
     brackets: [
       { key: 'apterous',     label: 'Wingless',   range: [0, 0] },
       { key: 'dipterous',    label: 'One pair',   range: [2, 2] },
-      { key: 'tetrapterous', label: 'Two pairs',  range: [4, 4] },
+      { key: 'tetrapterous', label: 'Two pairs',  range: [4, 6] },
     ],
   },
   massClass: {
@@ -252,7 +254,11 @@ export const CLASS_TREE = {
     taxon: 'True Bug', tier: 1, parent: 'larva', order: 'Hemiptera',
     clade: 'hexapod', adjective: 'Beaked', status: 'drafted',
     window: {
-      horn_type: 2,                      // rostrum
+      // horn_type 2 was `rostrum`, the long snout. The horn redesign replaced
+      // that shape with `y_shaped` and left no snout in the set, so the beaked
+      // taxa keep the index they always pinned and inherit the fork instead.
+      // The window is unchanged; only the shape behind index 2 is.
+      horn_type: 2,                      // y_shaped (was rostrum)
       horn_size: [0.35, 0.78],
       mandible_size: [0, 0.30],
       carapace_thickness: [0.25, 0.65],
@@ -317,7 +323,7 @@ export const CLASS_TREE = {
     taxon: 'Rhinoceros Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Horned', status: 'drafted',
     window: {
-      horn_type: 0, horn_size: [0.85, 1], body_mass: [0.70, 1],
+      horn_type: 0, horn_size: [0.85, 1], body_mass: [0.70, 1],    // nose (was rhino)
       carapace_thickness: [0.60, 1],
     },
     locks: ['horn_type'], unlocks: ['horn_size', 'body_mass'],
@@ -328,7 +334,7 @@ export const CLASS_TREE = {
     taxon: 'Stag Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Antlered', status: 'drafted',
     window: {
-      horn_type: 1, mandible_size: [0.80, 1], mandible_serration: [0.5, 1],
+      horn_type: 1, mandible_size: [0.80, 1], mandible_serration: [0.5, 1],   // pincer (was stag)
       carapace_thickness: [0.4, 0.7],
     },
     locks: ['horn_type'], unlocks: ['mandible_size', 'mandible_serration'],
@@ -411,7 +417,7 @@ export const CLASS_TREE = {
     // draws fell outside their own taxon. A starting archetype should read as
     // the thing it was drawn for.
     window: {
-      horn_type: 2, horn_size: [0.72, 1], body_width: [0.42, 1],
+      horn_type: 2, horn_size: [0.72, 1], body_width: [0.42, 1],   // y_shaped (was rostrum)
       carapace_thickness: [0.52, 1],
     },
     locks: ['horn_type'], unlocks: ['horn_size'],
@@ -598,7 +604,7 @@ export function traitsOf(genome, chassisId = null) {
  * DEEPEST identity the genome can actually reach — then, among equals, the
  * tightest window, then the one the genome sits furthest inside.
  *
- * Depth-first rather than greedy-first matters. A max-armour rhino-horned
+ * Depth-first rather than greedy-first matters. A max-armour nose-horned
  * beetle matches both Rhinoceros Beetle (a leaf) and Armoured Beetle (which
  * has Siege-Tank Rhinoceros under it). Greedy specificity picks the leaf and
  * the tier-3 node becomes unreachable; preferring depth lets the lineage finish

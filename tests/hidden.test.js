@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
-import { normalizeGenome, randomGenome } from '../src/core/genes.js';
+import { normalizeGenome, randomGenome, GENE_SPECS, GENE_ORDER } from '../src/core/genes.js';
 import { makeRng } from '../src/core/rng.js';
 import { genomeFromArchetype, ARCHETYPES } from '../src/core/archetypes.js';
 import {
@@ -82,7 +82,17 @@ test('every impression spec is ordered low to high', () => {
 });
 
 test('an unremarkable bug produces very little to say', () => {
-  const middling = normalizeGenome({});          // every gene at its midpoint
+  // normalizeGenome({}) no longer yields a midpoint bug — GENE_SPECS now carries
+  // authored defaults calibrated to the reference designs, and a designed bug is
+  // supposed to be remarkable. The "quiet middle" claim is about the middle of
+  // the ranges, so build that explicitly.
+  // body_segments is the exception: its range is 1..10 and the numeric middle of
+  // that is a six-segment centipede, which is not an average bug by any reading.
+  const middling = normalizeGenome({
+    ...Object.fromEntries(
+      GENE_ORDER.map((k) => [k, (GENE_SPECS[k].min + GENE_SPECS[k].max) / 2])),
+    body_segments: 2,
+  });
   const notable = allImpressions(middling);
   assert.ok(notable.length <= 4,
     `an average bug produced ${notable.length} impressions — the middle should be quiet`);

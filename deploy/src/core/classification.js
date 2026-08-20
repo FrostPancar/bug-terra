@@ -89,9 +89,11 @@ export const CLADE_AXES = {
   legPlan: {
     gene: 'leg_count',
     brackets: [
-      { key: 'hexapod',  label: 'Hexapod',  range: [4, 6] },
+      // leg_count widened to 2..12; the brackets stretch to stay total, so a
+      // two-legger is still a hexapod-bracket bug and a twelve-legger a myriapod.
+      { key: 'hexapod',  label: 'Hexapod',  range: [2, 6] },
       { key: 'arachnid', label: 'Arachnid', range: [8, 8] },
-      { key: 'myriapod', label: 'Myriapod', range: [10, 10] },
+      { key: 'myriapod', label: 'Myriapod', range: [10, 12] },
     ],
   },
   wingPlan: {
@@ -99,7 +101,7 @@ export const CLADE_AXES = {
     brackets: [
       { key: 'apterous',     label: 'Wingless',   range: [0, 0] },
       { key: 'dipterous',    label: 'One pair',   range: [2, 2] },
-      { key: 'tetrapterous', label: 'Two pairs',  range: [4, 4] },
+      { key: 'tetrapterous', label: 'Two pairs',  range: [4, 6] },
     ],
   },
   massClass: {
@@ -252,7 +254,11 @@ export const CLASS_TREE = {
     taxon: 'True Bug', tier: 1, parent: 'larva', order: 'Hemiptera',
     clade: 'hexapod', adjective: 'Beaked', status: 'drafted',
     window: {
-      horn_type: 2,                      // rostrum
+      // horn_type 2 was `rostrum`, the long snout. The horn redesign replaced
+      // that shape with `y_shaped` and left no snout in the set, so the beaked
+      // taxa keep the index they always pinned and inherit the fork instead.
+      // The window is unchanged; only the shape behind index 2 is.
+      horn_type: 2,                      // y_shaped (was rostrum)
       horn_size: [0.35, 0.78],
       mandible_size: [0, 0.30],
       carapace_thickness: [0.25, 0.65],
@@ -288,7 +294,10 @@ export const CLASS_TREE = {
     blurb: 'Ten legs on a body built in repeating parts.',
   },
 
-  /* ---- tier 2: Coleoptera ---- */
+  /* ---- Coleoptera: tier 2 under Beetle, except the Firefly ----
+     The Firefly is grouped here because its ORDER is Coleoptera, but it hangs
+     off Larva at tier 1 — see the note on the node. Order and parent are
+     allowed to disagree; that is the same seam hybrids fall out of. */
   armored_beetle: {
     taxon: 'Armoured Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Ironclad', status: 'coded',
@@ -314,7 +323,7 @@ export const CLASS_TREE = {
     taxon: 'Rhinoceros Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Horned', status: 'drafted',
     window: {
-      horn_type: 0, horn_size: [0.85, 1], body_mass: [0.70, 1],
+      horn_type: 0, horn_size: [0.85, 1], body_mass: [0.70, 1],    // nose (was rhino)
       carapace_thickness: [0.60, 1],
     },
     locks: ['horn_type'], unlocks: ['horn_size', 'body_mass'],
@@ -325,7 +334,7 @@ export const CLASS_TREE = {
     taxon: 'Stag Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Antlered', status: 'drafted',
     window: {
-      horn_type: 1, mandible_size: [0.80, 1], mandible_serration: [0.5, 1],
+      horn_type: 1, mandible_size: [0.80, 1], mandible_serration: [0.5, 1],   // pincer (was stag)
       carapace_thickness: [0.4, 0.7],
     },
     locks: ['horn_type'], unlocks: ['mandible_size', 'mandible_serration'],
@@ -345,18 +354,44 @@ export const CLASS_TREE = {
   carabidae: {
     taxon: 'Ground Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Coursing', status: 'drafted',
+    // Carabidae is a beetle family, so this stays under Coleoptera — the same
+    // call §5 made for the Weevil. That means the window has to fit INSIDE
+    // Beetle's rather than argue with it: the blurb already says "quick FOR A
+    // BEETLE", and long-for-a-beetle is the top of Beetle's leg range, not a
+    // mantis's legs. Drafted as leg_length [0.60, 1] against a parent capped at
+    // 0.45, which is a contradiction and made the taxon unreachable.
+    //
+    // Carapace was drafted at [0.35, 0.6] too, which merged with Beetle's
+    // [0.55, 1] down to a 0.05-wide slice — legal, but so narrow that nothing
+    // would ever breed into it. Widened to a real "moderate armour" band.
     window: {
-      leg_length: [0.6, 1], aggression: [0.6, 1], carapace_thickness: [0.35, 0.6],
+      leg_length: [0.34, 0.45], aggression: [0.6, 1], carapace_thickness: [0.55, 0.75],
     },
     locks: [], unlocks: ['leg_length', 'aggression'],
     specialty: { key: 'run_down', name: 'Run Down', mods: { speed: 1.10 } },
     blurb: 'Predatory and quick for a beetle. Chases rather than waits.',
   },
   lampyridae: {
-    taxon: 'Firefly', tier: 2, parent: 'beetle', order: 'Coleoptera',
+    // Re-parented off Beetle. Its whole idea is the negation of its parent's:
+    // "gave up its shell" against a chassis whose single defining gene is
+    // carapace >= 0.55. Narrowing it to fit would delete the concept, and
+    // loosening Beetle's floor would delete Beetle. So it hangs off Larva and
+    // keeps `order: Coleoptera` — the order field carries the real-world
+    // relationship while the chassis tree parents by gene compatibility, the
+    // same split §5 already made for Arachnid and Myriapod.
+    //
+    // Tightened while moving. Standing at tier 1 on three loose genes, it
+    // started taking genomes off the Wasp — and a bug with a stinger is better
+    // described by the stinger than by its markings. `wing_type: 1` is elytra,
+    // the hard wing cases, which is what still makes this a beetle underneath
+    // the soft body and what a wasp categorically does not have. A kind gene
+    // carrying the taxonomic weight, the same way the Rhinoceros Beetle pins
+    // horn_type.
+    taxon: 'Firefly', tier: 1, parent: 'larva', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Glimmering', status: 'drafted',
     window: {
-      wing_count: [2, 4], carapace_thickness: [0, 0.35], pattern_contrast: [0.6, 1],
+      wing_count: [2, 4], wing_type: 1, carapace_thickness: [0, 0.35],
+      pattern_contrast: [0.7, 1],
     },
     locks: [], unlocks: ['pattern_contrast', 'wing_area'],
     specialty: { key: 'cold_light', name: 'Cold Light', mods: { vision: 1.15, camouflage: 0.85 } },
@@ -382,7 +417,7 @@ export const CLASS_TREE = {
     // draws fell outside their own taxon. A starting archetype should read as
     // the thing it was drawn for.
     window: {
-      horn_type: 2, horn_size: [0.72, 1], body_width: [0.42, 1],
+      horn_type: 2, horn_size: [0.72, 1], body_width: [0.42, 1],   // y_shaped (was rostrum)
       carapace_thickness: [0.52, 1],
     },
     locks: ['horn_type'], unlocks: ['horn_size'],
@@ -457,11 +492,24 @@ export const CLASS_TREE = {
     blurb: 'Defence-curl instead of venom. The inverse of a centipede.',
   },
 
-  /* ---- tier 2: Lepidoptera ---- */
+  /* ---- Lepidoptera: the Butterfly, now a sibling of the Moth rather than a
+     child of it. Same order, incompatible surface — see the note on the node. */
   butterfly: {
-    taxon: 'Butterfly', tier: 2, parent: 'moth', order: 'Lepidoptera',
+    // Re-parented off Moth, for the same reason the Firefly left Beetle: the
+    // blurb promises "opposite surface entirely" and Moth's identity includes
+    // setae >= 0.75, so smooth-and-under-a-furred-parent cannot both be true.
+    //
+    // "Same chassis as a moth" is now STATED rather than inherited — wing_area
+    // and mandible_size are copied onto this node explicitly. That keeps the
+    // promise the blurb makes, and it keeps the §4 hard wall intact: a Butterfly
+    // still sits on the far side of wing_area >= 0.85, so no Beetle lineage can
+    // reach it without crossing the same gap it always had to.
+    taxon: 'Butterfly', tier: 1, parent: 'larva', order: 'Lepidoptera',
     clade: 'hexapod', adjective: 'Painted', status: 'drafted',
-    window: { pattern_contrast: [0.75, 1], saturation: [0.65, 1], setae: [0, 0.3] },
+    window: {
+      wing_area: [0.85, 1], mandible_size: [0, 0.20], setae: [0, 0.3],
+      pattern_contrast: [0.75, 1], saturation: [0.65, 1],
+    },
     locks: [], unlocks: ['hue', 'pattern'],
     specialty: { key: 'flash_colour', name: 'Flash Colour', mods: { agility: 1.10, camouflage: 0.85 } },
     blurb: 'Same chassis as a moth, opposite surface entirely.',
@@ -556,7 +604,7 @@ export function traitsOf(genome, chassisId = null) {
  * DEEPEST identity the genome can actually reach — then, among equals, the
  * tightest window, then the one the genome sits furthest inside.
  *
- * Depth-first rather than greedy-first matters. A max-armour rhino-horned
+ * Depth-first rather than greedy-first matters. A max-armour nose-horned
  * beetle matches both Rhinoceros Beetle (a leaf) and Armoured Beetle (which
  * has Siege-Tank Rhinoceros under it). Greedy specificity picks the leaf and
  * the tier-3 node becomes unreachable; preferring depth lets the lineage finish

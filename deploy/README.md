@@ -43,10 +43,21 @@ is inlined.
 ```bash
 npm install        # only needed for the single-file build + tests
 npm run dev        # serves on http://localhost:5173
-npm test           # 134 tests over genes / stats / breeding / classification /
-                   # objects / world / hidden / session
+npm test           # 147 tests over genes / stats / breeding / classification /
+                   # parts / objects / world / hidden / session
 npm run build      # re-embeds src/assets/ and regenerates dist/terrarium.html
 ```
+
+**The builder:** with a dev server on the repo root, open
+`/tools/builder.html` — it imports `src/` live, so it can never drift from the
+game. For a copy that opens straight off disk with no server:
+
+```bash
+npm run build:builder     # -> dist/builder.html, self-contained, 133 kB
+```
+
+Load a taxon or an archetype, tap parts on and off, drag the genes, and export
+the combination as code — see [BUILDER.md](./BUILDER.md).
 
 ---
 
@@ -93,9 +104,9 @@ means: steer, place, or select a bug (`TerrariumScene.handleClick`).
 
 ### 1. Genetics — `src/core/genes.js`, `genes.schema.json`
 
-A genome is a flat object of **41 scalar genes** across six groups — body plan,
+A genome is a flat object of **48 scalar genes** across six groups — body plan,
 limbs, wings, weapons/defence, sensory, and surface/colour. Four of them
-(`wing_type`, `mandible_type`, `horn_type`, `eye_type`) are categorical "kind"
+(`wing_type`, `mandible_type`, `horn_type`, `eye_type`, `crown_mark_style`) are categorical "kind"
 genes rather than continuous amounts. `GENE_ORDER` is the
 canonical vector order; crossover, serialization and any future GLB mapping all
 read it.
@@ -337,9 +348,11 @@ src/core/archetypes.js     eight body plans + seeding + nearest-archetype label
 src/core/genes.schema.json JSON Schema for the genome
 src/core/stats.js          morphology + pure stat formulas + fitness presets
 src/core/classification.js clade brackets + taxonomy tree (second pure read)
+src/core/taxonBuild.js     the inverse of classify(): taxon -> a genome that is one
 src/core/impressions.js    stats -> words; the no-numbers vocabulary
 src/core/breeding.js       crossover, mutation, selection, generation loop
 src/render/bugArt.js       procedural canvas art + spritesheet baking
+src/render/partLibrary.js  every part the renderer draws + the genes behind each
 src/sim/animator.js        animation state machine
 src/sim/dayNight.js        real-clock day/night + behaviour modifiers
 src/sim/bug.js             entity: stats -> body, animator, behaviour
@@ -362,14 +375,17 @@ src/assets/dirt.js         GENERATED data URI — see tools/embed-assets.mjs
 src/main.js                boot + HUD (cannot render a number)
 GENES.md                   full gene and archetype reference
 TAXONOMY.md                the classification tree, and what it resolved
+BUILDER.md                 the bug builder tool and the part catalogue
 OBJECTS.md                 terrarium objects + the plant upkeep loop
 WORLD.md                   multiplayer world, dirt zone, sync authority
 HIDDEN.md                  the no-numbers rule and how it's enforced
 CONCEPT.md                 the plain-language pitch, no source-reading required
 DEPLOY.md                  build + deploy notes
 THIRD-PARTY.md             ported/vendored code and licences
-tests/*.test.js            134 tests across six files
+tests/*.test.js            147 tests across seven files
 tools/build-single.mjs     bundles + inlines into dist/terrarium.html
+tools/builder.html         the bug builder — taxon builds, part library, export
+tools/build-builder.mjs    inlines the builder's modules -> dist/builder.html
 ```
 
 ---

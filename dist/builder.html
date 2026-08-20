@@ -281,6 +281,7 @@ pre b{color:var(--yellow);font-weight:600}
     GENE_SPECS: () => GENE_SPECS,
     clampGene: () => clampGene,
     fromVector: () => fromVector,
+    geneDefault: () => geneDefault,
     genomeId: () => genomeId,
     genomeName: () => genomeName,
     normalizeGenome: () => normalizeGenome,
@@ -327,64 +328,124 @@ pre b{color:var(--yellow);font-weight:600}
   // src/core/genes.js
   var GENE_SPECS = {
     /* ---- body plan ---- */
-    body_segments: { min: 2, max: 4, integer: true },
-    // thorax divisions
-    body_length: { min: 0, max: 1 },
-    body_width: { min: 0, max: 1 },
-    body_mass: { min: 0, max: 1 },
-    head_size: { min: 0, max: 1 },
-    thorax_ratio: { min: 0, max: 1 },
+    // Trunk segments, head NOT counted. Segment 1 is always the thorax; every
+    // segment past it is an abdominal segment. 1 therefore means "no abdomen".
+    body_segments: { min: 1, max: 10, integer: true, default: 2 },
+    body_length: { min: 0, max: 1, default: 0.53 },
+    body_width: { min: 0, max: 1, default: 0.21 },
+    body_mass: { min: 0, max: 1, default: 0.75 },
+    head_size: { min: 0, max: 1, default: 0.22 },
+    thorax_ratio: { min: 0, max: 1, default: 0.22 },
     // thorax vs abdomen
-    abdomen_taper: { min: 0, max: 1 },
+    abdomen_taper: { min: 0, max: 1, default: 0.51 },
     // 0 round, 1 pointed
-    carapace_thickness: { min: 0, max: 1 },
+    carapace_thickness: { min: 0, max: 1, default: 0.7 },
     /* ---- limbs ---- */
-    leg_count: { min: 4, max: 10, integer: true, step: 2 },
-    leg_length: { min: 0, max: 1 },
-    leg_thickness: { min: 0, max: 1 },
-    leg_spread: { min: 0, max: 1 },
-    leg_joints: { min: 2, max: 3, integer: true },
-    claw_size: { min: 0, max: 1 },
+    leg_count: { min: 2, max: 12, integer: true, step: 2, default: 6 },
+    leg_length: { min: 0, max: 1, default: 0.47 },
+    leg_thickness: { min: 0, max: 1, default: 0.92 },
+    leg_spread: { min: 0, max: 1, default: 0.75 },
+    leg_joints: { min: 1, max: 5, integer: true, default: 2 },
+    claw_size: { min: 0, max: 1, default: 0.08 },
     /* ---- wings ---- */
-    wing_count: { min: 0, max: 4, integer: true, step: 2 },
-    wing_type: { min: 0, max: 4, integer: true },
-    // membranous/elytra/broad/narrow/fan
-    wing_area: { min: 0, max: 1 },
-    wing_beat: { min: 0, max: 1 },
+    // 0 / 2 / 4 / 6. Unchanged: zero is still a legal, meaningful genome (every
+    // arachnid archetype uses it) and six still fans three blades a side.
+    wing_count: { min: 0, max: 6, integer: true, step: 2, default: 2 },
+    // NARROWED 0–4 → 0–1, and no longer a shape picker. The blade SHAPE is derived
+    // from wing_length/wing_width/wing_roundness now (see wingShapeCoefficient in
+    // bugArt.js), so all this still decides is the structural question: soft
+    // membranous blades, or hard elytra covers folded over the abdomen. Index 1 is
+    // still elytra, which classification.js depends on. clampGene pulls any stored
+    // 2/3/4 down to 1.
+    wing_type: { min: 0, max: 1, integer: true, default: 0 },
+    // membranous/elytra
+    // KEPT, and narrowed in meaning to OVERALL SIZE — it scales a wing's length
+    // and width together and does nothing else. It used to conflate size with
+    // length; wing_length now owns length on its own. Kept rather than replaced
+    // because classification.js windows and stats.js wing loading are both written
+    // against it, and "how much wing is there" is exactly what they want.
+    wing_area: { min: 0, max: 1, default: 0.28 },
+    // Length along the wing's own axis, independent of width.
+    wing_length: { min: 0, max: 1, default: 0.55 },
+    // Half-width across that axis, expressed as a fraction of length — so it is a
+    // true aspect ratio and cannot smuggle in a length change.
+    wing_width: { min: 0, max: 1, default: 0.46 },
+    // Blunt vs. finely tapered tip. Moves outline control points only, never the
+    // bounding box, so it is independent of both length and width.
+    wing_roundness: { min: 0, max: 1, default: 0.55 },
+    // Sweep away from the body's long axis: 35° at 0, 165° at 1. The 0.50 default
+    // is CALIBRATED, not picked — it renders 100°, the median resting angle across
+    // the four full-bug panels of `Image References/WIngs.jpg`.
+    wing_angle: { min: 0, max: 1, default: 0.5 },
+    // Tip wash colour. 0 = white (the default, and NOT a REF_PALETTE entry — the
+    // reference palette has no white); 1–10 select a REF_PALETTE swatch in order:
+    // tan/brown/rust/orange/gold/sage/ink/cream/pink/blue.
+    wing_tip_hue: { min: 0, max: 10, integer: true, default: 0 },
+    wing_beat: { min: 0, max: 1, default: 0.15 },
     /* ---- weapons & defence ---- */
-    mandible_size: { min: 0, max: 1 },
-    mandible_type: { min: 0, max: 3, integer: true },
-    // pincer/tusk/forceps/palps
-    mandible_serration: { min: 0, max: 1 },
-    horn_size: { min: 0, max: 1 },
-    horn_type: { min: 0, max: 4, integer: true },
-    // rhino/stag/rostrum/crown/crescent
-    spine_density: { min: 0, max: 1 },
+    mandible_size: { min: 0, max: 1, default: 0.9 },
+    mandible_type: { min: 0, max: 3, integer: true, default: 0 },
+    // wide_thin/narrow_thick/chelicerae_teeth/chelicerae_smooth
+    // Stays CONTINUOUS: stats.js reads it as a bite multiplier. The renderer
+    // buckets it into the sketch's three levels itself — min(2, floor(v * 3)).
+    mandible_serration: { min: 0, max: 1, default: 0.53 },
+    horn_size: { min: 0, max: 1, default: 0.88 },
+    horn_type: { min: 0, max: 4, integer: true, default: 1 },
+    // nose/pincer/y_shaped/split/crown
+    // Discrete 3-level detail on the horn — the sketch's "0 SR / 1 SR / 2 SR".
+    // Integer like leg_joints/body_segments, NOT a continuous 0–1 gene.
+    horn_serration: { min: 0, max: 2, integer: true, default: 0 },
+    spine_density: { min: 0, max: 1, default: 0.44 },
     // defensive spikes
-    tail_length: { min: 0, max: 1 },
+    tail_length: { min: 0, max: 1, default: 0 },
     // cerci / metasoma
-    stinger_size: { min: 0, max: 1 },
+    stinger_size: { min: 0, max: 1, default: 0 },
     /* ---- sensory ---- */
-    eye_count: { min: 2, max: 8, integer: true, step: 2 },
-    eye_type: { min: 0, max: 3, integer: true },
-    // almond/round/teardrop/compound
-    eye_size: { min: 0, max: 1 },
-    antenna_length: { min: 0, max: 1 },
+    eye_count: { min: 2, max: 12, integer: true, step: 2, default: 2 },
+    // REPURPOSED. There is only one eye SHAPE now (the sketch draws one silhouette
+    // three times); this picks the FILL TREATMENT: dark+white-dots / notched /
+    // hooked. The range narrowed 0–3 → 0–2 with the fourth shape, and clampGene
+    // pulls any stored 3 down to 2.
+    eye_type: { min: 0, max: 2, integer: true, default: 1 },
+    // dark/notched/hooked
+    eye_size: { min: 0, max: 1, default: 0.8 },
+    antenna_length: { min: 0, max: 1, default: 0.55 },
     /* ---- physiology & behaviour ---- */
-    metabolism: { min: 0, max: 1 },
-    aggression: { min: 0, max: 1 },
+    metabolism: { min: 0, max: 1, default: 0.33 },
+    aggression: { min: 0, max: 1, default: 0.74 },
     /* ---- surface & colour ---- */
-    hue: { min: 0, max: 1, circular: true },
-    saturation: { min: 0, max: 1 },
-    lightness: { min: 0, max: 1 },
-    pattern: { min: 0, max: 1 },
-    // selects marking style
-    pattern_scale: { min: 0, max: 1 },
-    pattern_contrast: { min: 0, max: 1 },
-    setae: { min: 0, max: 1 },
+    // COLOUR CALIBRATION — the default bug is the reference red #CA4B36
+    // (hsl 8.6°, 58%, 50%). `hue` is a swatch INDEX (floor(hue × 12)), so 0.04
+    // lands in swatch 0, vermilion (h 0.015, s 0.66, l 0.53); saturation and
+    // lightness then scale that swatch. 0.57 / 0.50 renders hsl(5.4°, 66%, 53.5%)
+    // = #D7483A, the closest this swatch table gets to the reference without
+    // rewriting SWATCHES. #4962B8 (hsl 226°, 44%, 50%) is the secondary favourable
+    // pick — same lightness, different hue — and stays reachable by breeding at
+    // hue ≈ 0.68 (periwinkle, #5354C9) without any of these defaults moving.
+    hue: { min: 0, max: 1, circular: true, default: 0.04 },
+    saturation: { min: 0, max: 1, default: 0.57 },
+    lightness: { min: 0, max: 1, default: 0.5 },
+    // Three-way surface treatment for the horn and the mandibles:
+    // gradient / dots / oval, bucketed as min(2, floor(pattern × 3)). The old
+    // `pattern > 0.5 → black limbs` reading is unchanged and still independent.
+    pattern: { min: 0, max: 1, default: 0.05 },
+    pattern_scale: { min: 0, max: 1, default: 0.11 },
+    // dot size/density
+    pattern_contrast: { min: 0, max: 1, default: 0.21 },
+    // how loud all three read
+    // A flat colour patch capping the top of the head: none / solid gold with a
+    // hard edge / the same cap blended down into the head colour. Its colours come
+    // straight off bugArt's fixed REF_PALETTE, never from the body hue.
+    //
+    // NAMING: this is UNRELATED to horn_type's `nose`, which is a spike of horn
+    // geometry mounted on the thorax. The reference sheet labels this row "NOSES"
+    // as well; the word is avoided here on purpose so the two cannot be confused.
+    crown_mark_style: { min: 0, max: 2, integer: true, default: 0 },
+    // none/solid/blended
+    setae: { min: 0, max: 1, default: 0.16 },
     // hairiness
-    iridescence: { min: 0, max: 1 },
-    translucency: { min: 0, max: 1 }
+    iridescence: { min: 0, max: 1, default: 0 },
+    translucency: { min: 0, max: 1, default: 0.13 }
   };
   var GENE_ORDER = Object.keys(GENE_SPECS);
   function clampGene(name, value) {
@@ -403,11 +464,16 @@ pre b{color:var(--yellow);font-weight:600}
     }
     return v;
   }
+  function geneDefault(name) {
+    const spec = GENE_SPECS[name];
+    if (!spec) throw new Error(`unknown gene: ${name}`);
+    return clampGene(name, spec.default ?? (spec.min + spec.max) / 2);
+  }
   function normalizeGenome(partial = {}) {
     const g = {};
     for (const name of GENE_ORDER) {
       const spec = GENE_SPECS[name];
-      const raw = partial[name] ?? (spec.min + spec.max) / 2;
+      const raw = partial[name] ?? spec.default ?? (spec.min + spec.max) / 2;
       g[name] = clampGene(name, raw);
     }
     return g;
@@ -466,7 +532,7 @@ pre b{color:var(--yellow);font-weight:600}
       blurb: "Armoured bruiser. Thick carapace, horn, short legs \u2014 slow, very hard to kill.",
       spread: 0.1,
       bias: {
-        body_segments: 3,
+        body_segments: 2,
         body_length: 0.5,
         body_width: 0.72,
         body_mass: 0.8,
@@ -489,6 +555,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 0,
         eye_type: 1,
         mandible_type: 0,
+        crown_mark_style: 1,
         spine_density: 0.3,
         tail_length: 0.1,
         stinger_size: 0.02,
@@ -510,7 +577,7 @@ pre b{color:var(--yellow);font-weight:600}
       blurb: "Fast flier with a stinger. Light, aggressive, venomous, almost no armour.",
       spread: 0.1,
       bias: {
-        body_segments: 3,
+        body_segments: 2,
         body_length: 0.62,
         body_width: 0.24,
         body_mass: 0.18,
@@ -524,9 +591,15 @@ pre b{color:var(--yellow);font-weight:600}
         leg_joints: 3,
         claw_size: 0.3,
         wing_count: 4,
-        wing_type: 4,
+        wing_type: 0,
         wing_area: 0.8,
         wing_beat: 0.9,
+        // slender crescent blades, swept well back, gold-tipped (coefficient 0.80)
+        wing_length: 0.85,
+        wing_width: 0.12,
+        wing_roundness: 0.15,
+        wing_angle: 0.7,
+        wing_tip_hue: 5,
         mandible_size: 0.3,
         mandible_serration: 0.3,
         horn_size: 0.02,
@@ -580,6 +653,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 1,
         eye_type: 1,
         mandible_type: 2,
+        crown_mark_style: 2,
         spine_density: 0.25,
         tail_length: 0.15,
         stinger_size: 0.55,
@@ -661,9 +735,15 @@ pre b{color:var(--yellow);font-weight:600}
         leg_joints: 3,
         claw_size: 0.95,
         wing_count: 2,
-        wing_type: 3,
+        wing_type: 0,
         wing_area: 0.45,
         wing_beat: 0.3,
+        // mid-slenderness oval blades held close to the body (coefficient 0.59)
+        wing_length: 0.7,
+        wing_width: 0.25,
+        wing_roundness: 0.3,
+        wing_angle: 0.55,
+        wing_tip_hue: 0,
         mandible_size: 0.7,
         mandible_serration: 0.85,
         horn_size: 0.1,
@@ -691,7 +771,7 @@ pre b{color:var(--yellow);font-weight:600}
       blurb: "Enormous soft wings, furred body. Great lift and stamina, hopeless in a fight.",
       spread: 0.11,
       bias: {
-        body_segments: 3,
+        body_segments: 2,
         body_length: 0.45,
         body_width: 0.45,
         body_mass: 0.15,
@@ -705,14 +785,20 @@ pre b{color:var(--yellow);font-weight:600}
         leg_joints: 2,
         claw_size: 0.25,
         wing_count: 4,
-        wing_type: 2,
+        wing_type: 0,
         wing_area: 0.98,
         wing_beat: 0.55,
+        // huge broad leaf blades, cream-tipped (coefficient -0.03 -> leaf)
+        wing_length: 0.6,
+        wing_width: 0.82,
+        wing_roundness: 0.85,
+        wing_angle: 0.35,
+        wing_tip_hue: 8,
         mandible_size: 0.08,
         mandible_serration: 0.05,
         horn_size: 0.02,
         horn_type: 4,
-        eye_type: 3,
+        eye_type: 2,
         mandible_type: 3,
         spine_density: 0.05,
         tail_length: 0.2,
@@ -736,7 +822,7 @@ pre b{color:var(--yellow);font-weight:600}
       blurb: "Ten legs on a long segmented body. Quick, spiny, venomous, poorly armoured.",
       spread: 0.1,
       bias: {
-        body_segments: 4,
+        body_segments: 8,
         body_length: 0.98,
         body_width: 0.2,
         body_mass: 0.28,
@@ -902,12 +988,11 @@ pre b{color:var(--yellow);font-weight:600}
   var clamp01 = (v) => clamp(v, 0, 1);
   var sig = (x, k = 6) => 1 / (1 + Math.exp(-k * (clamp01(x) - 0.5)));
   function morphology(g) {
-    const length = 0.4 + g.body_length * 1.6;
-    const width = 0.25 + g.body_width * 1.05;
-    const taper = 1 - 0.28 * g.abdomen_taper;
     const segments = g.body_segments;
-    const segmentStretch = 1 + (segments - 2) * 0.18;
-    const bodyLen = length * segmentStretch;
+    const bodyLen = 0.7 + 0.62 * Math.pow(Math.max(0, segments - 1), 0.75);
+    const length = bodyLen;
+    const width = 0.18 + g.body_width * 1.32;
+    const taper = 1 - 0.28 * g.abdomen_taper;
     const volume = bodyLen * width * width * taper;
     const shellVolume = volume * (0.05 + g.carapace_thickness * 0.45);
     const density = 0.5 + g.body_mass * 1.1;
@@ -1100,9 +1185,11 @@ pre b{color:var(--yellow);font-weight:600}
     legPlan: {
       gene: "leg_count",
       brackets: [
-        { key: "hexapod", label: "Hexapod", range: [4, 6] },
+        // leg_count widened to 2..12; the brackets stretch to stay total, so a
+        // two-legger is still a hexapod-bracket bug and a twelve-legger a myriapod.
+        { key: "hexapod", label: "Hexapod", range: [2, 6] },
         { key: "arachnid", label: "Arachnid", range: [8, 8] },
-        { key: "myriapod", label: "Myriapod", range: [10, 10] }
+        { key: "myriapod", label: "Myriapod", range: [10, 12] }
       ]
     },
     wingPlan: {
@@ -1110,7 +1197,7 @@ pre b{color:var(--yellow);font-weight:600}
       brackets: [
         { key: "apterous", label: "Wingless", range: [0, 0] },
         { key: "dipterous", label: "One pair", range: [2, 2] },
-        { key: "tetrapterous", label: "Two pairs", range: [4, 4] }
+        { key: "tetrapterous", label: "Two pairs", range: [4, 6] }
       ]
     },
     massClass: {
@@ -1302,8 +1389,12 @@ pre b{color:var(--yellow);font-weight:600}
       adjective: "Beaked",
       status: "drafted",
       window: {
+        // horn_type 2 was `rostrum`, the long snout. The horn redesign replaced
+        // that shape with `y_shaped` and left no snout in the set, so the beaked
+        // taxa keep the index they always pinned and inherit the fork instead.
+        // The window is unchanged; only the shape behind index 2 is.
         horn_type: 2,
-        // rostrum
+        // y_shaped (was rostrum)
         horn_size: [0.35, 0.78],
         mandible_size: [0, 0.3],
         carapace_thickness: [0.25, 0.65]
@@ -1418,6 +1509,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 0,
         horn_size: [0.85, 1],
         body_mass: [0.7, 1],
+        // nose (was rhino)
         carapace_thickness: [0.6, 1]
       },
       locks: ["horn_type"],
@@ -1437,6 +1529,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 1,
         mandible_size: [0.8, 1],
         mandible_serration: [0.5, 1],
+        // pincer (was stag)
         carapace_thickness: [0.4, 0.7]
       },
       locks: ["horn_type"],
@@ -1560,6 +1653,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 2,
         horn_size: [0.72, 1],
         body_width: [0.42, 1],
+        // y_shaped (was rostrum)
         carapace_thickness: [0.52, 1]
       },
       locks: ["horn_type"],
@@ -2038,8 +2132,8 @@ pre b{color:var(--yellow);font-weight:600}
     const g = { ...base.genome };
     const legs = CLADE_LEGS[node.clade ?? ""] ?? null;
     if (legs && !window.leg_count) g.leg_count = legs;
-    if (node.clade === "myriapod" && !window.body_length) g.body_length = Math.max(g.body_length, 0.85);
-    if (node.clade === "arachnid" && !window.body_length) g.body_length = Math.min(g.body_length, 0.6);
+    if (node.clade === "myriapod" && !window.body_segments) g.body_segments = Math.max(g.body_segments, 8);
+    if (node.clade === "arachnid" && !window.body_segments) g.body_segments = Math.min(g.body_segments, 3);
     for (const [gene, [lo, hi]] of Object.entries(window)) g[gene] = snap(gene, g[gene], lo, hi);
     const frozen = new Set(Object.keys(window));
     if (legs && !window.leg_count) frozen.add("leg_count");
@@ -2078,15 +2172,23 @@ pre b{color:var(--yellow);font-weight:600}
   __export(bugArt_exports, {
     ANIM_FRAMES: () => ANIM_FRAMES,
     ANIM_ORDER: () => ANIM_ORDER,
-    EYE_TYPES: () => EYE_TYPES,
+    CROWN_MARKS: () => CROWN_MARKS,
+    EYE_FILLS: () => EYE_FILLS,
     HORN_TYPES: () => HORN_TYPES,
     MANDIBLE_TYPES: () => MANDIBLE_TYPES,
+    REF_PALETTE_ORDER: () => REF_PALETTE_ORDER,
+    WING_SHAPES: () => WING_SHAPES,
     WING_TYPES: () => WING_TYPES,
     bakeSpritesheet: () => bakeSpritesheet,
     bodyPlan: () => bodyPlan,
     drawBug: () => drawBug,
+    hornSerration: () => hornSerration,
     layout: () => layout,
-    palette: () => palette
+    mandibleSerration: () => mandibleSerration,
+    palette: () => palette,
+    surfacePattern: () => surfacePattern,
+    wingShape: () => wingShape,
+    wingShapeCoefficient: () => wingShapeCoefficient
   });
   var TAU = Math.PI * 2;
   var clamp2 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -2121,6 +2223,40 @@ pre b{color:var(--yellow);font-weight:600}
     { h: 0.955, s: 0.6, l: 0.58 }
     // rose
   ];
+  var REF_PALETTE = {
+    tan: "#bb9e7c",
+    brown: "#594637",
+    rust: "#bf5640",
+    orange: "#d76334",
+    gold: "#e7bc53",
+    sage: "#589873",
+    ink: "#2b292a",
+    cream: "#e5dbcf",
+    pink: "#e2a9af",
+    blue: "#4255be"
+  };
+  function refA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+  }
+  var BLOB_ALPHA = 0.52;
+  var REF_PALETTE_ORDER = [
+    "tan",
+    "brown",
+    "rust",
+    "orange",
+    "gold",
+    "sage",
+    "ink",
+    "cream",
+    "pink",
+    "blue"
+  ];
+  function wingTipColour(g, a) {
+    const i = clamp2(Math.round(g.wing_tip_hue ?? 0), 0, REF_PALETTE_ORDER.length);
+    if (i === 0) return `rgba(255,255,255,${a})`;
+    return refA(REF_PALETTE[REF_PALETTE_ORDER[i - 1]], a);
+  }
   var hsl = (h, s, l, a = 1) => `hsla(${((h % 1 + 1) % 1 * 360).toFixed(1)}, ${(clamp2(s, 0, 1) * 100).toFixed(1)}%, ${(clamp2(l, 0, 1) * 100).toFixed(1)}%, ${a})`;
   function palette(g) {
     const sw = SWATCHES[Math.floor(clamp2(g.hue, 0, 0.999) * SWATCHES.length)];
@@ -2131,10 +2267,29 @@ pre b{color:var(--yellow);font-weight:600}
     const inkLimbs = g.pattern > 0.5;
     return {
       shell: hsl(h, s, l),
-      bloom: hsl(h, s * 0.72, Math.min(0.86, l + 0.22)),
-      // gradient centre
+      // The one surviving tone of the old airbrush gradient. It is NOT a head
+      // treatment any more (the head is flat `shell`, see drawBug); the elytra
+      // pass is its only consumer, where it separates the two wing covers.
       deep: hsl(h, s * 1.02, Math.max(0.2, l - 0.14)),
-      // gradient edge
+      // Body-segment bloom, straight off the fixed reference palette — cream at
+      // the core, warm tan on the way out, then out to nothing well short of the
+      // rim so the edge stays flat undarkened `shell`. Six stops, all faint: see
+      // BLOB_ALPHA for why the numbers are this low.
+      segBloom: refA(REF_PALETTE.cream, BLOB_ALPHA),
+      segBloomMid: refA(REF_PALETTE.cream, BLOB_ALPHA * 0.68),
+      segBloomMid2: refA(REF_PALETTE.cream, BLOB_ALPHA * 0.44),
+      segBloomFar: refA(REF_PALETTE.tan, BLOB_ALPHA * 0.24),
+      segBloomFar2: refA(REF_PALETTE.tan, BLOB_ALPHA * 0.1),
+      segBloomOut: refA(REF_PALETTE.tan, 0),
+      // The crown mark — a flat colour patch on the head's own surface. Gold and
+      // orange straight off REF_PALETTE, never computed from the body hue.
+      crownSolid: REF_PALETTE.gold,
+      crownBlendTop: refA(REF_PALETTE.gold, 0.95),
+      crownBlendMid: refA(REF_PALETTE.orange, 0.62),
+      crownBlendOut: refA(REF_PALETTE.orange, 0),
+      // The soft centreline is the segment's own shell colour, faded.
+      shellSoft: hsl(h, s, l, 0.3),
+      shellClear: hsl(h, s, l, 0),
       seam: hsl(h, s * 1.05, Math.max(0.16, l - 0.2)),
       limb: inkLimbs ? "#17161c" : hsl(h, s * 0.92, Math.max(0.24, l - 0.16)),
       limbLo: inkLimbs ? "#0e0d11" : hsl(h, s * 0.95, Math.max(0.18, l - 0.24)),
@@ -2143,8 +2298,18 @@ pre b{color:var(--yellow);font-weight:600}
       sclera: "#ffffff",
       iris: hsl(accentH, 0.7, 0.56),
       pupil: "#14131a",
-      wing: "rgba(196,199,206,0.62)",
-      wingLo: "rgba(160,164,174,0.50)",
+      // WINGS ARE NEVER TINTED BY THE GENOME. Every other surface here derives
+      // from the body hue; the wing membrane deliberately does not. The reference
+      // sheet draws the same neutral grey membrane on every bug whatever colour
+      // that bug is, and both tones are locked at exactly 0.70 alpha — the two
+      // greys differ only in value, so overlapping blades still separate.
+      wing: "rgba(178,181,188,0.70)",
+      wingLo: "rgba(146,150,159,0.70)",
+      // Wing tip wash. White is the default and is NOT a REF_PALETTE slot (the
+      // palette has no white), so it is state 0 of `wing_tip_hue`; 1–10 pick a
+      // swatch. Same two-stop-into-nothing technique as the blended crown mark.
+      wingTip: wingTipColour(g, 0.78),
+      wingTipOut: wingTipColour(g, 0),
       h,
       s,
       l,
@@ -2152,14 +2317,36 @@ pre b{color:var(--yellow);font-weight:600}
     };
   }
   function bodyPlan(g) {
-    if (g.leg_count >= 8 && g.body_length > 0.7) return "myriapod";
+    if (g.leg_count >= 8 && g.body_segments >= 6) return "myriapod";
     if (g.leg_count >= 8) return "arachnid";
     return "insect";
   }
-  var HORN_TYPES = ["rhino", "stag", "rostrum", "crown", "crescent"];
-  var WING_TYPES = ["membranous", "elytra", "broad", "narrow", "fan"];
-  var EYE_TYPES = ["almond", "round", "teardrop", "compound"];
-  var MANDIBLE_TYPES = ["pincer", "tusk", "forceps", "palps"];
+  var HORN_TYPES = ["nose", "pincer", "y_shaped", "split", "crown"];
+  var WING_TYPES = ["membranous", "elytra"];
+  var WING_SHAPES = ["leaf", "oval", "crescent"];
+  function wingShapeCoefficient(g) {
+    return clamp2(
+      0.5 + 0.5 * (g.wing_length ?? 0.55) - 0.7 * (g.wing_width ?? 0.46) - 0.3 * (g.wing_roundness ?? 0.55),
+      0,
+      1
+    );
+  }
+  function wingShape(g) {
+    const c = wingShapeCoefficient(g);
+    return c < 0.34 ? "leaf" : c < 0.62 ? "oval" : "crescent";
+  }
+  var WING_FAMILY = {
+    leaf: { lenK: 1, widK: 1.3 },
+    oval: { lenK: 0.72, widK: 1.06 },
+    crescent: { lenK: 1.38, widK: 0.42 }
+  };
+  var WING_SWEEP_MIN = 0.61;
+  var WING_SWEEP_MAX = 2.88;
+  var EYE_FILLS = ["dark", "notched", "hooked"];
+  var CROWN_MARKS = ["none", "solid", "blended"];
+  var MANDIBLE_TYPES = ["wide_thin", "narrow_thick", "chelicerae_teeth", "chelicerae_smooth"];
+  var hornSerration = (g) => clamp2(Math.round(g.horn_serration ?? 0), 0, 2);
+  var mandibleSerration = (g) => Math.min(2, Math.floor((g.mandible_serration ?? 0) * 3));
   function layout(g, ppu = 26) {
     const m = morphology(g);
     const plan = bodyPlan(g);
@@ -2183,8 +2370,10 @@ pre b{color:var(--yellow);font-weight:600}
       eyes: [],
       antennae: [],
       hornType: HORN_TYPES[g.horn_type ?? 0],
-      wingType: WING_TYPES[g.wing_type ?? 0],
-      eyeType: EYE_TYPES[g.eye_type ?? 0],
+      wingType: WING_TYPES[clamp2(Math.round(g.wing_type ?? 0), 0, WING_TYPES.length - 1)],
+      wingShape: wingShape(g),
+      eyeFill: EYE_FILLS[clamp2(Math.round(g.eye_type ?? 0), 0, 2)],
+      crownMark: CROWN_MARKS[clamp2(Math.round(g.crown_mark_style ?? 0), 0, 2)],
       mandibleType: MANDIBLE_TYPES[g.mandible_type ?? 0],
       wingPairs: g.wing_count / 2,
       wingArea: g.wing_area,
@@ -2208,7 +2397,7 @@ pre b{color:var(--yellow);font-weight:600}
       bump(leg.knee.x, leg.knee.y);
     }
     for (const e of L.eyes) bump(e.x + e.rx, e.y + e.ry);
-    bump(L.head.x + L.head.rx + L.hornLen, L.hornLen * 0.7);
+    bump(L.thorax.x + L.thorax.rx + L.hornLen * 1.1, L.hornLen * 0.7);
     bump(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
     if (L.wingPairs > 0) bump(L.wingSpan.x, L.wingSpan.y);
     L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + 3);
@@ -2216,42 +2405,55 @@ pre b{color:var(--yellow);font-weight:600}
   }
   function buildTrunk(L) {
     const { g, plan, bodyWid } = L;
+    const segCount = clamp2(Math.round(g.body_segments), 1, 10);
+    L.segCount = segCount;
+    L.abdomenSegs = segCount - 1;
+    L.thorax = null;
+    L.abdomen = null;
     if (plan === "myriapod") {
-      const n = clamp2(Math.round(6 + g.body_length * 4), 6, 10);
+      const n2 = clamp2(segCount, 6, 10);
       const segR = bodyWid * 0.46;
       const pitch = segR * 1.4;
-      const frontX = pitch * (n - 1) * 0.5;
-      L.segCount = n;
-      for (let i = n - 1; i >= 0; i--) {
-        const t = i / (n - 1);
+      const frontX = pitch * (n2 - 1) * 0.5;
+      L.segCount = n2;
+      for (let i = n2 - 1; i >= 0; i--) {
+        const t = i / (n2 - 1);
         const r = segR * lerp(0.76, 1, Math.sin(t * Math.PI * 0.85 + 0.35));
         L.parts.push({ x: frontX - pitch * i, y: 0, rx: r * 1.02, ry: r, kind: "seg", t });
       }
       L.trunkFrontX = frontX;
+      L.thorax = L.parts[L.parts.length - 1];
+      L.abdomen = L.parts[0] ?? null;
       return;
     }
-    if (plan === "arachnid") {
-      const abR2 = bodyWid * 0.56;
-      const cephR = bodyWid * 0.42;
-      const gap2 = (abR2 + cephR) * 0.74;
-      L.parts.push({ x: -gap2 * 0.5, y: 0, rx: abR2 * (1 - g.abdomen_taper * 0.08), ry: abR2, kind: "abdomen" });
-      L.parts.push({ x: gap2 * 0.5, y: 0, rx: cephR, ry: cephR, kind: "thorax" });
-      L.trunkFrontX = gap2 * 0.5 + cephR;
-      return;
+    const arach = plan === "arachnid";
+    const abR = bodyWid * (arach ? 0.56 : 0.54);
+    const thR = arach ? bodyWid * 0.42 : bodyWid * lerp(0.24, 0.58, g.thorax_ratio);
+    const thorax = { x: 0, y: 0, rx: thR * (arach ? 1 : 1.04), ry: thR, kind: "thorax" };
+    const n = L.abdomenSegs;
+    const abParts = [];
+    if (n > 0) {
+      const segLen = abR * (1.16 / Math.sqrt(n));
+      const tipNarrow = lerp(1, 0.55, g.abdomen_taper);
+      let x = -(thR * 0.74) - segLen * 0.6;
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : i / (n - 1);
+        const ry = abR * (1 - g.abdomen_taper * (arach ? 0.18 : 0.22)) * lerp(1, tipNarrow, t);
+        abParts.push({ x, y: 0, rx: segLen, ry, kind: "abdomen", seg: i });
+        x -= segLen * 1.15;
+      }
     }
-    const abR = bodyWid * 0.54;
-    const thR = bodyWid * lerp(0.34, 0.44, g.thorax_ratio);
-    const abLen = abR * lerp(1.02, 1.24, g.body_length);
-    const gap = abLen * 0.6 + thR * 0.74;
-    L.parts.push({ x: -gap * 0.44, y: 0, rx: abLen, ry: abR * (1 - g.abdomen_taper * 0.1), kind: "abdomen" });
-    L.parts.push({ x: gap * 0.56, y: 0, rx: thR * 1.04, ry: thR, kind: "thorax" });
-    L.trunkFrontX = gap * 0.56 + thR;
+    for (let i = abParts.length - 1; i >= 0; i--) L.parts.push(abParts[i]);
+    L.parts.push(thorax);
+    L.thorax = thorax;
+    L.abdomen = abParts[0] ?? null;
+    L.trunkFrontX = thorax.x + thR;
   }
   function buildLegs(L) {
     const { g, plan, unit } = L;
     const pairs = plan === "myriapod" ? L.segCount : g.leg_count / 2;
-    const len = unit * lerp(0.8, 1.4, g.leg_length) * (plan === "myriapod" ? 0.5 : 1);
-    const w = clamp2(unit * (0.07 + g.leg_thickness * 0.075), 2.6, 13);
+    const len = unit * lerp(0.55, 1.85, g.leg_length) * (plan === "myriapod" ? 0.5 : 1);
+    const w = clamp2(unit * (0.05 + g.leg_thickness * 0.115), 2.2, 16);
     for (let i = 0; i < pairs; i++) {
       const t = pairs === 1 ? 0.5 : i / (pairs - 1);
       let ax, ay;
@@ -2260,15 +2462,15 @@ pre b{color:var(--yellow);font-weight:600}
         ax = host.x;
         ay = host.ry * 0.8;
       } else if (plan === "arachnid") {
-        const c = L.parts[1];
+        const c = L.thorax;
         ax = c.x + lerp(c.rx * 0.46, -c.rx * 0.54, t);
         ay = c.ry * 0.76;
       } else {
-        const th = L.parts[1];
+        const th = L.thorax;
         ax = th.x + lerp(th.rx * 0.54, -th.rx * 0.62, t);
         ay = th.ry * 0.8;
       }
-      const fan = lerp(-0.52, 0.78, t) * (0.6 + g.leg_spread * 0.55);
+      const fan = lerp(-0.52, 0.78, t) * (0.42 + g.leg_spread * 0.86);
       for (const side of [-1, 1]) {
         L.legs.push(buildLeg({
           ax,
@@ -2296,15 +2498,15 @@ pre b{color:var(--yellow);font-weight:600}
   }
   function buildHead(L) {
     const { g, plan, bodyWid, unit } = L;
-    const headR = bodyWid * (plan === "arachnid" ? 0.32 : lerp(0.36, 0.48, g.head_size));
+    const headR = bodyWid * (plan === "arachnid" ? 0.28 : lerp(0.22, 0.62, g.head_size));
     const hx = L.trunkFrontX + headR * (plan === "arachnid" ? 0.06 : 0.54);
     L.head = { x: hx, y: 0, rx: headR * 1, ry: headR, kind: "head" };
-    const er = headR * lerp(0.62, 0.88, g.eye_size);
+    const er = headR * lerp(0.45, 1.05, g.eye_size);
     for (const side of [-1, 1]) {
       L.eyes.push({
-        x: hx + headR * 0.1,
-        y: side * headR * 0.94,
-        rx: er * 0.62,
+        x: hx + headR * 0.04,
+        y: side * headR * 0.98,
+        rx: er * 0.55,
         ry: er,
         side
       });
@@ -2321,24 +2523,35 @@ pre b{color:var(--yellow);font-weight:600}
         minor: true
       });
     }
-    const antLen = unit * lerp(0.1, 0.58, g.antenna_length);
+    const antLen = unit * lerp(0.06, 0.95, g.antenna_length);
     if (antLen > unit * 0.15) for (const side of [-1, 1]) L.antennae.push({ side, len: antLen });
-    const hornMax = L.hornType === "rostrum" ? 0.8 : L.hornType === "stag" ? 1.15 : 0.95;
-    L.hornLen = g.horn_size < 0.12 ? 0 : unit * lerp(0.26, hornMax, g.horn_size);
-    L.mandible = g.mandible_size < 0.1 ? 0 : headR * lerp(0.52, 1, g.mandible_size);
+    const hornMax = L.hornType === "nose" ? 1.15 : L.hornType === "split" ? 1.55 : 1.3;
+    L.hornLen = g.horn_size < 0.12 ? 0 : unit * lerp(0.18, hornMax, g.horn_size);
+    L.mandible = g.mandible_size < 0.1 ? 0 : headR * lerp(0.38, 1.22, g.mandible_size);
     const rear = L.parts[0];
-    const tailLen = unit * lerp(0, 0.44, g.tail_length);
+    const tailLen = unit * lerp(0, 0.62, g.tail_length);
     if (tailLen > unit * 0.08) {
       L.tail = { len: tailLen, x0: rear.x - rear.rx * 0.62, sting: g.stinger_size };
       L.tailTip = { x: rear.x - rear.rx * 0.62 - tailLen, y: 0 };
     }
     if (L.wingPairs > 0 && L.wingArea > 0.05) {
-      const wl = unit * lerp(0.9, 1.7, L.wingArea);
-      L.wingSpan = { x: Math.abs(L.parts[0].x) + wl * 0.85, y: bodyWid * 0.5 + wl * 0.72 };
+      L.wing = wingMetrics(L);
+      const reach = L.wing.len + L.wing.wid;
+      L.wingSpan = { x: Math.abs(L.parts[0].x) + reach * 0.9, y: bodyWid * 0.5 + reach * 0.8 };
     } else {
       L.wingPairs = 0;
+      L.wing = null;
       L.wingSpan = { x: 0, y: 0 };
     }
+  }
+  function wingMetrics(L) {
+    const { g } = L;
+    const fam = WING_FAMILY[L.wingShape];
+    const size = lerp(0.62, 1.3, L.wingArea);
+    const len = L.unit * lerp(0.85, 2.3, g.wing_length ?? 0.55) * fam.lenK * size;
+    const wid = len * lerp(0.09, 0.52, g.wing_width ?? 0.46) * fam.widK;
+    const sweep = lerp(WING_SWEEP_MIN, WING_SWEEP_MAX, g.wing_angle ?? 0.5);
+    return { len, wid, sweep, round: clamp2(g.wing_roundness ?? 0.55, 0, 1), fam: L.wingShape };
   }
   function fillEllipse(ctx, x, y, rx, ry, fill) {
     ctx.beginPath();
@@ -2346,19 +2559,29 @@ pre b{color:var(--yellow);font-weight:600}
     ctx.fillStyle = fill;
     ctx.fill();
   }
-  function bloomFill(ctx, part, col) {
-    const gr = ctx.createRadialGradient(
-      part.x + part.rx * 0.1,
-      -part.ry * 0.22,
-      Math.max(part.rx, part.ry) * 0.06,
-      part.x,
-      0,
-      Math.max(part.rx, part.ry) * 1.1
-    );
-    gr.addColorStop(0, col.bloom);
-    gr.addColorStop(0.46, col.shell);
-    gr.addColorStop(1, col.deep);
-    return gr;
+  var CROWN_CAP = 0.18;
+  function drawCrownMark(ctx, L, col) {
+    if (L.crownMark === "none") return;
+    const h = L.head;
+    const edge = h.x + h.rx * (1 - CROWN_CAP * 2);
+    const top = h.x + h.rx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(h.x, 0, h.rx, h.ry, 0, 0, TAU);
+    ctx.clip();
+    if (L.crownMark === "solid") {
+      ctx.fillStyle = col.crownSolid;
+      ctx.fillRect(edge, -h.ry * 1.05, top - edge, h.ry * 2.1);
+    } else if (ctx.createLinearGradient) {
+      const foot = h.x + h.rx * (1 - CROWN_CAP * 3.4);
+      const gr = ctx.createLinearGradient(top, 0, foot, 0);
+      gr.addColorStop(0, col.crownBlendTop);
+      gr.addColorStop(0.42, col.crownBlendMid);
+      gr.addColorStop(1, col.crownBlendOut);
+      ctx.fillStyle = gr;
+      ctx.fillRect(foot, -h.ry * 1.05, top - foot, h.ry * 2.1);
+    }
+    ctx.restore();
   }
   function capsule(ctx, ax, ay, bx, by, cx, cy, w, colour) {
     ctx.strokeStyle = colour;
@@ -2415,6 +2638,11 @@ pre b{color:var(--yellow);font-weight:600}
     ctx.globalAlpha = 1;
   }
   function taperedCurve(ctx, p0, p1, p2, w0, w1, fill, steps = 16) {
+    taperedPath(ctx, p0, p1, p2, w0, w1, steps);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  function taperedPath(ctx, p0, p1, p2, w0, w1, steps = 16) {
     const left = [], right = [];
     for (let i = 0; i <= steps; i++) {
       const t = i / steps, u = 1 - t;
@@ -2433,43 +2661,140 @@ pre b{color:var(--yellow);font-weight:600}
     for (const p of left) ctx.lineTo(p.x, p.y);
     for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
     ctx.closePath();
-    ctx.fillStyle = fill;
+  }
+  var PATTERN_MODES = ["gradient", "dots", "oval"];
+  function hueToward(from, to, t) {
+    let d = ((to - from) % 1 + 1.5) % 1 - 0.5;
+    return from + d * t;
+  }
+  function surfacePattern(g, col) {
+    const k = clamp2(g.pattern_contrast ?? 0, 0, 1);
+    const h = hueToward(col.h, 0.095, 0.35 + k * 0.5);
+    return {
+      mode: PATTERN_MODES[Math.min(2, Math.floor(clamp2(g.pattern ?? 0, 0, 1) * 3))],
+      scale: clamp2(g.pattern_scale ?? 0, 0, 1),
+      k,
+      lite: hsl(h, clamp2(col.s * 1.02, 0, 1), clamp2(col.l + 0.1 + k * 0.26, 0, 0.9))
+    };
+  }
+  function patternedCurve(ctx, p0, p1, p2, w0, w1, base, pat, seed) {
+    taperedPath(ctx, p0, p1, p2, w0, w1);
+    if (pat.mode === "gradient" && ctx.createLinearGradient) {
+      const gr = ctx.createLinearGradient(p0.x, p0.y, p2.x, p2.y);
+      gr.addColorStop(0, base);
+      gr.addColorStop(1, pat.lite);
+      ctx.fillStyle = gr;
+    } else {
+      ctx.fillStyle = base;
+    }
     ctx.fill();
+    if (pat.mode === "gradient") return;
+    ctx.save();
+    ctx.clip();
+    const px = (t) => qpoint(p0, p1, p2, t);
+    if (pat.mode === "dots") {
+      const n = Math.round(lerp(34, 9, pat.scale));
+      const r = Math.max(0.6, lerp(0.16, 0.4, pat.scale) * w0);
+      ctx.fillStyle = pat.lite;
+      ctx.globalAlpha = 0.35 + pat.k * 0.6;
+      for (let i = 0; i < n; i++) {
+        const t = Math.sqrt(hash01(i, seed)) * 0.98;
+        const c = px(t);
+        const j = hash01(i, seed + 11) - 0.5, j2 = hash01(i, seed + 23) - 0.5;
+        const spread = lerp(w0, w1, t) * 1.1;
+        ctx.beginPath();
+        ctx.arc(c.x + j * spread, c.y + j2 * spread, r * (0.6 + hash01(i, seed + 31)), 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      const c = px(0.78);
+      const d = px(0.92);
+      const a = Math.atan2(d.y - c.y, d.x - c.x);
+      const w = Math.max(1, lerp(w0, w1, 0.78));
+      ctx.fillStyle = pat.lite;
+      ctx.globalAlpha = 0.55 + pat.k * 0.45;
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y, w * 1.05, w * 0.46, a, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+  function qpoint(p0, p1, p2, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
+      y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y
+    };
+  }
+  function wingPath(ctx, fam, len, wid, round) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    if (fam === "crescent") {
+      const bow = len * 0.2;
+      const tipX = len * (1 - round * 0.04);
+      ctx.bezierCurveTo(len * 0.3, -wid * 0.92, len * 0.72, -wid * 0.58, tipX, bow);
+      ctx.bezierCurveTo(
+        len * 0.7,
+        bow * 0.34 + wid * (0.26 + round * 0.3),
+        len * 0.34,
+        wid * (0.58 + round * 0.22),
+        0,
+        0
+      );
+    } else if (fam === "oval") {
+      const tipX = len * (0.94 + round * 0.06);
+      const tipY = wid * (0.26 + round * 0.2);
+      ctx.bezierCurveTo(len * 0.1, -wid * 1.1, len * 0.6, -wid * 1.08, tipX, -tipY);
+      ctx.bezierCurveTo(len * (1.04 + round * 0.03), 0, len * (1.04 + round * 0.03), 0, tipX, tipY);
+      ctx.bezierCurveTo(len * 0.6, wid * 1.08, len * 0.1, wid * 1.1, 0, 0);
+    } else {
+      const tipX = len * (0.9 + round * 0.08);
+      const tipY = wid * (0.3 + round * 0.22);
+      ctx.bezierCurveTo(len * 0.06, -wid * 1.16, len * 0.58, -wid * 1.14, tipX, -tipY);
+      ctx.bezierCurveTo(len * (1.06 + round * 0.04), 0, len * (1.06 + round * 0.04), 0, tipX, tipY);
+      ctx.bezierCurveTo(len * 0.56, wid * 1.1, len * 0.1, wid * 0.8, 0, 0);
+    }
+    ctx.closePath();
   }
   function drawSoftWings(ctx, L, col, phase, state) {
-    if (L.wingPairs < 1 || L.wingType === "elytra") return;
+    if (L.wingPairs < 1 || L.wingType === "elytra" || !L.wing) return;
     const { g } = L;
     const flap = state === "walk" || state === "attack" ? Math.sin(phase * TAU * (1 + g.wing_beat * 2.5)) * 0.13 : 0.02;
-    const type = L.wingType;
-    const wl = L.unit * lerp(0.95, 1.8, L.wingArea);
-    const anchor = L.parts[L.parts.length - 1];
-    const spec = {
-      membranous: { blades: 2, spread: 0.34, width: 0.2, base: 0.92 },
-      broad: { blades: 2, spread: 0.46, width: 0.4, base: 1.02 },
-      narrow: { blades: 3, spread: 0.26, width: 0.13, base: 0.86 },
-      fan: { blades: 4, spread: 0.3, width: 0.12, base: 0.8 }
-    }[type] ?? { blades: 2, spread: 0.34, width: 0.2, base: 0.92 };
-    const n = Math.min(spec.blades * L.wingPairs, 5);
+    const { len: baseLen, wid: baseWid, sweep, round, fam } = L.wing;
+    const anchor = L.thorax;
+    const n = L.wingPairs;
+    const STAGGER = 0.3;
     for (const side of [-1, 1]) {
       for (let i = n - 1; i >= 0; i--) {
-        const t = n === 1 ? 0.5 : i / (n - 1);
+        const len = baseLen * (1 - i * 0.12);
+        const wid = baseWid * (1 - i * 0.08);
         ctx.save();
-        ctx.translate(anchor.x - L.unit * 0.04, side * anchor.ry * 0.26);
-        ctx.rotate(side * (0.8 + flap + t * spec.spread * 2.2));
-        const len = wl * spec.base * lerp(1, 0.78, t);
-        const wid = len * spec.width;
+        ctx.translate(anchor.x - L.unit * 0.04, side * anchor.ry * 0.22);
+        ctx.rotate(side * (sweep + flap + i * STAGGER));
+        ctx.scale(1, side);
+        wingPath(ctx, fam, len, wid, round);
         ctx.fillStyle = i % 2 === 0 ? col.wing : col.wingLo;
-        ctx.beginPath();
-        ctx.ellipse(len * 0.48, side * wid * 0.3, len * 0.52, wid, side * 0.22, 0, TAU);
         ctx.fill();
+        if (ctx.createLinearGradient) {
+          ctx.save();
+          ctx.clip();
+          const gr = ctx.createLinearGradient(len * 1.02, 0, len * 0.42, 0);
+          gr.addColorStop(0, col.wingTip);
+          gr.addColorStop(1, col.wingTipOut);
+          ctx.fillStyle = gr;
+          ctx.fillRect(0, -wid * 1.6, len * 1.1, wid * 3.2);
+          ctx.restore();
+        }
         ctx.restore();
       }
     }
   }
   function drawElytra(ctx, L, col) {
     if (L.wingPairs < 1 || L.wingType !== "elytra") return;
-    const body = L.parts.find((p) => p.kind === "abdomen") ?? L.parts[0];
-    const cover = lerp(0.76, 1, L.wingArea);
+    const body = L.abdomen ?? L.thorax;
+    const cover = lerp(0.62, 1.1, L.wingArea);
     const rx = body.rx * cover, ry = body.ry * cover;
     for (const side of [-1, 1]) {
       ctx.save();
@@ -2507,6 +2832,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg.w,
         col.limb
       );
+      fillEllipse(ctx, foot.x, foot.y, leg.w * 0.42, leg.w * 0.42, col.limbLo);
       if (leg.claw > 0.3) {
         const cl = leg.w * (0.5 + leg.claw * 1.1);
         capsule(
@@ -2524,103 +2850,131 @@ pre b{color:var(--yellow);font-weight:600}
       speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
     }
   }
-  function drawHorn(ctx, L, col) {
+  function drawHorn(ctx, L, col, pat) {
     if (!L.hornLen) return;
-    const h = L.head;
-    const x0 = h.x + h.rx * 0.52;
+    const th = L.thorax;
+    const x0 = th.x + th.rx * 0.52;
     const len = L.hornLen;
+    const sp = len * 0.42;
     const base = Math.max(3, L.unit * 0.115);
     const fill = col.horn;
+    const sr = hornSerration(L.g);
+    const piece = (p0, p1, p2, w0, w1, seed) => patternedCurve(ctx, p0, p1, p2, w0, w1, fill, pat, seed);
     switch (L.hornType) {
-      case "rhino": {
-        taperedCurve(
-          ctx,
-          { x: x0, y: 0 },
-          { x: x0 + len * 0.6, y: -h.ry * 0.2 },
-          { x: x0 + len, y: -h.ry * 0.44 },
-          base * 1.25,
-          base * 0.12,
-          fill
-        );
-        break;
-      }
-      case "stag": {
-        const colLen = len * 0.42;
-        taperedCurve(
-          ctx,
-          { x: x0, y: 0 },
-          { x: x0 + colLen * 0.6, y: 0 },
-          { x: x0 + colLen, y: 0 },
-          base * 1.5,
-          base * 1.05,
-          fill
-        );
-        for (const side of [-1, 1]) {
-          taperedCurve(
-            ctx,
-            { x: x0 + colLen * 0.9, y: side * base * 0.3 },
-            { x: x0 + len * 0.86, y: side * h.ry * 1.05 },
-            { x: x0 + len, y: side * h.ry * 0.3 },
-            base * 1,
-            base * 0.1,
-            fill
-          );
-          taperedCurve(
-            ctx,
-            { x: x0 + len * 0.74, y: side * h.ry * 0.74 },
-            { x: x0 + len * 0.76, y: side * h.ry * 0.48 },
-            { x: x0 + len * 0.74, y: side * h.ry * 0.22 },
-            base * 0.55,
-            base * 0.1,
-            fill
-          );
-        }
-        break;
-      }
-      case "rostrum": {
-        taperedCurve(
-          ctx,
+      case "nose": {
+        piece(
           { x: x0, y: 0 },
           { x: x0 + len * 0.55, y: 0 },
           { x: x0 + len, y: 0 },
-          base * 0.95,
-          base * 0.42,
-          fill
+          base * 2.2,
+          base * 0.1,
+          3
         );
+        for (let i = 0; i < sr; i++) {
+          const t = 0.4 + i * 0.26;
+          for (const side of [-1, 1]) {
+            piece(
+              { x: x0 + len * t, y: side * base * 0.28 },
+              { x: x0 + len * (t + 0.05), y: side * base * 0.95 },
+              { x: x0 + len * (t + 0.17), y: side * base * 1.2 },
+              base * 0.55,
+              base * 0.05,
+              11 + i * 5 + side
+            );
+          }
+        }
         break;
       }
-      case "crown": {
+      case "pincer": {
+        for (const side of [-1, 1]) {
+          const p0 = { x: x0, y: side * base * 0.3 };
+          const p1 = { x: x0 + len * 0.8, y: side * sp * 1.25 };
+          const p2 = { x: x0 + len * 1, y: side * sp * 0.3 };
+          piece(p0, p1, p2, base * 1.15, base * 0.1, 5 + side);
+          for (let i = 0; i < sr; i++) {
+            const c = qpoint(p0, p1, p2, 0.52 + i * 0.2);
+            piece(
+              c,
+              { x: c.x + len * 0.04, y: c.y - side * sp * 0.18 },
+              { x: c.x + len * 0.1, y: c.y - side * sp * 0.44 },
+              base * 0.6,
+              base * 0.06,
+              41 + i * 7 + side
+            );
+          }
+        }
+        break;
+      }
+      case "y_shaped": {
+        piece(
+          { x: x0, y: 0 },
+          { x: x0 + len * 0.3, y: 0 },
+          { x: x0 + len * 0.62, y: 0 },
+          base * 2.3,
+          base * 1.3,
+          7
+        );
+        for (const side of [-1, 1]) {
+          piece(
+            { x: x0 + len * 0.56, y: side * base * 0.3 },
+            { x: x0 + len * 0.8, y: side * sp * 0.55 },
+            { x: x0 + len * 1, y: side * sp * 0.95 },
+            base * 1.15,
+            base * 0.1,
+            13 + side
+          );
+          for (let i = 0; i < sr; i++) {
+            const t = 0.28 + i * 0.2;
+            piece(
+              { x: x0 + len * t, y: side * base * 0.4 },
+              { x: x0 + len * (t + 0.06), y: side * sp * 0.5 },
+              { x: x0 + len * (t + 0.13), y: side * sp * 0.74 },
+              base * 0.6,
+              base * 0.06,
+              61 + i * 9 + side
+            );
+          }
+        }
+        break;
+      }
+      case "split": {
+        for (const side of [-1, 1]) {
+          const p0 = { x: x0, y: side * base * 0.4 };
+          const p1 = { x: x0 + len * 0.88, y: side * sp * 1.7 };
+          const p2 = { x: x0 + len * 1.05, y: side * sp * 0.35 };
+          piece(p0, p1, p2, base * 2.4, base * 0.12, 17 + side);
+          for (let i = 0; i < sr; i++) {
+            const c = qpoint(p0, p1, p2, 0.46 + i * 0.24);
+            piece(
+              c,
+              { x: c.x + len * 0.06, y: c.y - side * sp * 0.26 },
+              { x: c.x + len * 0.16, y: c.y - side * sp * 0.62 },
+              base * 0.75,
+              base * 0.07,
+              71 + i * 11 + side
+            );
+          }
+        }
+        break;
+      }
+      default: {
+        const h = L.head;
         for (const dy of [-1, 0, 1]) {
           const sc = dy === 0 ? 1 : 0.72;
-          taperedCurve(
-            ctx,
+          piece(
             { x: x0, y: dy * h.ry * 0.38 },
             { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.78 },
             { x: x0 + len * sc, y: dy * h.ry * 1 },
             base * 0.85,
             base * 0.1,
-            fill
-          );
-        }
-        break;
-      }
-      default: {
-        for (const side of [-1, 1]) {
-          taperedCurve(
-            ctx,
-            { x: x0, y: side * h.ry * 0.42 },
-            { x: x0 + len * 0.92, y: side * h.ry * 0.98 },
-            { x: x0 + len * 0.82, y: side * h.ry * 0.16 },
-            base * 1.15,
-            base * 0.1,
-            fill
+            23 + dy
           );
         }
         break;
       }
     }
   }
-  function drawMandibles(ctx, L, col, state, lunge) {
+  function drawMandibles(ctx, L, col, state, lunge, pat) {
     if (!L.mandible) return;
     const h = L.head;
     const open = state === "attack" ? 0.34 + lunge * 0.7 : 0.16;
@@ -2628,50 +2982,70 @@ pre b{color:var(--yellow);font-weight:600}
     const w = Math.max(2, L.unit * 0.07);
     const fill = col.limbLo;
     const ax = h.x + h.rx * 0.6;
+    const sr = mandibleSerration(L.g);
     for (const side of [-1, 1]) {
       ctx.save();
       ctx.translate(ax, side * h.ry * 0.52);
       ctx.rotate(side * open);
+      const piece = (p0, p1, p2, w0, w1, seed) => patternedCurve(ctx, p0, p1, p2, w0, w1, fill, pat, seed);
+      const teeth = (p0, p1, p2, n, size, reach, t0, dt, seed) => {
+        for (let i = 0; i < n; i++) {
+          const c = qpoint(p0, p1, p2, t0 + i * dt);
+          piece(
+            c,
+            { x: c.x + m * reach * 0.42, y: c.y - side * m * reach * 0.44 },
+            { x: c.x + m * reach * 0.94, y: c.y - side * m * reach * 1 },
+            w * size,
+            w * 0.08,
+            seed + i * 3
+          );
+        }
+      };
       switch (L.mandibleType) {
-        case "tusk":
-          taperedCurve(
-            ctx,
-            { x: 0, y: 0 },
-            { x: m * 0.6, y: side * m * 0.18 },
-            { x: m * 1.15, y: side * m * 0.3 },
-            w * 1.1,
-            w * 0.12,
-            fill
-          );
+        case "narrow_thick": {
+          const p0 = { x: 0, y: 0 };
+          const p1 = { x: m * 0.54, y: side * m * 0.38 };
+          const p2 = { x: m * 0.92, y: side * m * -0.12 };
+          piece(p0, p1, p2, w * 2.6, w * 0.26, 101 + side);
+          teeth(p0, p1, p2, sr, 1.15, 0.3, 0.34, 0.26, 111 + side);
           break;
-        case "forceps":
-          taperedCurve(
-            ctx,
-            { x: 0, y: 0 },
-            { x: m * 1.05, y: side * m * 0.62 },
-            { x: m * 1.3, y: side * m * -0.04 },
-            w * 0.85,
-            w * 0.1,
-            fill
-          );
+        }
+        case "chelicerae_teeth": {
+          chelicera(ctx, piece, m, w, side, fill, true);
           break;
-        case "palps":
-          fillEllipse(ctx, m * 0.42, side * m * 0.2, m * 0.44, m * 0.3, fill);
+        }
+        case "chelicerae_smooth": {
+          chelicera(ctx, piece, m, w, side, fill, false);
           break;
-        default:
-          taperedCurve(
-            ctx,
-            { x: 0, y: 0 },
-            { x: m * 0.86, y: side * m * 0.5 },
-            { x: m * 1.06, y: side * m * 0.02 },
-            w * 1.3,
-            w * 0.18,
-            fill
-          );
+        }
+        default: {
+          const p0 = { x: 0, y: 0 };
+          const p1 = { x: m * 0.74, y: side * m * 0.26 };
+          const p2 = { x: m * 1.32, y: side * m * 0.68 };
+          piece(p0, p1, p2, w * 0.85, w * 0.1, 131 + side);
+          teeth(p0, p1, p2, sr, 0.7, 0.22, 0.22, 0.21, 141 + side);
           break;
+        }
       }
       ctx.restore();
     }
+  }
+  function chelicera(ctx, piece, m, w, side, fill, withTeeth) {
+    const p0 = { x: 0, y: 0 };
+    const p1 = { x: m * 0.32, y: side * m * 0.02 };
+    const p2 = { x: m * 0.62, y: side * m * 0.04 };
+    const cap = w * 1.55;
+    piece(p0, p1, p2, w * 3.1, w * 2.95, 151 + side);
+    fillEllipse(ctx, p2.x, p2.y, cap, cap, fill);
+    if (!withTeeth) return;
+    piece(
+      { x: p2.x, y: p2.y - side * cap * 0.55 },
+      { x: p2.x + m * 0.1, y: p2.y - side * cap * 0.95 },
+      { x: p2.x + m * 0.24, y: p2.y - side * cap * 1.05 },
+      w * 0.62,
+      w * 0.05,
+      161 + side
+    );
   }
   function drawAntennae(ctx, L, col, phase) {
     const h = L.head;
@@ -2709,9 +3083,19 @@ pre b{color:var(--yellow);font-weight:600}
       capsule(ctx, t.x0, 0, t.x0 - t.len * 0.6, 0, tipX, 0, Math.max(1.6, L.unit * 0.06), col.limb);
     }
   }
+  function eyeWedgePath(ctx, R, r, side) {
+    const v = (w) => side * w;
+    ctx.beginPath();
+    ctx.moveTo(-R * 0.92, v(-r * 0.26));
+    ctx.quadraticCurveTo(-R * 0.34, v(r * 1), R * 0.24, v(r * 1.14));
+    ctx.quadraticCurveTo(R * 0.94, v(r * 1.24), R * 0.96, v(r * 0.34));
+    ctx.quadraticCurveTo(R * 0.98, v(-r * 0.32), R * 0.44, v(-r * 0.6));
+    ctx.quadraticCurveTo(-R * 0.26, v(-r * 0.9), -R * 0.92, v(-r * 0.26));
+    ctx.closePath();
+  }
   function drawEyes(ctx, L, col) {
     const { g } = L;
-    const hasIris = g.saturation > 0.35;
+    const hasIris = g.saturation > 0.35 && L.eyeFill !== "dark";
     for (const e of L.eyes) {
       if (e.minor) {
         fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil);
@@ -2719,65 +3103,49 @@ pre b{color:var(--yellow);font-weight:600}
       }
       ctx.save();
       ctx.translate(e.x, e.y);
-      ctx.rotate(e.side * -0.34);
+      ctx.rotate(e.side * 0.3);
       const R = e.ry, r = e.rx;
-      switch (L.eyeType) {
-        case "round":
-          fillEllipse(ctx, 0, 0, R * 0.86, R * 0.86, col.sclera);
-          break;
-        case "teardrop": {
-          ctx.beginPath();
-          ctx.moveTo(-R, 0);
-          ctx.quadraticCurveTo(-R * 0.1, -r * 1.15, R * 0.62, -r * 0.44);
-          ctx.quadraticCurveTo(R * 1.05, 0, R * 0.62, r * 0.44);
-          ctx.quadraticCurveTo(-R * 0.1, r * 1.15, -R, 0);
-          ctx.closePath();
-          ctx.fillStyle = col.sclera;
-          ctx.fill();
-          break;
+      const s = e.side;
+      const v = (w) => s * w;
+      const cx = R * 0.56, cy = v(r * 0.72);
+      eyeWedgePath(ctx, R, r, s);
+      ctx.fillStyle = L.eyeFill === "dark" ? col.pupil : col.sclera;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      if (L.eyeFill === "dark") {
+        ctx.fillStyle = col.sclera;
+        const dots = [[-0.42, -0.1], [-0.06, 0.42], [0.24, -0.3], [0.52, 0.46], [0.72, -0.16]];
+        for (const [dx, dy] of dots) {
+          fillEllipse(ctx, R * dx, v(r * dy), r * 0.3, r * 0.3, col.sclera);
         }
-        case "compound": {
-          fillEllipse(ctx, 0, 0, R * 0.84, r * 0.98, col.sclera);
-          ctx.fillStyle = col.iris;
-          ctx.globalAlpha = 0.55;
-          for (let i = 0; i < 7; i++) {
-            const a = -0.9 + i / 6 * 1.8;
-            fillEllipse(
-              ctx,
-              Math.cos(a) * R * 0.46,
-              Math.sin(a) * r * 0.46,
-              r * 0.2,
-              r * 0.2,
-              col.iris
-            );
-          }
-          ctx.globalAlpha = 1;
-          break;
-        }
-        default: {
-          ctx.beginPath();
-          ctx.moveTo(-R, 0);
-          ctx.quadraticCurveTo(0, -r * 1.25, R, 0);
-          ctx.quadraticCurveTo(0, r * 1.25, -R, 0);
-          ctx.closePath();
-          ctx.fillStyle = col.sclera;
-          ctx.fill();
-          break;
-        }
+      } else if (L.eyeFill === "notched") {
+        fillEllipse(ctx, cx + R * 0.22, cy + v(r * 0.42), R * 0.44, r * 0.72, col.pupil);
+      } else {
+        taperedCurve(
+          ctx,
+          { x: cx + R * 0.26, y: cy + v(r * 0.3) },
+          { x: cx - R * 0.16, y: cy + v(r * 0.16) },
+          { x: cx - R * 0.2, y: cy - v(r * 0.62) },
+          r * 0.62,
+          r * 0.18,
+          col.pupil
+        );
       }
-      if (hasIris && L.eyeType !== "compound") {
-        const ir = Math.min(R, r) * 0.62;
-        fillEllipse(ctx, R * 0.2, 0, ir, ir, col.iris);
-        fillEllipse(ctx, R * 0.2, 0, ir * 0.5, ir * 0.5, col.pupil);
+      ctx.restore();
+      if (hasIris) {
+        const ir = Math.min(R, r) * 0.56;
+        fillEllipse(ctx, -R * 0.06, v(r * 0.1), ir, ir, col.iris);
+        fillEllipse(ctx, -R * 0.06, v(r * 0.1), ir * 0.5, ir * 0.5, col.pupil);
       }
       ctx.restore();
     }
   }
   function drawSetae(ctx, L, col) {
     if (L.setae < 0.35) return;
-    const body = L.parts.find((p) => p.kind === "abdomen") ?? L.parts[0];
+    const body = L.abdomen ?? L.thorax;
     const n = Math.round(10 + L.setae * 16);
-    const len = body.ry * (0.1 + L.setae * 0.16);
+    const len = body.ry * (0.08 + L.setae * 0.24);
     const w = Math.max(1, L.unit * 0.026);
     for (let i = 0; i < n; i++) {
       const a = i / n * TAU;
@@ -2796,43 +3164,102 @@ pre b{color:var(--yellow);font-weight:600}
       );
     }
   }
+  var BLOB_R = 0.74;
+  var ABDOMEN_BLOB_SKEW = -0.3;
+  var CENTRELINE_RATIO = 1.18;
+  function segmentMass(ctx, p, col) {
+    const rx = Math.max(0.5, p.rx);
+    const ry = Math.max(0.5, p.ry);
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+    ctx.fillStyle = col.shell;
+    ctx.fill();
+    ctx.clip();
+    ctx.translate(p.x + rx * (p.kind === "abdomen" ? ABDOMEN_BLOB_SKEW : 0), p.y);
+    ctx.scale(rx, ry);
+    if (ctx.createRadialGradient) {
+      const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, BLOB_R);
+      gr.addColorStop(0, col.segBloom);
+      gr.addColorStop(0.26, col.segBloomMid);
+      gr.addColorStop(0.48, col.segBloomMid2);
+      gr.addColorStop(0.68, col.segBloomFar);
+      gr.addColorStop(0.86, col.segBloomFar2);
+      gr.addColorStop(1, col.segBloomOut);
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(0, 0, BLOB_R, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+    segmentCentreline(ctx, p, col, rx, ry);
+  }
+  function segmentCentreline(ctx, p, col, rx, ry) {
+    const long = Math.max(rx, ry);
+    const short = Math.min(rx, ry);
+    if (long / short < CENTRELINE_RATIO) return;
+    if (!ctx.createLinearGradient) return;
+    const halfW = ry * 0.085;
+    const gr = ctx.createLinearGradient(0, p.y - halfW, 0, p.y + halfW);
+    gr.addColorStop(0, col.shellClear);
+    gr.addColorStop(0.5, col.shellSoft);
+    gr.addColorStop(1, col.shellClear);
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+    ctx.clip();
+    ctx.fillStyle = gr;
+    ctx.fillRect(p.x - rx * 0.92, p.y - halfW, rx * 1.84, halfW * 2);
+    ctx.restore();
+  }
   function drawBug(ctx, g, opts = {}) {
     const { phase = 0, state = "idle", ppu = 26 } = opts;
     const L = layout(g, ppu);
     const col = palette(g);
+    const pat = surfacePattern(g, col);
     const breathe = state === "idle" ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
     const lunge = state === "attack" ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
     ctx.save();
     ctx.rotate(-Math.PI / 2);
     ctx.translate(lunge * L.unit * 0.12, 0);
     ctx.scale(breathe, breathe);
-    drawSoftWings(ctx, L, col, phase, state);
     drawSetae(ctx, L, col);
     drawLegs(ctx, L, col, phase);
     drawTail(ctx, L, col, state, lunge);
     drawEyes(ctx, L, col);
-    for (const p of L.parts) {
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y, p.rx, p.ry, 0, 0, TAU);
-      ctx.fillStyle = bloomFill(ctx, p, col);
-      ctx.fill();
-    }
-    drawElytra(ctx, L, col);
-    for (let i = 0; i < L.parts.length; i++) speckle(ctx, L.parts[i], col, L.shimmer, i * 17 + 3);
-    const ab = L.parts.find((p) => p.kind === "abdomen");
-    if (ab && L.wingType !== "elytra") {
-      ctx.fillStyle = col.seam;
-      ctx.globalAlpha = 0.55;
-      ctx.fillRect(ab.x - ab.rx * 0.88, -Math.max(0.5, L.unit * 0.01), ab.rx * 1.76, Math.max(1, L.unit * 0.02));
-      ctx.globalAlpha = 1;
-    }
     ctx.beginPath();
     ctx.ellipse(L.head.x, 0, L.head.rx, L.head.ry, 0, 0, TAU);
-    ctx.fillStyle = bloomFill(ctx, L.head, col);
+    ctx.fillStyle = col.shell;
     ctx.fill();
-    drawHorn(ctx, L, col);
+    drawCrownMark(ctx, L, col);
     drawAntennae(ctx, L, col, phase);
-    drawMandibles(ctx, L, col, state, lunge);
+    drawMandibles(ctx, L, col, state, lunge, pat);
+    const trunk = L.parts.filter((p) => p !== L.thorax);
+    const drawTrunkAbdomen = () => {
+      for (const p of trunk) segmentMass(ctx, p, col);
+      drawElytra(ctx, L, col);
+      for (let i = 0; i < trunk.length; i++) speckle(ctx, trunk[i], col, L.shimmer, i * 17 + 3);
+      const ab = L.abdomen;
+      if (ab && L.wingType !== "elytra") {
+        ctx.fillStyle = col.seam;
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(ab.x - ab.rx * 0.88, -Math.max(0.5, L.unit * 0.01), ab.rx * 1.76, Math.max(1, L.unit * 0.02));
+        ctx.globalAlpha = 1;
+      }
+    };
+    const drawTrunkThorax = () => {
+      segmentMass(ctx, L.thorax, col);
+      speckle(ctx, L.thorax, col, L.shimmer, L.parts.length * 17 + 3);
+    };
+    if (L.wingPairs > 0) {
+      drawTrunkAbdomen();
+      drawTrunkThorax();
+    } else {
+      drawTrunkThorax();
+      drawTrunkAbdomen();
+    }
+    drawHorn(ctx, L, col, pat);
+    drawSoftWings(ctx, L, col, phase, state);
     ctx.restore();
   }
   var ANIM_FRAMES = { idle: 4, walk: 8, attack: 6 };
@@ -2907,7 +3334,7 @@ pre b{color:var(--yellow);font-weight:600}
   var PART_GROUPS = [
     { key: "body", label: "Body", blurb: "the masses everything else mounts on" },
     { key: "limbs", label: "Limbs", blurb: "legs and what is on the end of them" },
-    { key: "wings", label: "Wings", blurb: "four kinds fan, one kind covers" },
+    { key: "wings", label: "Wings", blurb: "three silhouettes fan, one kind covers" },
     { key: "weapons", label: "Weapons", blurb: "the front end and the back end" },
     { key: "sensory", label: "Sensory", blurb: "eyes and antennae" },
     { key: "surface", label: "Surface", blurb: "colour, speckle, fur" }
@@ -2922,7 +3349,7 @@ pre b{color:var(--yellow);font-weight:600}
       blurb: "Which skeleton gets built. Not a gene \u2014 the renderer reads it off leg count and length.",
       core: true,
       drawnBy: "bodyPlan() \u2192 buildTrunk()",
-      gate: "leg_count \u2265 8 && body_length > 0.70 \u2192 myriapod \xB7 leg_count \u2265 8 \u2192 arachnid \xB7 else insect",
+      gate: "leg_count \u2265 8 && body_segments \u2265 6 \u2192 myriapod \xB7 leg_count \u2265 8 \u2192 arachnid \xB7 else insect",
       variantGene: null,
       variants: variants(BODY_PLANS, [
         "head + thorax + abdomen, legs on the thorax",
@@ -2931,27 +3358,29 @@ pre b{color:var(--yellow);font-weight:600}
       ]),
       variantOf: (g) => BODY_PLANS.indexOf(bodyPlan(g)),
       setVariant: (g, i) => {
-        if (i === 2) return { leg_count: 10, body_length: Math.max(g.body_length, 0.82) };
-        if (i === 1) return { leg_count: 8, body_length: Math.min(g.body_length, 0.62) };
+        if (i === 2) return { leg_count: 10, body_segments: Math.max(g.body_segments, 6) };
+        if (i === 1) return { leg_count: 8, body_segments: Math.min(g.body_segments, 3) };
         return { leg_count: 6 };
       },
       genes: [
-        { gene: "leg_count", effect: "8 or 10 legs leave the insect skeleton entirely" },
-        { gene: "body_length", effect: "past 0.70 an eight-legger becomes a myriapod instead" }
+        { gene: "leg_count", effect: "8+ legs leave the insect skeleton entirely" },
+        { gene: "body_segments", effect: "at 6+ an eight-legger becomes a myriapod instead" }
       ]
     },
     {
       id: "abdomen",
       group: "body",
       name: "Abdomen",
-      blurb: "The rear mass. On a myriapod it is the repeating segments instead.",
-      core: true,
-      drawnBy: "buildTrunk() \u2192 the abdomen ellipse",
+      blurb: "The rear mass, built from every trunk segment past the thorax. A one-segment bug has none at all.",
+      drawnBy: "buildTrunk() \u2192 the abdominal segment chain",
+      gate: "body_segments \u2265 2  (segment 1 is the thorax; the head is not a segment)",
+      present: (g) => g.body_segments >= 2,
+      on: { body_segments: 3 },
+      off: { body_segments: 1 },
       genes: [
-        { gene: "body_length", effect: "length of the ellipse (capped so it can never go planky)" },
+        { gene: "body_segments", effect: "how many abdominal segments: count \u2212 1. At 1 there is no abdomen at all" },
         { gene: "body_width", effect: "width of every trunk mass at once" },
-        { gene: "abdomen_taper", effect: "squeezes the abdomen narrower, 0 round \u2192 1 pointed" },
-        { gene: "body_segments", effect: "stretches the whole body through morphology(): 4 segments draw longer than 2, and the legs scale with it" }
+        { gene: "abdomen_taper", effect: "squeezes the abdomen narrower, 0 round \u2192 1 pointed, and tapers the chain to its tip" }
       ]
     },
     {
@@ -2962,7 +3391,7 @@ pre b{color:var(--yellow);font-weight:600}
       core: true,
       drawnBy: "buildTrunk() \u2192 the thorax ellipse",
       genes: [
-        { gene: "thorax_ratio", effect: "trades thorax size against abdomen (insect plan only)" },
+        { gene: "thorax_ratio", effect: "thorax radius, 0.24\u20130.58 of body width (insect plan only)" },
         { gene: "body_width", effect: "sets the base radius" }
       ]
     },
@@ -2974,7 +3403,7 @@ pre b{color:var(--yellow);font-weight:600}
       core: true,
       drawnBy: "buildHead()",
       genes: [
-        { gene: "head_size", effect: "capsule radius, 0.36\u20130.48 of body width (ignored on arachnids)" },
+        { gene: "head_size", effect: "capsule radius, 0.22\u20130.62 of body width (ignored on arachnids)" },
         { gene: "body_width", effect: "the width the head radius is a fraction of" }
       ]
     },
@@ -2984,12 +3413,12 @@ pre b{color:var(--yellow);font-weight:600}
       name: "Trunk segments",
       blurb: "Myriapods only: 6 to 10 repeating rings, each carrying its own leg pair.",
       drawnBy: "buildTrunk() \u2014 myriapod branch",
-      gate: "body plan is myriapod; count = clamp(round(6 + body_length \xD7 4), 6, 10)",
+      gate: "body plan is myriapod (leg_count \u2265 8 && body_segments \u2265 6); count = clamp(body_segments, 6, 10)",
       present: (g) => bodyPlan(g) === "myriapod",
-      on: (g) => ({ leg_count: 10, body_length: Math.max(g.body_length, 0.82) }),
-      off: { leg_count: 6 },
+      on: (g) => ({ leg_count: 10, body_segments: Math.max(g.body_segments, 8) }),
+      off: { leg_count: 6, body_segments: 2 },
       genes: [
-        { gene: "body_length", effect: "how many segments, 6 at 0.0 \u2192 10 at 1.0" },
+        { gene: "body_segments", effect: "one ring per segment, 6 to 10" },
         { gene: "leg_count", effect: "must be 8+ to reach the myriapod skeleton at all" }
       ]
     },
@@ -3004,10 +3433,22 @@ pre b{color:var(--yellow);font-weight:600}
       gate: "pairs = leg_count / 2 \u2014 except a myriapod, which gets one pair per segment",
       genes: [
         { gene: "leg_count", effect: "how many pairs, and past 8 which skeleton gets built" },
-        { gene: "leg_length", effect: "reach, 0.80\u20131.40 of the body unit (halved on myriapods)" },
-        { gene: "leg_thickness", effect: "capsule width, 2.6px floor so it never reads as hair" },
+        { gene: "leg_length", effect: "reach, 0.55\u20131.85 of the body unit (halved on myriapods)" },
+        { gene: "leg_thickness", effect: "capsule width, 2.2px floor so it never reads as hair" },
         { gene: "leg_spread", effect: "how far the fan splays front to back" },
         { gene: "leg_joints", effect: "grip and speed \u2014 the art draws one arc either way", art: false }
+      ]
+    },
+    {
+      id: "feet",
+      group: "limbs",
+      name: "Feet",
+      blurb: "A small dark dot on the tip of every leg. Punctuation, not a part you can remove.",
+      core: true,
+      drawnBy: "drawLegs() \u2192 the foot circle at leg.foot",
+      genes: [
+        { gene: "leg_thickness", effect: "the dot is drawn at 0.42 of the leg width" },
+        { gene: "leg_count", effect: "one foot per leg" }
       ]
     },
     {
@@ -3030,7 +3471,7 @@ pre b{color:var(--yellow);font-weight:600}
       id: "wings",
       group: "wings",
       name: "Wings",
-      blurb: "Slim blades fanned back from the rear mass. Elytra are the exception: they lie on the shell.",
+      blurb: "One blade per wing, swept back off the thorax, drawn above everything else. Three silhouettes \u2014 leaf, oval, crescent \u2014 picked by proportion, not by a type gene. Elytra are the exception: they lie on the shell.",
       drawnBy: "drawSoftWings() / drawElytra()",
       gate: "wing_count > 0 && wing_area > 0.05",
       present: (g) => g.wing_count > 0 && g.wing_area > 0.05,
@@ -3038,25 +3479,40 @@ pre b{color:var(--yellow);font-weight:600}
       off: { wing_count: 0, wing_area: 0 },
       variantGene: "wing_type",
       variants: variants(WING_TYPES, [
-        "two blades a side, medium spread",
-        "hard covers laid over the abdomen \u2014 no fan at all",
-        "two wide blades a side",
-        "three slim blades a side",
-        "four narrow blades a side, the widest fan"
+        "soft blades \u2014 the silhouette comes from the shape coefficient, not from here",
+        "hard covers laid over the abdomen \u2014 no blades at all"
       ]),
       genes: [
-        { gene: "wing_count", effect: "0 / 2 / 4 \u2014 zero means flightless, whatever the area" },
-        { gene: "wing_type", effect: "blade count and spread; elytra swap to shell covers" },
-        { gene: "wing_area", effect: "blade length, and how much of the abdomen elytra cover" },
+        { gene: "wing_count", effect: "0 / 2 / 4 / 6 \u2014 one blade a side per pair; zero means flightless, whatever the area" },
+        { gene: "wing_type", effect: "soft membranous blades, or hard elytra covers \u2014 structure only, never the blade shape" },
+        { gene: "wing_area", effect: "overall wing size: scales length and width together (0.62\u20131.30), and how much of the abdomen elytra cover" },
+        { gene: "wing_length", effect: "blade length along its own axis, 0.85\u20132.30 of the body unit" },
+        { gene: "wing_width", effect: "blade half-width as 0.09\u20130.52 of its length \u2014 aspect ratio, never length" },
+        { gene: "wing_roundness", effect: "blunt vs. finely tapered tip; moves the outline only, never the size" },
+        { gene: "wing_angle", effect: "sweep off the body axis, 35\xB0\u2013165\xB0; 0.50 is the sketch-calibrated 100\xB0 rest angle" },
+        { gene: "wing_tip_hue", effect: "0 = white tip wash; 1\u201310 pick a reference-palette swatch instead" },
         { gene: "wing_beat", effect: "flap rate \u2014 only visible in the walk and attack states" }
-      ]
+      ],
+      /**
+       * SHAPE COEFFICIENT — the blade silhouette is derived, not selected. Must
+       * stay literally in step with wingShapeCoefficient() in bugArt.js.
+       */
+      derived: {
+        name: "wing shape",
+        gate: "clamp(0.5 + 0.50 * wing_length - 0.70 * wing_width - 0.30 * wing_roundness, 0, 1)",
+        buckets: [
+          { name: "leaf", gate: "< 0.34", blurb: "broad and rounded, widest past mid-length, blunt tip" },
+          { name: "oval", gate: "< 0.62", blurb: "shorter and narrower, near-symmetric, blunt both ends" },
+          { name: "crescent", gate: ">= 0.62", blurb: "long thin blade bowed backward to a fine curved point" }
+        ]
+      }
     },
     /* ------------------------------------------------------------- weapons -- */
     {
       id: "horn",
       group: "weapons",
       name: "Horn",
-      blurb: "Tapered filled curves off the front of the head \u2014 mass at the base, a point at the tip.",
+      blurb: "Tapered filled curves off the front of the THORAX \u2014 mass at the base, a point at the tip. Drawn last of everything, because the thorax it grows out of is the topmost trunk mass.",
       drawnBy: "drawHorn()",
       gate: "horn_size \u2265 0.12",
       present: (g) => g.horn_size >= 0.12,
@@ -3064,16 +3520,34 @@ pre b{color:var(--yellow);font-weight:600}
       off: { horn_size: 0 },
       variantGene: "horn_type",
       variants: variants(HORN_TYPES, [
-        "one heavy blade curving forward",
-        "a shared column splitting into two hooked arms",
-        "a long clean snout, barely tapering",
-        "three prongs, the middle one longest",
-        "paired bull horns sweeping out and up"
+        "one straight central spike, wide at the base \u2014 the plainest horn",
+        "paired horns curling back in over a tight U of empty space",
+        "a stem forking into two outward-hooking arms",
+        "the big one: heavy base, the widest sweep, tips hooking in",
+        "three prongs, the middle one longest"
       ]),
       genes: [
-        { gene: "horn_size", effect: "length, 0.26\u20131.15 of the body unit depending on kind" },
+        { gene: "horn_size", effect: "length, 0.18\u20131.55 of the body unit depending on kind" },
         { gene: "horn_type", effect: "which of the five shapes gets drawn" },
-        { gene: "head_size", effect: "the horn is anchored to the head edge and scales off it" }
+        { gene: "thorax_ratio", effect: "the horn is anchored to the thorax edge, so a wider thorax pushes its base forward" },
+        { gene: "pattern", effect: "gradient / dots / oval surface treatment on the horn fill" },
+        { gene: "pattern_contrast", effect: "how far the light tone departs from the horn colour" }
+      ]
+    },
+    {
+      id: "hornserration",
+      group: "weapons",
+      name: "Horn serration",
+      blurb: "Notches on the horn at three fixed levels \u2014 0, 1, 2. Each level is the one below it PLUS more notches, never a different shape.",
+      drawnBy: "drawHorn() \u2014 the serration loops in every case but crown",
+      gate: "horn_serration \u2265 1, and the horn must be drawn at all (horn_size \u2265 0.12). NEVER on crown (horn_type 4)",
+      present: (g) => g.horn_serration >= 1 && g.horn_size >= 0.12 && g.horn_type !== 4,
+      on: (g) => ({ horn_serration: 2, horn_size: Math.max(g.horn_size, 0.78), horn_type: g.horn_type === 4 ? 0 : g.horn_type }),
+      off: { horn_serration: 0 },
+      genes: [
+        { gene: "horn_serration", effect: "0 smooth \xB7 1 one notch per side \xB7 2 two \u2014 barbs on nose, inner teeth on pincer, spurs on y_shaped, antler branches on split. crown ignores it entirely" },
+        { gene: "horn_type", effect: "decides what a notch looks like; crown is exempt and shows no serration at any level" },
+        { gene: "horn_size", effect: "notches scale with the horn, so a tiny horn hides them" }
       ]
     },
     {
@@ -3088,15 +3562,20 @@ pre b{color:var(--yellow);font-weight:600}
       off: { mandible_size: 0 },
       variantGene: "mandible_type",
       variants: variants(MANDIBLE_TYPES, [
-        "a fat comma curving in, mass at the base",
-        "straight tapered spikes angling out",
-        "long slender arms hooking hard inward",
-        "two soft rounded lobes \u2014 barely a weapon"
+        "thin curved blades, hooking hard inward at the tips",
+        "heavier, straighter, thicker at the base and set closer together",
+        "short rounded fangs with tooth marks along the edge",
+        "the same fangs, smooth-edged"
       ]),
       genes: [
-        { gene: "mandible_size", effect: "jaw length as a fraction of head radius" },
+        { gene: "mandible_size", effect: "jaw length, 0.38\u20131.22 of the head radius" },
         { gene: "mandible_type", effect: "which of the four shapes gets drawn" },
-        { gene: "mandible_serration", effect: "multiplies the bite stat \u2014 nothing on the sprite", art: false }
+        {
+          gene: "mandible_serration",
+          effect: "multiplies the bite stat, AND cuts teeth into the inner edge at three levels \u2014 min(2, floor(v \xD7 3)), so 0\u20130.33 smooth, 0.33\u20130.67 one tooth, 0.67+ two. Only on wide_thin and narrow_thick: the chelicerae carry their teeth as a kind, not a level"
+        },
+        { gene: "pattern", effect: "gradient / dots / oval surface treatment on the jaw fill" },
+        { gene: "pattern_contrast", effect: "how far the light tone departs from the jaw colour" }
       ]
     },
     {
@@ -3105,12 +3584,12 @@ pre b{color:var(--yellow);font-weight:600}
       name: "Tail",
       blurb: "Cerci or metasoma trailing off the rear mass. A plain capsule until a stinger loads it.",
       drawnBy: "drawTail()",
-      gate: "tail_length \xD7 0.44 > 0.08  \u2192  tail_length > 0.182",
-      present: (g) => g.tail_length * 0.44 > 0.08,
+      gate: "tail_length \xD7 0.62 > 0.08  \u2192  tail_length > 0.129",
+      present: (g) => g.tail_length * 0.62 > 0.08,
       on: { tail_length: 0.6 },
       off: { tail_length: 0 },
       genes: [
-        { gene: "tail_length", effect: "reach, up to 0.44 of the body unit" },
+        { gene: "tail_length", effect: "reach, up to 0.62 of the body unit" },
         { gene: "stinger_size", effect: "past 0.18 the capsule becomes a solid kite" }
       ]
     },
@@ -3121,7 +3600,7 @@ pre b{color:var(--yellow);font-weight:600}
       blurb: "Turns the tail into a solid kite and is the only source of venom.",
       drawnBy: "drawTail() \u2014 the kite branch",
       gate: "stinger_size > 0.18, and the tail must be drawn at all",
-      present: (g) => g.stinger_size > 0.18 && g.tail_length * 0.44 > 0.08,
+      present: (g) => g.stinger_size > 0.18 && g.tail_length * 0.62 > 0.08,
       on: (g) => ({ stinger_size: 0.85, tail_length: Math.max(g.tail_length, 0.5) }),
       off: { stinger_size: 0 },
       genes: [
@@ -3148,22 +3627,46 @@ pre b{color:var(--yellow);font-weight:600}
       id: "eyes",
       group: "sensory",
       name: "Eyes",
-      blurb: "Big and set wide, drawn UNDER the head so its edge crops them.",
+      blurb: "One shape only: a wedge, wide and rounded at the outer-top corner and drawn to a point at the inner-lower side. Big, set wide, and drawn UNDER the head so its edge crops the inner half. `eye_type` picks how it is FILLED, not what shape it is.",
       core: true,
-      drawnBy: "drawEyes()",
-      gate: "the iris only appears when saturation > 0.35 (and never on compound eyes)",
+      drawnBy: "drawEyes() \u2192 eyeWedgePath()",
+      gate: "the iris only appears when saturation > 0.35 AND the sclera is light (never on the dark speckled fill)",
       variantGene: "eye_type",
-      variants: variants(EYE_TYPES, [
-        "pointed at both ends \u2014 the leaf shape",
-        "a plain circle",
-        "round at the inner end, drawn to a point at the outer",
-        "one big lens plus a rim of ommatidia, no iris"
+      variants: variants(EYE_FILLS, [
+        "near-black, with a scatter of small white dots. No iris \u2014 a coloured disc is lost on it",
+        "white, with a dark notch cut into the outer-top corner",
+        "white, with a small dark hook curling in from the outer-top corner"
       ]),
       genes: [
-        { gene: "eye_size", effect: "radius, 0.62\u20130.88 of head radius" },
-        { gene: "eye_type", effect: "which of the four shapes gets drawn" },
+        { gene: "eye_size", effect: "radius, 0.45\u20131.05 of head radius" },
+        { gene: "eye_type", effect: "the fill treatment \u2014 dark speckled / notched / hooked. It no longer changes the silhouette; there is only one" },
         { gene: "eye_count", effect: "pairs past the first are drawn as small dark ocelli" },
-        { gene: "saturation", effect: "above 0.35 the eye gains a coloured iris and pupil" }
+        { gene: "saturation", effect: "above 0.35 a light-scleraed eye gains a coloured iris and pupil" }
+      ]
+    },
+    {
+      id: "crownmark",
+      group: "sensory",
+      name: "Crown mark",
+      blurb: 'A flat colour patch capping the top of the head \u2014 gold, off the fixed reference palette, clipped to the head so it never reaches past the silhouette. NOT a horn: `horn_type` has a variant called "nose" and this is unrelated to it, no geometry of its own at all.',
+      drawnBy: "drawCrownMark()",
+      gate: "crown_mark_style \u2265 1  (0 draws nothing)",
+      present: (g) => g.crown_mark_style >= 1,
+      on: { crown_mark_style: 1 },
+      off: { crown_mark_style: 0 },
+      // State 0 is "no mark", which is the part being ABSENT rather than a variant
+      // of it — the gate above already covers it. The variant list is the two
+      // states that actually draw something, offset by one onto the gene.
+      variantGene: "crown_mark_style",
+      variants: variants(CROWN_MARKS.slice(1), [
+        "a solid gold cap with a hard, crisp lower edge",
+        "the same cap faded down into the head colour \u2014 the only blend anywhere on the head"
+      ]),
+      variantOf: (g) => Math.max(0, Math.min(1, Math.round(g.crown_mark_style ?? 0) - 1)),
+      setVariant: (_g, i) => ({ crown_mark_style: i + 1 }),
+      genes: [
+        { gene: "crown_mark_style", effect: "0 none, 1 solid gold cap, 2 the cap blended into the head" },
+        { gene: "head_size", effect: "the cap is the top 18% of the head silhouette, so it scales with it" }
       ]
     },
     {
@@ -3177,7 +3680,7 @@ pre b{color:var(--yellow);font-weight:600}
       on: { eye_count: 8 },
       off: { eye_count: 2 },
       genes: [
-        { gene: "eye_count", effect: "4 \u2192 one extra pair, 6 \u2192 two, 8 \u2192 three. Also +11% vision each pair" },
+        { gene: "eye_count", effect: "4 \u2192 one extra pair, 6 \u2192 two, 8+ \u2192 three (the ceiling). Also +11% vision each pair" },
         { gene: "eye_size", effect: "ocelli are drawn at 0.17 of the main eye radius" }
       ]
     },
@@ -3187,12 +3690,12 @@ pre b{color:var(--yellow);font-weight:600}
       name: "Antennae",
       blurb: "A pair of thin capsules off the head that wag with the animation phase.",
       drawnBy: "drawAntennae()",
-      gate: "antenna_length > 0.104  (the length has to clear 0.15 of the body unit)",
-      present: (g) => 0.1 + g.antenna_length * 0.48 > 0.15,
+      gate: "antenna_length > 0.101  (the length has to clear 0.15 of the body unit)",
+      present: (g) => 0.06 + g.antenna_length * 0.89 > 0.15,
       on: { antenna_length: 0.7 },
       off: { antenna_length: 0 },
       genes: [
-        { gene: "antenna_length", effect: "reach, 0.10\u20130.58 of the body unit" },
+        { gene: "antenna_length", effect: "reach, 0.06\u20130.95 of the body unit" },
         { gene: "head_size", effect: "antennae anchor to the head edge" }
       ]
     },
@@ -3226,9 +3729,32 @@ pre b{color:var(--yellow);font-weight:600}
       on: { pattern: 0.8 },
       off: { pattern: 0.2 },
       genes: [
-        { gene: "pattern", effect: "the only thing this gene changes on the sprite: black limbs or not" },
-        { gene: "pattern_scale", effect: "no art. Reaches nothing but breeding drift right now", art: false },
-        { gene: "pattern_contrast", effect: "no art, but Firefly, Ladybird and Butterfly all window on it", art: false }
+        { gene: "pattern", effect: "above 0.5 the limbs ink. Independent of the same gene's horn/jaw treatment \u2014 this is a different body part asking a different question" }
+      ]
+    },
+    {
+      id: "hornpattern",
+      group: "surface",
+      name: "Horn & jaw pattern",
+      blurb: "A surface treatment on the horn and the mandibles: a warm gradient to the tip, light speckle dots, or one oval highlight. Body patterns are a later pass \u2014 this reaches the weapons only.",
+      drawnBy: "surfacePattern() \u2192 patternedCurve()",
+      gate: "a horn or a mandible has to be drawn (horn_size \u2265 0.12 or mandible_size \u2265 0.10); mode = min(2, floor(pattern \xD7 3))",
+      present: (g) => g.horn_size >= 0.12 || g.mandible_size >= 0.1,
+      on: { mandible_size: 0.75 },
+      off: { mandible_size: 0, horn_size: 0 },
+      variantGene: "pattern",
+      variants: variants(["gradient", "dots", "oval"], [
+        "the base colour lifting to a warm amber at the tip",
+        "light speckle dots scattered over the shape",
+        "one lighter oval patch near the tip, the rest flat"
+      ]),
+      variantOf: (g) => Math.min(2, Math.floor(Math.max(0, Math.min(1, g.pattern)) * 3)),
+      setVariant: (_g, i) => ({ pattern: (i + 0.5) / 3 }),
+      genes: [
+        { gene: "pattern", effect: "picks the treatment: 0\u20130.33 gradient, 0.33\u20130.67 dots, 0.67+ oval" },
+        { gene: "pattern_scale", effect: "dots only \u2014 bigger scale means fewer, larger dots (34 small \u2192 9 large)" },
+        { gene: "pattern_contrast", effect: "how loud all three read: gradient depth, dot opacity, oval tone gap" },
+        { gene: "hue", effect: "the light tone is the shell hue walked toward amber, so it stays in family" }
       ]
     },
     {
@@ -3243,7 +3769,7 @@ pre b{color:var(--yellow);font-weight:600}
       off: { setae: 0 },
       genes: [
         { gene: "setae", effect: "count (10\u201326) and length of the fringe; also helps camouflage" },
-        { gene: "body_width", effect: "setae are drawn off the abdomen rim, so they scale with it" }
+        { gene: "body_width", effect: "setae are drawn off the abdomen rim (the thorax, if there is no abdomen), so they scale with it" }
       ]
     },
     {
@@ -3271,9 +3797,12 @@ pre b{color:var(--yellow);font-weight:600}
     head: { zoom: 2.4, y: 0.46 },
     segments: { zoom: 1.12, y: 0 },
     legs: { zoom: 1.15, y: 0 },
+    feet: { zoom: 1.5, y: -0.14 },
     claws: { zoom: 1.5, y: -0.1 },
     wings: { zoom: 1.12, y: -0.14 },
     horn: { zoom: 3, y: 0.62 },
+    hornserration: { zoom: 3.4, y: 0.66 },
+    hornpattern: { zoom: 3, y: 0.56 },
     mandibles: { zoom: 3, y: 0.52 },
     tail: { zoom: 1.95, y: -0.44 },
     stinger: { zoom: 2.1, y: -0.48 },
@@ -3330,15 +3859,13 @@ pre b{color:var(--yellow);font-weight:600}
     return applyPatch(genome, patch);
   }
   var SIM_ONLY = {
+    body_length: "no longer shapes the bug at all \u2014 the trunk is built from body_segments. It survives as an agility input only.",
     body_mass: "density \u2192 mass. Raises attack, drags speed and agility, slows recovery.",
     carapace_thickness: "the single biggest defense input, and it costs agility.",
     leg_joints: "a third joint improves grip, which gates speed.",
-    mandible_serration: "multiplies the bite in the attack formula.",
     spine_density: "adds to defense. Required by the Centipede and Millipede windows.",
     metabolism: "burn rate: high recovery, low stamina.",
     aggression: "biases the AI state machine only. It is not a combat stat.",
-    pattern_scale: "nothing yet \u2014 it is carried through breeding and read by no formula.",
-    pattern_contrast: "no art, but Firefly, Ladybird and Butterfly all window on it.",
     translucency: "helps camouflage. The renderer does not draw see-through cuticle yet."
   };
   var GENE_INFO = (() => {
@@ -3763,10 +4290,10 @@ const GENE_GROUPS = [
   ['Body plan', GENE_ORDER.slice(0, 8)],
   ['Limbs', GENE_ORDER.slice(8, 14)],
   ['Wings', GENE_ORDER.slice(14, 18)],
-  ['Weapons and defence', GENE_ORDER.slice(18, 26)],
-  ['Sensory', GENE_ORDER.slice(26, 30)],
-  ['Physiology and behaviour', GENE_ORDER.slice(30, 32)],
-  ['Surface and colour', GENE_ORDER.slice(32)],
+  ['Weapons and defence', GENE_ORDER.slice(18, 27)],
+  ['Sensory', GENE_ORDER.slice(27, 31)],
+  ['Physiology and behaviour', GENE_ORDER.slice(31, 33)],
+  ['Surface and colour', GENE_ORDER.slice(33)],
 ];
 
 function paintGenes() {
@@ -3819,7 +4346,7 @@ function exportText(kind) {
   if (kind === 'archetype') {
     // Only the genes that carry the plan — the rest are left to draw uniformly,
     // which is what the archetype table means by an unlisted gene.
-    const skip = new Set(['pattern_scale', 'pattern_contrast', 'metabolism']);
+    const skip = new Set(['metabolism']);
     const keys = GENE_ORDER.filter((k) => !skip.has(k));
     return `// paste into ARCHETYPES in src/core/archetypes.js\n{\n` +
       `  key: '${name.toLowerCase()}',\n  name: '${name}',\n` +

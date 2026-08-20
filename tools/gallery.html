@@ -12,7 +12,7 @@ small{display:block;color:#a9adb3;font-size:9px}
 import { ARCHETYPES, genomeFromArchetype, seededPopulation } from './src/core/archetypes.js';
 import { normalizeGenome } from './src/core/genes.js';
 import { makeRng } from './src/core/rng.js';
-import { drawBug, HORN_TYPES, WING_TYPES, EYE_TYPES, MANDIBLE_TYPES } from './src/render/bugArt.js';
+import { drawBug, HORN_TYPES, WING_TYPES, EYE_FILLS, CROWN_MARKS, MANDIBLE_TYPES } from './src/render/bugArt.js';
 
 function card(g, title, sub) {
   const f = document.createElement('figure');
@@ -46,9 +46,17 @@ const BASE = normalizeGenome({
 section('horn kinds', HORN_TYPES.map((n, i) =>
   card({ ...BASE, horn_type: i }, n)));
 
-section('eye kinds', EYE_TYPES.map((n, i) =>
+// One silhouette, three fill treatments — the shape is the same in all three.
+section('eye fills', EYE_FILLS.map((n, i) =>
   card({ ...BASE, eye_type: i, horn_size: 0.1, eye_size: 0.95 }, n)));
 
+section('crown marks', CROWN_MARKS.map((n, i) =>
+  card({ ...BASE, crown_mark_style: i, horn_size: 0.1, eye_size: 0.95 }, n)));
+
+section('horn serration', [0, 1, 2].flatMap((sr) =>
+  HORN_TYPES.map((n, i) => card({ ...BASE, horn_type: i, horn_serration: sr }, `${n} ${sr}SR`))));
+section('horn / jaw patterns', ['gradient', 'dots', 'oval'].map((n, i) =>
+  card({ ...BASE, horn_type: 2, horn_serration: 2, pattern: (i + 0.5) / 3, pattern_contrast: 0.85 }, n)));
 section('mandible kinds', MANDIBLE_TYPES.map((n, i) =>
   card({ ...BASE, mandible_type: i, horn_size: 0.1, mandible_size: 0.9 }, n)));
 
@@ -58,7 +66,7 @@ section('wing kinds', WING_TYPES.map((n, i) =>
 const rng = makeRng(11);
 section('the archetypes', ARCHETYPES.map(a => {
   const g = genomeFromArchetype(a, rng);
-  return card(g, a.name, `${HORN_TYPES[g.horn_type]} · ${EYE_TYPES[g.eye_type]} · ${MANDIBLE_TYPES[g.mandible_type]}`);
+  return card(g, a.name, `${HORN_TYPES[g.horn_type]} · ${EYE_FILLS[g.eye_type]} · ${MANDIBLE_TYPES[g.mandible_type]}`);
 }));
 
 section('wild', seededPopulation(8, makeRng(2026), { wildcards: 1 }).map((g, i) =>

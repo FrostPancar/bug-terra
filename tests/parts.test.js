@@ -5,7 +5,7 @@ import { GENE_SPECS, GENE_ORDER, normalizeGenome, randomGenome } from '../src/co
 import { makeRng } from '../src/core/rng.js';
 import { classify, CLASS_TREE } from '../src/core/classification.js';
 import { buildForTaxon, TAXON_MENU, mergedWindow } from '../src/core/taxonBuild.js';
-import { drawBug } from '../src/render/bugArt.js';
+import { drawBug, layout, palette, wingShape, wingShapeCoefficient } from '../src/render/bugArt.js';
 import {
   PARTS, PART_IDS, PART_GROUPS, GENE_INFO, SIM_ONLY, partById, isPresent,
   addPart, removePart, setVariant, variantOf, isSimOnly,
@@ -25,6 +25,9 @@ function trace(genome, opts = {}) {
     save: 0, restore: 0, beginPath: 0, closePath: 0, fill: 0, stroke: 0, clip: 0,
     translate: 0, rotate: 0, scale: 0, moveTo: 0, lineTo: 0, quadraticCurveTo: 0,
     arc: 0, ellipse: 0, fillRect: 0, setTransform: 0, clearRect: 0,
+    // The wing blades are closed two-curve outlines, so the recorder has to
+    // speak cubics as well as the quadratics the limbs and horns use.
+    bezierCurveTo: 0,
   };
   const target = {};
   for (const name of Object.keys(methods)) {
@@ -33,6 +36,12 @@ function trace(genome, opts = {}) {
   }
   target.createRadialGradient = (...args) => {
     log.push(`grad(${args.map((a) => a.toFixed(2)).join(',')})`);
+    return gradient;
+  };
+  // Horn and mandible fills take a linear gradient base→tip when `pattern`
+  // selects the gradient treatment, so the recorder has to speak that too.
+  target.createLinearGradient = (...args) => {
+    log.push(`lgrad(${args.map((a) => a.toFixed(2)).join(',')})`);
     return gradient;
   };
   const ctx = new Proxy(target, {
@@ -62,7 +71,7 @@ test('every gene a part names actually exists', () => {
   }
 });
 
-test('all 41 genes are accounted for — a part, a sim note, or both', () => {
+test('all 48 genes are accounted for — a part, a sim note, or both', () => {
   for (const gene of GENE_ORDER) {
     const row = GENE_INFO[gene];
     assert.ok(row, `${gene} is missing from GENE_INFO`);
@@ -76,6 +85,183 @@ test('all 41 genes are accounted for — a part, a sim note, or both', () => {
 
 test('part ids are unique', () => {
   assert.equal(new Set(PART_IDS).size, PART_IDS.length);
+});
+
+/* ------------------------------------------------------- the art contract -- */
+
+/** Where in the call log a part's own ellipse is drawn. */
+function partAt(log, part) {
+  const key = `ellipse(${part.x.toFixed(3)},${(part.y ?? 0).toFixed(3)},` +
+              `${part.rx.toFixed(3)},${part.ry.toFixed(3)}`;
+  const i = log.findIndex((l) => l.startsWith(key));
+  assert.ok(i >= 0, 'that part was never drawn');
+  return i;
+}
+
+test('the head carries no lighting at all — one flat fill, no gradient', () => {
+  // body_segments 1 leaves exactly one trunk mass (the thorax), so the blob it
+  // paints is the ONLY radial gradient the whole sprite is allowed to contain.
+  // The head used to add a second one; that is the thing this pins down.
+  const g = normalizeGenome({ ...BASE, body_segments: 1, head_size: 0.9, crown_mark_style: 0 });
+  // `grad(` only — `lgrad(` is a different primitive and the mandibles use it.
+  const radials = trace(g).split('\n').filter((l) => l.startsWith('grad(')).length;
+  assert.equal(radials, 1,
+    'the head is drawing a gradient again — it must be a single flat fill');
+});
+
+test('the crown mark is the only blend allowed on the head', () => {
+  const flat = normalizeGenome({ ...BASE, head_size: 0.9, crown_mark_style: 1 });
+  const blend = normalizeGenome({ ...BASE, head_size: 0.9, crown_mark_style: 2 });
+  const lgrads = (g) => trace(g).split('\n').filter((l) => l.startsWith('lgrad(')).length;
+  const solidGrads = lgrads(flat);
+  const blendGrads = lgrads(blend);
+  assert.ok(blendGrads > solidGrads,
+    'the blended crown mark must add a gradient the solid one does not');
+});
+
+test('abdomen over thorax without wings, thorax over abdomen with them', () => {
+  const wingless = normalizeGenome({ ...BASE, body_segments: 2, wing_count: 0, wing_area: 0 });
+  const winged = normalizeGenome({ ...BASE, body_segments: 2, wing_count: 2, wing_area: 0.7, wing_type: 0 });
+
+  for (const [label, g, abdomenOnTop] of [['wingless', wingless, true], ['winged', winged, false]]) {
+    const L = layout(g);
+    assert.ok(L.abdomen && L.thorax, `${label}: this fixture needs both masses`);
+    const lines = trace(g).split('\n');
+    const ab = partAt(lines, L.abdomen);
+    const th = partAt(lines, L.thorax);
+    assert.equal(ab > th, abdomenOnTop,
+      `${label}: the abdomen is on the wrong side of the thorax`);
+  }
+});
+
+/* ----------------------------------------------------------------- wings -- */
+
+const WINGED = normalizeGenome({
+  ...BASE, body_segments: 2, wing_count: 2, wing_area: 0.7, wing_type: 0, horn_size: 0.8,
+});
+
+test('wings are drawn above everything else, including the thorax and the horn', () => {
+  for (const wing_count of [2, 4, 6]) {
+    const g = normalizeGenome({ ...WINGED, wing_count });
+    const lines = trace(g).split('\n');
+    const L = layout(g);
+    // Blades are the only cubics on the sprite, so the first one marks where
+    // the wing pass begins.
+    const firstBlade = lines.findIndex((l) => l.startsWith('bezierCurveTo('));
+    assert.ok(firstBlade >= 0, `${wing_count}: no wing was drawn at all`);
+    assert.ok(firstBlade > partAt(lines, L.thorax),
+      `${wing_count}: wings must be drawn AFTER the thorax, not under it`);
+    assert.ok(firstBlade > partAt(lines, L.abdomen),
+      `${wing_count}: wings must be drawn after the abdomen`);
+    // Nothing at all may be drawn after the last blade.
+    const lastFill = lines.length - 1 - [...lines].reverse().findIndex((l) => l === 'fill()');
+    assert.ok(lastFill > firstBlade, `${wing_count}: something painted over the wings`);
+  }
+});
+
+test('one blade per wing per side — wing_count drives the blade count directly', () => {
+  const cubics = (wing_count) => trace(normalizeGenome({ ...WINGED, wing_count }))
+    .split('\n').filter((l) => l.startsWith('bezierCurveTo(')).length;
+  // 2 curves per leaf/crescent blade, 3 per oval; whatever the family, the
+  // count has to scale exactly with the number of wings.
+  assert.equal(cubics(4), cubics(2) * 2, 'four wings must draw twice the blades of two');
+  assert.equal(cubics(6), cubics(2) * 3, 'six wings must draw three times the blades of two');
+  assert.equal(cubics(0), 0, 'a wingless bug must draw no blades');
+});
+
+test('the wing membrane is a fixed grey at 0.70 alpha, whatever the body colour', () => {
+  const seen = new Set();
+  for (const hue of [0.04, 0.3, 0.55, 0.8, 0.97]) {
+    for (const saturation of [0, 1]) {
+      const c = palette(normalizeGenome({ ...WINGED, hue, saturation, lightness: saturation }));
+      seen.add(`${c.wing}|${c.wingLo}`);
+      for (const tone of [c.wing, c.wingLo]) {
+        const [r, g2, b, a] = tone.match(/[\d.]+/g).map(Number);
+        assert.equal(a, 0.70, `wing alpha must be exactly 0.70, got ${a}`);
+        assert.ok(r === g2 - 3 || Math.max(r, g2, b) - Math.min(r, g2, b) < 20,
+          `wing tone ${tone} is not a neutral grey`);
+      }
+    }
+  }
+  assert.equal(seen.size, 1, 'the wing membrane changed with the genome — it must not');
+});
+
+test('the wing tip defaults to white and takes a reference-palette colour', () => {
+  assert.match(palette(normalizeGenome({ ...WINGED, wing_tip_hue: 0 })).wingTip,
+    /^rgba\(255,255,255,/, 'tip 0 must be white — it is not a palette slot');
+  const seen = new Set();
+  for (let i = 0; i <= 10; i++) seen.add(palette(normalizeGenome({ ...WINGED, wing_tip_hue: i })).wingTip);
+  assert.equal(seen.size, 11, 'all 11 tip states must be distinct colours');
+});
+
+test('the shape coefficient picks the family exactly where partLibrary says it does', () => {
+  const at = (wing_length, wing_width, wing_roundness) =>
+    normalizeGenome({ ...WINGED, wing_length, wing_width, wing_roundness });
+  // The formula, restated independently of the implementation.
+  for (const [l, w, r] of [[0.55, 0.46, 0.55], [1, 0, 0], [0, 1, 1], [0.7, 0.25, 0.3]]) {
+    const expected = Math.min(1, Math.max(0, 0.5 + 0.50 * l - 0.70 * w - 0.30 * r));
+    assert.ok(Math.abs(wingShapeCoefficient(at(l, w, r)) - expected) < 1e-9,
+      `coefficient drifted from the documented formula at ${l}/${w}/${r}`);
+    assert.equal(wingShape(at(l, w, r)),
+      expected < 0.34 ? 'leaf' : expected < 0.62 ? 'oval' : 'crescent');
+  }
+  // All three families must be reachable, and each must render differently.
+  const renders = new Map();
+  for (const [name, l, w, r] of [['leaf', 0.55, 0.46, 0.55], ['oval', 0.7, 0.25, 0.3], ['crescent', 1, 0.1, 0.1]]) {
+    const g = at(l, w, r);
+    assert.equal(wingShape(g), name, `${name} is unreachable through its own genes`);
+    const key = trace(g);
+    assert.ok(!renders.has(key), `${name} renders identically to ${renders.get(key)}`);
+    renders.set(key, name);
+  }
+});
+
+test('length, width and roundness move independent axes of the blade', () => {
+  // WITHIN A FAMILY. Crossing a shape threshold re-proportions the blade on
+  // purpose — that is what the coefficient is for — so these fixtures are all
+  // chosen to stay inside `leaf`, where "independent" is the real claim.
+  const wing = (patch) => {
+    const g = normalizeGenome({ ...WINGED, wing_length: 0.3, wing_width: 0.5, wing_roundness: 0.6, ...patch });
+    assert.equal(wingShape(g), 'leaf', 'fixture drifted out of the leaf family');
+    return layout(g).wing;
+  };
+  const base = wing({});
+  // Longer wing, same family: length grows, the aspect ratio does not move.
+  const longer = wing({ wing_length: 0.6 });
+  assert.ok(longer.len > base.len, 'wing_length must change length');
+  assert.ok(Math.abs(longer.wid / longer.len - base.wid / base.len) < 1e-9,
+    'wing_length leaked into the aspect ratio — it must only scale length');
+  // Wider wing: width grows, length is untouched.
+  const wider = wing({ wing_width: 0.62 });
+  assert.ok(wider.wid > base.wid, 'wing_width must change width');
+  assert.equal(wider.len, base.len, 'wing_width leaked into length');
+  // Roundness moves the outline only; it may not touch the bounding box.
+  const rounder = wing({ wing_roundness: 0.52 });
+  assert.equal(rounder.len, base.len, 'wing_roundness must not change length');
+  assert.equal(rounder.wid, base.wid, 'wing_roundness must not change width');
+  // wing_area is the pure size knob: it scales both and changes no ratio.
+  const bigger = layout(normalizeGenome({
+    ...WINGED, wing_length: 0.3, wing_width: 0.5, wing_roundness: 0.6, wing_area: 0.95,
+  })).wing;
+  assert.ok(bigger.len > base.len && bigger.wid > base.wid, 'wing_area must scale both axes');
+  assert.ok(Math.abs(bigger.wid / bigger.len - base.wid / base.len) < 1e-9,
+    'wing_area must not change the aspect ratio');
+});
+
+test('the default wing angle is the 100° median calibrated from the sketches', () => {
+  const deg = layout(normalizeGenome({ ...WINGED })).wing.sweep * 180 / Math.PI;
+  assert.ok(Math.abs(deg - 100) < 0.5, `default sweep should be ~100°, got ${deg.toFixed(1)}°`);
+});
+
+test('wings are exactly symmetric about the body centreline', () => {
+  for (const wing_count of [2, 4]) {
+    const rots = trace(normalizeGenome({ ...WINGED, wing_count })).split('\n')
+      .filter((l) => l.startsWith('rotate(')).slice(-wing_count)
+      .map((l) => Number(l.match(/-?[\d.]+/)[0]));
+    const left = rots.filter((r) => r < 0).map(Math.abs).sort();
+    const right = rots.filter((r) => r > 0).sort();
+    assert.deepEqual(left, right, `${wing_count}: the two sides are not mirror images`);
+  }
 });
 
 /* --------------------------------------------------------- add and remove -- */

@@ -13,7 +13,7 @@ and the language the player gets.
 | Before | Now |
 |---|---|
 | 14 labelled stat bars | phrases you have earned |
-| 41 gene chips with values | physical facts visible on the sprite |
+| 48 gene chips with values | physical facts visible on the sprite |
 | `HP 62 / 78`, `Energy 31 / 55` | `hurt`, `flagging` |
 | `best fit 41.2 · mean fit 33.8` | `the pool is coming along` |
 | gene diversity as a number | `wildly different animals` |

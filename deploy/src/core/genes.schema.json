@@ -12,18 +12,24 @@
     "hue", "saturation", "lightness", "pattern"
   ],
   "properties": {
-    "leg_count":          { "type": "integer", "minimum": 4, "maximum": 10, "multipleOf": 2, "description": "Legs, always even (pairs)." },
+    "leg_count":          { "type": "integer", "minimum": 2, "maximum": 12, "multipleOf": 2, "description": "Legs, always even (pairs)." },
     "leg_length":         { "type": "number", "minimum": 0, "maximum": 1, "description": "Normalized femur+tibia length relative to body length." },
     "leg_thickness":      { "type": "number", "minimum": 0, "maximum": 1 },
     "leg_spread":         { "type": "number", "minimum": 0, "maximum": 1, "description": "How far legs splay from the body axis. Affects stability." },
-    "body_length":        { "type": "number", "minimum": 0, "maximum": 1 },
+    "body_length":        { "type": "number", "minimum": 0, "maximum": 1, "description": "Stats only (agility). Body shape comes from body_segments." },
     "body_width":         { "type": "number", "minimum": 0, "maximum": 1 },
     "body_mass":          { "type": "number", "minimum": 0, "maximum": 1, "description": "Density multiplier, independent of volume." },
     "carapace_thickness": { "type": "number", "minimum": 0, "maximum": 1 },
-    "wing_area":          { "type": "number", "minimum": 0, "maximum": 1, "description": "0 = flightless." },
+    "wing_area":          { "type": "number", "minimum": 0, "maximum": 1, "description": "Overall wing SIZE — scales length and width together. 0 = flightless." },
+    "wing_length":        { "type": "number", "minimum": 0, "maximum": 1, "description": "Blade length along its own axis. Feeds the shape coefficient." },
+    "wing_width":         { "type": "number", "minimum": 0, "maximum": 1, "description": "Blade half-width as a fraction of length. Feeds the shape coefficient." },
+    "wing_roundness":     { "type": "number", "minimum": 0, "maximum": 1, "description": "Blunt vs. tapered tip. Outline only; feeds the shape coefficient." },
+    "wing_angle":         { "type": "number", "minimum": 0, "maximum": 1, "description": "Sweep off the body axis, 35deg at 0 to 165deg at 1. 0.50 = the sketch-calibrated 100deg rest angle." },
+    "wing_tip_hue":       { "type": "integer", "minimum": 0, "maximum": 10, "description": "Tip wash: 0 = white, 1-10 = a reference-palette swatch." },
     "wing_beat":          { "type": "number", "minimum": 0, "maximum": 1 },
     "mandible_size":      { "type": "number", "minimum": 0, "maximum": 1 },
-    "mandible_serration": { "type": "number", "minimum": 0, "maximum": 1 },
+    "mandible_serration": { "type": "number", "minimum": 0, "maximum": 1, "description": "Bite multiplier. The renderer buckets it to 0/1/2 teeth on the blade mandibles." },
+    "horn_serration":     { "type": "integer", "minimum": 0, "maximum": 2, "description": "Discrete horn detail: 0 smooth, 1 one notch per side, 2 two. Ignored by the crown horn." },
     "antenna_length":     { "type": "number", "minimum": 0, "maximum": 1 },
     "eye_size":           { "type": "number", "minimum": 0, "maximum": 1 },
     "metabolism":         { "type": "number", "minimum": 0, "maximum": 1, "description": "Energy burn rate. High = fast recovery, fast starvation." },
@@ -31,6 +37,6 @@
     "hue":                { "type": "number", "minimum": 0, "maximum": 1 },
     "saturation":         { "type": "number", "minimum": 0, "maximum": 1 },
     "lightness":          { "type": "number", "minimum": 0, "maximum": 1 },
-    "pattern":            { "type": "number", "minimum": 0, "maximum": 1, "description": "Selects among banded / spotted / plain marking styles." }
+    "pattern":            { "type": "number", "minimum": 0, "maximum": 1, "description": "Surface treatment on the horn and mandibles — gradient / dots / oval — and, above 0.5, black limbs." }
   }
 }

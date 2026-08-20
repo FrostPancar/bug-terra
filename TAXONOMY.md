@@ -15,23 +15,27 @@ and not inherited — it is recomputed from the gene vector whenever anyone asks
 
 ---
 
-## Gene count: this build has 41, the design doc had 37
+## Gene count: this build has 48, the design doc had 37
 
-The taxonomy doc was written against a 37-gene vector. The live build has **41**.
-The four extra genes are the categorical "kind" genes added during the art
+The taxonomy doc was written against a 37-gene vector. The live build has **43**.
+The extra genes are the categorical "kind" genes added during the art
 revamp:
 
 | Gene | Range | Kinds |
 |---|---|---|
-| `wing_type` | int 0–4 | membranous, elytra, broad, narrow, fan |
-| `mandible_type` | int 0–3 | pincer, tusk, forceps, palps |
-| `horn_type` | int 0–4 | rhino, stag, rostrum, crown, crescent |
-| `eye_type` | int 0–3 | almond, round, teardrop, compound |
+| `wing_type` | int 0–1 | membranous, elytra (blade shape is derived, not selected — see GENES.md) |
+| `mandible_type` | int 0–3 | wide_thin, narrow_thick, chelicerae_teeth, chelicerae_smooth |
+| `horn_type` | int 0–4 | nose, pincer, y_shaped, split, crown |
+| `eye_type` | int 0–2 | the eye FILL treatment: dark speckled, notched, hooked (one shape, three fills) |
+| `crown_mark_style` | int 0–2 | head-top colour patch: none, solid, blended. Unrelated to `horn_type`'s `nose` |
 
 Windows here are authored against the **live `GENE_ORDER`**, and the kind genes
 are used where they carry real taxonomic weight: Rhinoceros Beetle requires
-`horn_type = 0`, Stag Beetle requires `horn_type = 1`, Weevil and True Bug both
-require the rostrum (`horn_type = 2`). `tests/classification.test.js` fails if
+`horn_type = 0` (nose), Stag Beetle requires `horn_type = 1` (pincer), Weevil
+and True Bug both require `horn_type = 2`. Index 2 used to be the `rostrum`
+snout; the horn redesign put `y_shaped` there and left no snout in the set, so
+the beaked taxa kept their index and inherited the fork. The windows are
+unchanged — only the shape behind the index is. `tests/classification.test.js` fails if
 any window names a gene that does not exist or escapes its declared range.
 
 ---
@@ -81,7 +85,7 @@ At each level, among the children whose windows match, pick:
 2. the **tightest window** (most constraints), then
 3. the one the genome sits **furthest inside**.
 
-Depth-first rather than greedy-first matters. A max-armour rhino-horned beetle
+Depth-first rather than greedy-first matters. A max-armour nose-horned beetle
 matches both Rhinoceros Beetle (a leaf) and Armoured Beetle (which has
 Siege-Tank Rhinoceros under it). Greedy specificity picks the leaf and the
 tier-3 node becomes permanently unreachable; preferring depth lets a lineage
@@ -118,7 +122,7 @@ Tier 0 · **Larva** — everything starts here and most things stay here.
 | Moth | Lepidoptera | `wing_area ≥.85`, `setae ≥.75`, `mandible ≤.20` |
 | Dragonfly | Odonata | `wing_area ≥.7`, `eye_count ≥6`, `eye_size ≥.6`, `aggression ≥.5` |
 | Fly | Diptera | `wing_count = 2`, `wing_beat ≥.72`, `body_mass ≤.30`, `mandible ≤.25` |
-| True Bug | Hemiptera | `horn_type = rostrum`, `horn .35–.78`, `mandible ≤.30`, `carapace .25–.65` |
+| True Bug | Hemiptera | `horn_type = y_shaped`, `horn .35–.78`, `mandible ≤.30`, `carapace .25–.65` |
 | Grasshopper | Orthoptera | `leg_length ≥.70`, `leg_thickness ≥.55`, `antenna ≥.45`, `body_length ≥.45` |
 | Firefly | Coleoptera | `wing_count 2–4`, `wing_type = elytra`, `carapace ≤.35`, `pattern_contrast ≥.7` |
 | Butterfly | Lepidoptera | `wing_area ≥.85`, `mandible ≤.20`, `setae ≤.30`, `pattern_contrast ≥.75`, `saturation ≥.65` |

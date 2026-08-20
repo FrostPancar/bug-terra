@@ -24,11 +24,11 @@ export const ARCHETYPES = [
     blurb: 'Armoured bruiser. Thick carapace, horn, short legs — slow, very hard to kill.',
     spread: 0.10,
     bias: {
-      body_segments: 3, body_length: 0.5, body_width: 0.72, body_mass: 0.80,
+      body_segments: 2, body_length: 0.5, body_width: 0.72, body_mass: 0.80,
       carapace_thickness: 0.88, head_size: 0.42, thorax_ratio: 0.55, abdomen_taper: 0.25,
       leg_count: 6, leg_length: 0.28, leg_thickness: 0.72, leg_joints: 3, claw_size: 0.5,
       wing_count: 2, wing_type: 1, wing_area: 0.20, wing_beat: 0.35,
-      mandible_size: 0.55, mandible_serration: 0.45, horn_size: 0.85, horn_type: 0, eye_type: 1, mandible_type: 0,
+      mandible_size: 0.55, mandible_serration: 0.45, horn_size: 0.85, horn_type: 0, eye_type: 1, mandible_type: 0, crown_mark_style: 1,
       spine_density: 0.30, tail_length: 0.10, stinger_size: 0.02,
       eye_count: 2, eye_size: 0.30, antenna_length: 0.35,
       metabolism: 0.30, aggression: 0.55,
@@ -41,10 +41,12 @@ export const ARCHETYPES = [
     blurb: 'Fast flier with a stinger. Light, aggressive, venomous, almost no armour.',
     spread: 0.10,
     bias: {
-      body_segments: 3, body_length: 0.62, body_width: 0.24, body_mass: 0.18,
+      body_segments: 2, body_length: 0.62, body_width: 0.24, body_mass: 0.18,
       carapace_thickness: 0.18, head_size: 0.45, thorax_ratio: 0.45, abdomen_taper: 0.85,
       leg_count: 6, leg_length: 0.55, leg_thickness: 0.22, leg_joints: 3, claw_size: 0.30,
-      wing_count: 4, wing_type: 4, wing_area: 0.80, wing_beat: 0.90,
+      wing_count: 4, wing_type: 0, wing_area: 0.80, wing_beat: 0.90,
+      // slender crescent blades, swept well back, gold-tipped (coefficient 0.80)
+      wing_length: 0.85, wing_width: 0.12, wing_roundness: 0.15, wing_angle: 0.70, wing_tip_hue: 5,
       mandible_size: 0.30, mandible_serration: 0.30, horn_size: 0.02, horn_type: 4, eye_type: 0, mandible_type: 3,
       spine_density: 0.10, tail_length: 0.55, stinger_size: 0.90,
       eye_count: 2, eye_size: 0.62, antenna_length: 0.50,
@@ -63,7 +65,7 @@ export const ARCHETYPES = [
       carapace_thickness: 0.32, head_size: 0.30, thorax_ratio: 0.35, abdomen_taper: 0.20,
       leg_count: 8, leg_length: 0.92, leg_thickness: 0.28, leg_joints: 3, claw_size: 0.65,
       wing_count: 0, wing_type: 0, wing_area: 0.0, wing_beat: 0.0,
-      mandible_size: 0.62, mandible_serration: 0.70, horn_size: 0.05, horn_type: 1, eye_type: 1, mandible_type: 2,
+      mandible_size: 0.62, mandible_serration: 0.70, horn_size: 0.05, horn_type: 1, eye_type: 1, mandible_type: 2, crown_mark_style: 2,
       spine_density: 0.25, tail_length: 0.15, stinger_size: 0.55,
       eye_count: 8, eye_size: 0.45, antenna_length: 0.12,
       metabolism: 0.45, aggression: 0.70,
@@ -97,7 +99,9 @@ export const ARCHETYPES = [
       body_segments: 3, body_length: 0.92, body_width: 0.26, body_mass: 0.32,
       carapace_thickness: 0.28, head_size: 0.38, thorax_ratio: 0.75, abdomen_taper: 0.60,
       leg_count: 6, leg_length: 0.78, leg_thickness: 0.32, leg_joints: 3, claw_size: 0.95,
-      wing_count: 2, wing_type: 3, wing_area: 0.45, wing_beat: 0.30,
+      wing_count: 2, wing_type: 0, wing_area: 0.45, wing_beat: 0.30,
+      // mid-slenderness oval blades held close to the body (coefficient 0.59)
+      wing_length: 0.70, wing_width: 0.25, wing_roundness: 0.30, wing_angle: 0.55, wing_tip_hue: 0,
       mandible_size: 0.70, mandible_serration: 0.85, horn_size: 0.10, horn_type: 3, eye_type: 0, mandible_type: 2,
       spine_density: 0.55, tail_length: 0.25, stinger_size: 0.05,
       eye_count: 2, eye_size: 0.85, antenna_length: 0.45,
@@ -111,11 +115,13 @@ export const ARCHETYPES = [
     blurb: 'Enormous soft wings, furred body. Great lift and stamina, hopeless in a fight.',
     spread: 0.11,
     bias: {
-      body_segments: 3, body_length: 0.45, body_width: 0.45, body_mass: 0.15,
+      body_segments: 2, body_length: 0.45, body_width: 0.45, body_mass: 0.15,
       carapace_thickness: 0.10, head_size: 0.32, thorax_ratio: 0.50, abdomen_taper: 0.45,
       leg_count: 6, leg_length: 0.38, leg_thickness: 0.20, leg_joints: 2, claw_size: 0.25,
-      wing_count: 4, wing_type: 2, wing_area: 0.98, wing_beat: 0.55,
-      mandible_size: 0.08, mandible_serration: 0.05, horn_size: 0.02, horn_type: 4, eye_type: 3, mandible_type: 3,
+      wing_count: 4, wing_type: 0, wing_area: 0.98, wing_beat: 0.55,
+      // huge broad leaf blades, cream-tipped (coefficient -0.03 -> leaf)
+      wing_length: 0.60, wing_width: 0.82, wing_roundness: 0.85, wing_angle: 0.35, wing_tip_hue: 8,
+      mandible_size: 0.08, mandible_serration: 0.05, horn_size: 0.02, horn_type: 4, eye_type: 2, mandible_type: 3,
       spine_density: 0.05, tail_length: 0.20, stinger_size: 0.02,
       eye_count: 2, eye_size: 0.72, antenna_length: 0.80,
       metabolism: 0.60, aggression: 0.10,
@@ -129,7 +135,7 @@ export const ARCHETYPES = [
     blurb: 'Ten legs on a long segmented body. Quick, spiny, venomous, poorly armoured.',
     spread: 0.10,
     bias: {
-      body_segments: 4, body_length: 0.98, body_width: 0.20, body_mass: 0.28,
+      body_segments: 8, body_length: 0.98, body_width: 0.20, body_mass: 0.28,
       carapace_thickness: 0.22, head_size: 0.22, thorax_ratio: 0.30, abdomen_taper: 0.70,
       leg_count: 10, leg_length: 0.48, leg_thickness: 0.18, leg_joints: 2, claw_size: 0.45,
       wing_count: 0, wing_type: 0, wing_area: 0.0, wing_beat: 0.0,
@@ -165,7 +171,7 @@ export const ARCHETYPE_KEYS = ARCHETYPES.map((a) => a.key);
 /**
  * Genes ending in `_type` are CATEGORICAL, not continuous — horn_type 2 isn't
  * "between" 1 and 3, it's a different horn. Gaussian jitter on them turned
- * wasps into rhino-horned wasps, so they hold their archetype's value with only
+ * wasps into nose-horned wasps, so they hold their archetype's value with only
  * an occasional jump to a neighbouring kind.
  */
 const isCategorical = (name) => name.endsWith('_type');

@@ -1,6 +1,6 @@
 # Gene and archetype reference
 
-The pool went from **20 genes to 41**, and generation 0 is now seeded from eight
+The pool went from **20 genes to 48**, and generation 0 is now seeded from eight
 body-plan archetypes instead of uniform random noise.
 
 Every gene below is a scalar on a fixed range, clamped on every write — an
@@ -10,14 +10,14 @@ GLB mapping all read it.
 
 ---
 
-## The 41 genes
+## The 48 genes
 
 ### Body plan — 8
 
 | Gene | Range | What it does |
 |---|---|---|
-| `body_segments` | int 2–4 | Abdominal tergites. More segments stretch the body and add health. |
-| `body_length` | 0–1 | Overall length. |
+| `body_segments` | int 1–10 (default 2) | Trunk segments, head excluded. Segment 1 is the thorax; the rest are abdominal. 1 = no abdomen. Drives trunk length and health. |
+| `body_length` | 0–1 | Stats only — agility. It no longer shapes the bug; `body_segments` does. |
 | `body_width` | 0–1 | Overall width. |
 | `body_mass` | 0–1 | Density, independent of volume. Heavy bugs hit harder and turn worse. |
 | `head_size` | 0–1 | Head capsule. Sets where the eyes and mandibles mount. |
@@ -41,19 +41,25 @@ GLB mapping all read it.
 | Gene | Range | What it does |
 |---|---|---|
 | `wing_count` | int 0/2/4 | **0 means flightless, full stop** — no wings, no lift, whatever the area. |
-| `wing_type` | int 0–4 | membranous / elytra / broad / narrow / fan. Categorical. |
-| `wing_area` | 0–1 | Wing size. Four small wings beat two large ones of the same total area. |
+| `wing_type` | int 0–1 | membranous / elytra. Structure only — the blade SHAPE is derived, see below. |
+| `wing_area` | 0–1 | Overall wing size — scales length and width together. Four small wings beat two large ones of the same total area. |
+| `wing_length` | 0–1 | Blade length along its own axis. |
+| `wing_width` | 0–1 | Blade half-width as a fraction of length — aspect ratio, not a second length. |
+| `wing_roundness` | 0–1 | Blunt vs. finely tapered tip. Outline only, never the size. |
+| `wing_angle` | 0–1 | Sweep off the body axis, 35°–165°. Default 0.50 = 100°, calibrated from the wing sketches. |
+| `wing_tip_hue` | int 0–10 | Tip wash colour: 0 = white, 1–10 = a reference-palette swatch. |
 | `wing_beat` | 0–1 | Beat rate. |
 
-### Weapons and defence — 6
+### Weapons and defence — 9
 
 | Gene | Range | What it does |
 |---|---|---|
 | `mandible_size` | 0–1 | Jaw mass. Raises attack, *lowers* attack rate. |
-| `mandible_type` | int 0–3 | pincer / tusk / forceps / palps. Categorical. |
-| `mandible_serration` | 0–1 | Cutting edge. Multiplies the bite. |
+| `mandible_type` | int 0–3 | wide_thin / narrow_thick / chelicerae_teeth / chelicerae_smooth. Categorical. |
+| `mandible_serration` | 0–1 | Cutting edge. Multiplies the bite, and cuts teeth into the blade mandibles at three levels — `min(2, floor(v × 3))`. The chelicerae ignore it; their teeth are a kind, not a level. |
 | `horn_size` | 0–1 | Horn length. Second-largest attack input. |
-| `horn_type` | int 0–4 | rhino / stag / rostrum / crown / crescent. Categorical. |
+| `horn_type` | int 0–4 | nose / pincer / y_shaped / split / crown. Categorical. |
+| `horn_serration` | int 0–2 (default 0) | Notch level on the horn. Each level is the one below it plus more notches. `crown` is exempt and shows none at any level. |
 | `spine_density` | 0–1 | Defensive spikes along the abdomen. Adds to defense. |
 | `tail_length` | 0–1 | Cerci / metasoma. Gives the stinger reach. |
 | `stinger_size` | 0–1 | Below 0.08 there is no stinger and venom is exactly 0. |
@@ -63,7 +69,7 @@ GLB mapping all read it.
 | Gene | Range | What it does |
 |---|---|---|
 | `eye_count` | int 2–8, even | More eyes widen the field — +11% vision each pair. |
-| `eye_type` | int 0–3 | almond / round / teardrop / compound. Categorical. |
+| `eye_type` | int 0–2 | The eye FILL treatment — dark speckled / notched / hooked. There is only one eye shape; this does not change it. Categorical. |
 | `eye_size` | 0–1 | Ommatidium size. Primary vision input. |
 | `antenna_length` | 0–1 | Picks up what the eyes miss. |
 
@@ -81,9 +87,9 @@ GLB mapping all read it.
 | `hue` | 0–1, wraps | Base hue. The only circular gene — it wraps rather than clamps. |
 | `saturation` | 0–1 | Colour intensity. Costs camouflage. |
 | `lightness` | 0–1 | Brightness. Costs camouflage. |
-| `pattern` | 0–1 | Selects the marking style: bands / spots / dorsal stripe. |
-| `pattern_scale` | 0–1 | Marking density and weight. |
-| `pattern_contrast` | 0–1 | Below 0.08 the bug is unmarked. |
+| `pattern` | 0–1 | Two independent readings. `min(2, floor(v × 3))` picks the horn and mandible surface treatment — gradient / dots / oval. Above 0.5 the limbs also go near-black. |
+| `pattern_scale` | 0–1 | Dot size and count for the `dots` treatment: 34 small dots at 0, 9 large ones at 1. |
+| `pattern_contrast` | 0–1 | How loud all three treatments read — gradient depth, dot opacity, oval tone gap. Firefly, Ladybird and Butterfly all window on it. |
 | `setae` | 0–1 | Hairiness. Breaks up the outline, helps camouflage. |
 | `iridescence` | 0–1 | Metallic sheen. Looks great, **costs camouflage** — a real trade-off. |
 | `translucency` | 0–1 | See-through cuticle. Helps camouflage. |
@@ -162,25 +168,77 @@ health after the attacker has moved on.
 and 3, it's a different horn — so they don't take Gaussian jitter like the other
 genes. An archetype holds its kind exactly, with a 12% chance per birth of
 stepping to an adjacent kind. Enough for a lineage to drift; not enough for a
-wasp to sprout a rhino horn at random.
+wasp to sprout a nose horn at random.
 
-**Horns** (5) — `rhino` one heavy blade curving forward · `stag` a tuning-fork
-column splitting into two hooked arms with inner teeth · `rostrum` a long clean
-snout · `crown` three prongs, middle longest · `crescent` paired bull horns
-sweeping out and up.
+**Horns** (5) — `nose` one straight central spike, wide at the base · `pincer`
+paired horns curling back in over a tight U of empty space · `y_shaped` a stem
+forking into two outward-hooking arms · `split` the big one, heavy base and the
+widest sweep · `crown` three prongs, middle longest.
 
-**Wings** (5) — `membranous` two slim blades a side · `elytra` hard cases closed
-over the abdomen with a seam · `broad` two wide moth petals · `narrow` three thin
-blades · `fan` four blades in a wide spread.
+Every horn mounts on the **thorax**, not the head, and is drawn last of
+everything so the thorax it grows out of cannot bury its base.
 
-**Eyes** (4) — `almond` pointed at both ends, the default · `round` a plain big
-orb · `teardrop` round inboard, drawn to a point outboard · `compound` a lens
-ringed with ommatidia. Saturated bugs get a coloured iris; muted ones stay pure
-white, which reads more graphic.
+`horn_serration` (0/1/2) adds notches without changing the shape underneath:
+barbs up the shaft on `nose`, inner teeth on `pincer`, stem spurs on `y_shaped`,
+antler branching on `split`. `crown` is deliberately exempt — the reference
+sheet drew no serrated variant of it, so the slider does nothing there.
 
-**Mandibles** (4) — `pincer` a fat comma curving in · `tusk` straight tapered
-spikes · `forceps` long slender arms hooking hard inward · `palps` two soft
-rounded lobes, barely a weapon.
+**Wings** (2 structures, 3 derived silhouettes) — `wing_type` is now only the
+structural question: `membranous` soft blades, or `elytra` hard cases closed over
+the abdomen with a seam.
+
+The blade SHAPE is not selected — it is **derived** from the wing's own
+proportions, the same way `bodyPlan()` derives myriapod from leg count and
+segments. One shape coefficient:
+
+    clamp(0.5 + 0.50·wing_length − 0.70·wing_width − 0.30·wing_roundness, 0, 1)
+
+crossed against two thresholds:
+
+| coefficient | silhouette | traced from |
+| --- | --- | --- |
+| `< 0.34` | `leaf` — broad and rounded, widest past mid-length, blunt tip | top-left panel + the top-right close-up |
+| `< 0.62` | `oval` — shorter, narrower, near-symmetric | bottom-left panel |
+| `≥ 0.62` | `crescent` — long thin blade bowed back to a fine curved point | bottom-middle panel + the bottom-right close-up |
+
+Longer pushes a wing toward `crescent`; wider and rounder push it toward `leaf`.
+The gene defaults evaluate to 0.288, so an untouched bug wears the `leaf`.
+
+The membrane is **always neutral grey at exactly 0.70 alpha**, with no genome
+input at all — the reference draws the same grey wing on every bug whatever
+colour it is. `wing_tip_hue` is the only colour a genome can put on a wing.
+
+One blade per wing, per side: `wing_count / 2` pairs = that many blades a side.
+At four wings the second blade is swept 0.30 rad further back and drawn slightly
+shorter, matching the shallow V of the isolated four-wing close-ups.
+
+Wings are drawn **above everything else on the sprite**, the topmost plane.
+
+**Eyes** (3 fills, ONE shape) — the reference sheet draws one eye silhouette
+three times and changes only the fill, so `eye_type` no longer selects a shape.
+Every eye is the same wedge: a broad rounded corner at the outer-top, tapering to
+a point at the inner-lower side, drawn under the head so its edge crops the inner
+half. The three fills are `dark` near-black with a scatter of white dots ·
+`notched` white with a dark notch cut into the outer-top corner · `hooked` white
+with a small dark hook curling in from that corner. Saturated bugs get a coloured
+iris — but never on `dark`, where a mid-tone disc is lost against the black.
+
+**Crown mark** (3) — a flat colour patch capping the top ~18% of the head, in
+reference-palette gold, clipped to the head so it never overruns the silhouette:
+`none` · `solid` a hard crisp lower edge · `blended` faded down into the head
+colour. This is the ONLY blend anywhere on the head; the head fill itself is
+completely flat, with no gradient, bloom or rim darkening. It has nothing to do
+with `horn_type`'s `nose`, which is a spike of horn geometry on the thorax — the
+name deliberately avoids the word.
+
+**Mandibles** (4), re-traced from the reference sheet — `wide_thin` long slender
+crescents sweeping OUTWARD to a fine point, the pair splaying apart, barbs low on
+the inner edge · `narrow_thick` short and heavy, bulk at the base, hooking hard
+INWARD so the tips converge, with deep teeth mid-inner-edge · `chelicerae_teeth`
+a blunt stout column with a domed top and one small fang at the tip ·
+`chelicerae_smooth` the same column, bare. The two blade kinds take `mandible_serration` as a 0/1/2 tooth
+count; the chelicerae pair does not — teeth-vs-no-teeth is the choice between
+those two kinds.
 
 All four are drawn as filled tapered silhouettes, not strokes — mass at the base
 and a point at the tip is what separates a designed horn from a bent line.

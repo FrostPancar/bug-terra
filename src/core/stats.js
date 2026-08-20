@@ -15,14 +15,22 @@ const sig = (x, k = 6) => 1 / (1 + Math.exp(-k * (clamp01(x) - 0.5)));
  * stat formulas can read the same derived body.
  */
 export function morphology(g) {
-  const length = 0.4 + g.body_length * 1.6;        // 0.4 .. 2.0
-  const width = 0.25 + g.body_width * 1.05;        // 0.25 .. 1.3
+  // LENGTH IS SEGMENT COUNT NOW. `body_length` used to set the trunk extent and
+  // body_segments merely stretched it; that made two genes fight over one
+  // dimension and left the renderer unable to say how many masses a bug has.
+  // Length is derived from the segment count alone (head excluded, segment 1 is
+  // the thorax), so the drawn skeleton and the stats agree by construction.
+  // body_length survives as a pure stat gene — see computeStats()'s agility.
+  const segments = g.body_segments;
+  // 0.70 with no abdomen at all, 1.32 for the common two-segment bug (which is
+  // where the old body_length=0.5 / segments=3 genome landed, so the stat
+  // formulas keep their calibration), rising with diminishing returns to ~3.9
+  // for a ten-segment myriapod.
+  const bodyLen = 0.70 + 0.62 * Math.pow(Math.max(0, segments - 1), 0.75);
+  const length = bodyLen;
+  const width = 0.18 + g.body_width * 1.32;        // 0.18 .. 1.50 (widened both ends)
   // A tapered abdomen carries less volume than a round one of the same extent.
   const taper = 1 - 0.28 * g.abdomen_taper;
-  // More segments = a longer body for the same body_length gene.
-  const segments = g.body_segments;
-  const segmentStretch = 1 + (segments - 2) * 0.18;
-  const bodyLen = length * segmentStretch;
   const volume = bodyLen * width * width * taper;  // rough ellipsoid proxy
   const shellVolume = volume * (0.05 + g.carapace_thickness * 0.45);
   const density = 0.5 + g.body_mass * 1.1;         // 0.5 .. 1.6
@@ -60,6 +68,8 @@ export function computeStats(g) {
   const speed = clamp(stride * cadence * 19 * (0.82 + grip / 100 * 0.30), 1, 100);
 
   // AGILITY — turning and acceleration. Short bodies, wide stance, low mass.
+  // This is the one place `body_length` still lands: it no longer sets the
+  // silhouette, it reads as how much of that silhouette is committed forward.
   const agility = clamp(
     (100 * sig(0.55 * (1 - g.body_length) + 0.25 * g.leg_spread + 0.20 * (1 - g.body_mass), 5.5)) *
       (0.6 + 0.4 * (1 - clamp01(g.carapace_thickness))),

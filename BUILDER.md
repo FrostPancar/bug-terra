@@ -98,13 +98,13 @@ the build button, and a **never** badge beside that taxon in the drift line.
 
 ### 2. The part library — `src/render/partLibrary.js`
 
-The **Part library** and **All 41 genes** tabs cut the same data two ways. The
+The **Part library** and **All 48 genes** tabs cut the same data two ways. The
 library is organised by *what you see on the bug* — 20 things the renderer can
 draw, each owning the two to five genes that shape it, with the threshold where
 it appears, a thumbnail per kind, and a grid tile framed on the part itself
 (`FOCUS` in `partLibrary.js` says how each one is framed: the pose is head-up,
 so a positive `y` brings the head into the tile and a negative one the tail). The gene tab is organised by *the vector* —
-all 41 in `GENE_ORDER`, including the ten that reach no part of the sprite, each
+all 48 in `GENE_ORDER`, including the eight that reach no part of the sprite, each
 saying which parts it feeds. Start in the library when you are building a bug;
 go to the genes when you need one specific dial, or the ones no part exposes.
 
@@ -130,11 +130,11 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 
 | Part | Appears when | Genes |
 |---|---|---|
-| **Body plan** | _always on_ | `leg_count`, `body_length` |
-| **Abdomen** | _always on_ | `body_length`, `body_width`, `abdomen_taper`, `body_segments` |
+| **Body plan** | _always on_ | `leg_count`, `body_segments` |
+| **Abdomen** | `body_segments ≥ 2` | `body_segments`, `body_width`, `abdomen_taper` |
 | **Thorax** | _always on_ | `thorax_ratio`, `body_width` |
 | **Head** | _always on_ | `head_size`, `body_width` |
-| **Trunk segments** | `body plan is myriapod; count = clamp(round(6 + body_length × 4), 6, 10)` | `body_length`, `leg_count` |
+| **Trunk segments** | `body plan is myriapod; count = clamp(body_segments, 6, 10)` | `body_segments`, `leg_count` |
 
 ### Limbs — legs and what is on the end of them
 
@@ -147,14 +147,15 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 
 | Part | Appears when | Genes |
 |---|---|---|
-| **Wings** | `wing_count > 0 && wing_area > 0.05` | `wing_count`, `wing_type`, `wing_area`, `wing_beat` |
+| **Wings** | `wing_count > 0 && wing_area > 0.05` | `wing_count`, `wing_type`, `wing_area`, `wing_length`, `wing_width`, `wing_roundness`, `wing_angle`, `wing_tip_hue`, `wing_beat` |
 
 ### Weapons — the front end and the back end
 
 | Part | Appears when | Genes |
 |---|---|---|
-| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `head_size` |
-| **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration` |
+| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `thorax_ratio`, `pattern`, `pattern_contrast` |
+| **Horn serration** | `horn_serration ≥ 1, and the horn must be drawn at all (horn_size ≥ 0.12). NEVER on crown (horn_type 4)` | `horn_serration`, `horn_type`, `horn_size` |
+| **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration`, `pattern`, `pattern_contrast` |
 | **Tail** | `tail_length × 0.44 > 0.08  →  tail_length > 0.182` | `tail_length`, `stinger_size` |
 | **Stinger** | `stinger_size > 0.18, and the tail must be drawn at all` | `stinger_size`, `tail_length` |
 | **Defensive spines** _(stats only)_ | `never drawn — spine_density reaches stats and classification only` | `spine_density` |
@@ -164,6 +165,7 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | Part | Appears when | Genes |
 |---|---|---|
 | **Eyes** | _always on_ | `eye_size`, `eye_type`, `eye_count`, `saturation` |
+| **Crown mark** | `crown_mark_style` ≥ 1 | `crown_mark_style`, `head_size` |
 | **Extra eyes** | `eye_count ≥ 4  (extra pairs = clamp(round(eye_count / 2) − 1, 0, 3))` | `eye_count`, `eye_size` |
 | **Antennae** | `antenna_length > 0.104  (the length has to clear 0.15 of the body unit)` | `antenna_length`, `head_size` |
 
@@ -172,29 +174,30 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | Part | Appears when | Genes |
 |---|---|---|
 | **Shell colour** | _always on_ | `hue`, `saturation`, `lightness` |
-| **Ink limbs** | `pattern > 0.5` | `pattern`, `pattern_scale`, `pattern_contrast` |
+| **Ink limbs** | `pattern > 0.5` | `pattern` |
+| **Horn & jaw pattern** | `a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(2, floor(pattern × 3))` | `pattern`, `pattern_scale`, `pattern_contrast`, `hue` |
 | **Setae** | `setae ≥ 0.35` | `setae`, `body_width` |
 | **Iridescent speckle** | `iridescence ≥ 0.28 on the shell, ≥ 0.34 on the limbs` | `iridescence`, `hue` |
 
 #### Genes that move numbers, not pixels
 
-Ten of the 41 reach no part of the sprite. The builder badges them rather
+Eight of the 43 reach no part of the sprite. The builder badges them rather
 than leaving you to wonder why the slider does nothing:
 
-`body_mass` · `carapace_thickness` · `leg_joints` · `mandible_serration` ·
-`spine_density` · `metabolism` · `aggression` · `pattern_scale` ·
-`pattern_contrast` · `translucency`
+`body_length` · `body_mass` · `carapace_thickness` · `leg_joints` ·
+`spine_density` · `metabolism` · `aggression` · `translucency`
 
-Two of those are worth calling out: `pattern` is the only one of the four
-pattern genes with any art at all (it picks black limbs over body-toned ones),
-and `spine_density` is required by the Centipede and Millipede windows while
-being invisible on the bug.
+Three genes left this list in the horn pass. `mandible_serration` now cuts
+teeth into the blade mandibles as well as multiplying the bite, and
+`pattern_scale` and `pattern_contrast` drive the horn-and-jaw surface treatment
+instead of nothing at all. `spine_density` is still the odd one out: required by
+the Centipede and Millipede windows while being invisible on the bug.
 
 ### 3. Export
 
 | Format | What it is |
 |---|---|
-| **JS genome** | the full 41 genes as a `normalizeGenome({...})` literal, grouped and commented |
+| **JS genome** | the full 48 genes as a `normalizeGenome({...})` literal, grouped and commented |
 | **JSON** | the raw genome object |
 | **Patch vs base** | only the genes you changed since loading the build — the parameter combination on its own |
 | **Archetype entry** | a `{ key, name, blurb, spread, bias }` block ready to paste into `ARCHETYPES` |

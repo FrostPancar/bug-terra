@@ -109,7 +109,7 @@ test('the rng resumes the exact stream it was saved at', () => {
 test('a restored genome is re-validated, so a hand-edited save cannot smuggle one in', () => {
   const bad = { ...randomGenome(makeRng(3)), leg_count: 99, hue: 4.7, carapace_thickness: 12 };
   const fixed = normalizeGenome(bad);
-  assert.ok(fixed.leg_count <= 10 && fixed.leg_count % 2 === 0);
+  assert.ok(fixed.leg_count <= 12 && fixed.leg_count % 2 === 0);
   assert.ok(fixed.hue >= 0 && fixed.hue <= 1);
   assert.ok(fixed.carapace_thickness <= 1);
   for (const k of GENE_ORDER) assert.ok(Number.isFinite(fixed[k]), `${k} is not finite`);
