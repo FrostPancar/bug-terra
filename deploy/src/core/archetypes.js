@@ -26,7 +26,7 @@ export const ARCHETYPES = [
     bias: {
       body_segments: 2, body_length: 0.5, body_width: 0.72, body_mass: 0.80,
       carapace_thickness: 0.88, head_size: 0.42, thorax_ratio: 0.55, abdomen_taper: 0.25,
-      leg_count: 6, leg_length: 0.28, leg_thickness: 0.72, leg_joints: 3, foot_size: 0.5,
+      leg_count: 6, leg_length: 0.28, leg_thickness: 0.72, leg_joints: 3,
       wing_count: 2, wing_type: 1, wing_area: 0.20, wing_beat: 0.35,
       mandible_size: 0.55, mandible_serration: 0.45, horn_size: 0.85, horn_type: 0, eye_type: 1, mandible_type: 0, crown_mark_style: 1,
       spine_density: 0.30, tail_length: 0.10, stinger_size: 0.02,
@@ -43,27 +43,32 @@ export const ARCHETYPES = [
     bias: {
       body_segments: 2, body_length: 0.62, body_width: 0.24, body_mass: 0.18,
       carapace_thickness: 0.18, head_size: 0.45, thorax_ratio: 0.45, abdomen_taper: 0.85,
-      leg_count: 6, leg_length: 0.55, leg_thickness: 0.22, leg_joints: 3, foot_size: 0.30,
+      leg_count: 6, leg_length: 0.55, leg_thickness: 0.22, leg_joints: 3,
       wing_count: 4, wing_type: 0, wing_area: 0.80, wing_beat: 0.90,
       // slender crescent blades, swept well back, gold-tipped (coefficient 0.80)
-      wing_length: 0.85, wing_width: 0.12, wing_roundness: 0.15, wing_angle: 0.70, wing_tip_hue: 5,
-      mandible_size: 0.30, mandible_serration: 0.30, horn_size: 0.02, horn_type: 4, eye_type: 0, mandible_type: 3,
+      wing_length: 0.85, wing_width: 0.12, wing_roundness: 0.15, wing_angle: 0.95, wing_tip_hue: 5,
+      mandible_size: 0.30, mandible_serration: 0.30, horn_size: 0.02, horn_type: 4, eye_type: 0, mandible_type: 2,
       spine_density: 0.10, tail_length: 0.55, stinger_size: 0.90,
       eye_count: 2, eye_size: 0.62, antenna_length: 0.50,
       metabolism: 0.85, aggression: 0.85,
       hue: 0.14, saturation: 0.92, lightness: 0.55,
-      pattern: 0.15, pattern_contrast: 0.95, setae: 0.25, iridescence: 0.20, translucency: 0.15,
+      pattern_leg: 0.15, pattern_contrast: 0.95, setae: 0.25, iridescence: 0.20, translucency: 0.15,
     },
   },
   {
     key: 'spider',
     name: 'Spider',
     blurb: 'Eight legs, many eyes, no wings. Big vision radius, ambushes with venomous fangs.',
-    spread: 0.10,
+    // TIGHTER than the rest. A spider is defined by two COUNTS — eight legs and
+    // eight eyes — and at 0.10 the jitter on a 2–12 count gene is a full leg
+    // pair of sigma, so half the draws walked off the arachnid plan entirely
+    // and classified as something else. 0.06 keeps the counts while leaving the
+    // continuous genes plenty of room.
+    spread: 0.06,
     bias: {
       body_segments: 2, body_length: 0.42, body_width: 0.62, body_mass: 0.35,
       carapace_thickness: 0.32, head_size: 0.30, thorax_ratio: 0.35, abdomen_taper: 0.20,
-      leg_count: 8, leg_length: 0.92, leg_thickness: 0.28, leg_joints: 3, foot_size: 0.65,
+      leg_count: 8, leg_length: 0.92, leg_thickness: 0.28, leg_joints: 3,
       wing_count: 0, wing_type: 0, wing_area: 0.0, wing_beat: 0.0,
       mandible_size: 0.62, mandible_serration: 0.70, horn_size: 0.05, horn_type: 1, eye_type: 1, mandible_type: 2, crown_mark_style: 2,
       spine_density: 0.25, tail_length: 0.15, stinger_size: 0.55,
@@ -80,14 +85,14 @@ export const ARCHETYPES = [
     bias: {
       body_segments: 3, body_length: 0.68, body_width: 0.50, body_mass: 0.30,
       carapace_thickness: 0.40, head_size: 0.25, thorax_ratio: 0.40, abdomen_taper: 0.35,
-      leg_count: 6, leg_length: 0.62, leg_thickness: 0.35, leg_joints: 3, foot_size: 0.55,
+      leg_count: 6, leg_length: 0.62, leg_thickness: 0.35, leg_joints: 3,
       wing_count: 2, wing_type: 1, wing_area: 0.35, wing_beat: 0.45,
-      mandible_size: 0.25, mandible_serration: 0.25, horn_size: 0.02, horn_type: 3, eye_type: 2, mandible_type: 3,
+      mandible_size: 0.25, mandible_serration: 0.25, horn_size: 0.02, horn_type: 3, eye_type: 2, mandible_type: 2,
       spine_density: 0.45, tail_length: 0.45, stinger_size: 0.05,
       eye_count: 2, eye_size: 0.35, antenna_length: 0.95,
       metabolism: 0.55, aggression: 0.25,
       hue: 0.08, saturation: 0.35, lightness: 0.24,
-      pattern: 0.9, setae: 0.30, iridescence: 0.30, translucency: 0.10,
+      pattern_leg: 0.9, setae: 0.30, iridescence: 0.30, translucency: 0.10,
     },
   },
   {
@@ -98,10 +103,13 @@ export const ARCHETYPES = [
     bias: {
       body_segments: 3, body_length: 0.92, body_width: 0.26, body_mass: 0.32,
       carapace_thickness: 0.28, head_size: 0.38, thorax_ratio: 0.75, abdomen_taper: 0.60,
-      leg_count: 6, leg_length: 0.78, leg_thickness: 0.32, leg_joints: 3, foot_size: 0.95,
+      // leg_spread is pinned rather than left to the random draw: the Mantis
+      // window asks for a wide stance now that `foot_size` is gone, and "reach
+      // as a weapon" is exactly what a wide stance on long legs describes.
+      leg_count: 6, leg_length: 0.78, leg_thickness: 0.32, leg_joints: 3, leg_spread: 0.88,
       wing_count: 2, wing_type: 0, wing_area: 0.45, wing_beat: 0.30,
       // mid-slenderness oval blades held close to the body (coefficient 0.59)
-      wing_length: 0.70, wing_width: 0.25, wing_roundness: 0.30, wing_angle: 0.55, wing_tip_hue: 0,
+      wing_length: 0.70, wing_width: 0.25, wing_roundness: 0.30, wing_angle: 0.80, wing_tip_hue: 0,
       mandible_size: 0.70, mandible_serration: 0.85, horn_size: 0.10, horn_type: 3, eye_type: 0, mandible_type: 2,
       spine_density: 0.55, tail_length: 0.25, stinger_size: 0.05,
       eye_count: 2, eye_size: 0.85, antenna_length: 0.45,
@@ -117,16 +125,16 @@ export const ARCHETYPES = [
     bias: {
       body_segments: 2, body_length: 0.45, body_width: 0.45, body_mass: 0.15,
       carapace_thickness: 0.10, head_size: 0.32, thorax_ratio: 0.50, abdomen_taper: 0.45,
-      leg_count: 6, leg_length: 0.38, leg_thickness: 0.20, leg_joints: 2, foot_size: 0.25,
+      leg_count: 6, leg_length: 0.38, leg_thickness: 0.20, leg_joints: 2,
       wing_count: 4, wing_type: 0, wing_area: 0.98, wing_beat: 0.55,
       // huge broad leaf blades, cream-tipped (coefficient -0.03 -> leaf)
-      wing_length: 0.60, wing_width: 0.82, wing_roundness: 0.85, wing_angle: 0.35, wing_tip_hue: 8,
-      mandible_size: 0.08, mandible_serration: 0.05, horn_size: 0.02, horn_type: 4, eye_type: 2, mandible_type: 3,
+      wing_length: 0.60, wing_width: 0.82, wing_roundness: 0.85, wing_angle: 0.70, wing_tip_hue: 8,
+      mandible_size: 0.08, mandible_serration: 0.05, horn_size: 0.02, horn_type: 4, eye_type: 2, mandible_type: 2,
       spine_density: 0.05, tail_length: 0.20, stinger_size: 0.02,
       eye_count: 2, eye_size: 0.72, antenna_length: 0.80,
       metabolism: 0.60, aggression: 0.10,
       saturation: 0.20, lightness: 0.62,
-      pattern: 0.45, setae: 0.95, iridescence: 0.35, translucency: 0.30,
+      pattern_leg: 0.45, setae: 0.95, iridescence: 0.35, translucency: 0.30,
     },
   },
   {
@@ -137,7 +145,7 @@ export const ARCHETYPES = [
     bias: {
       body_segments: 8, body_length: 0.98, body_width: 0.20, body_mass: 0.28,
       carapace_thickness: 0.22, head_size: 0.22, thorax_ratio: 0.30, abdomen_taper: 0.70,
-      leg_count: 10, leg_length: 0.48, leg_thickness: 0.18, leg_joints: 2, foot_size: 0.45,
+      leg_count: 10, leg_length: 0.48, leg_thickness: 0.18, leg_joints: 2,
       wing_count: 0, wing_type: 0, wing_area: 0.0, wing_beat: 0.0,
       mandible_size: 0.48, mandible_serration: 0.60, horn_size: 0.05, horn_type: 1, eye_type: 2, mandible_type: 1,
       spine_density: 0.80, tail_length: 0.75, stinger_size: 0.65,
@@ -154,18 +162,35 @@ export const ARCHETYPES = [
     bias: {
       body_segments: 2, body_length: 0.30, body_width: 0.58, body_mass: 0.55,
       carapace_thickness: 0.70, head_size: 0.30, thorax_ratio: 0.40, abdomen_taper: 0.15,
-      leg_count: 6, leg_length: 0.30, leg_thickness: 0.45, leg_joints: 2, foot_size: 0.40,
+      leg_count: 6, leg_length: 0.30, leg_thickness: 0.45, leg_joints: 2,
       wing_count: 2, wing_type: 1, wing_area: 0.15, wing_beat: 0.25,
-      mandible_size: 0.20, mandible_serration: 0.15, horn_size: 0.95, horn_type: 2, eye_type: 1, mandible_type: 3,
+      mandible_size: 0.20, mandible_serration: 0.15, horn_size: 0.95, horn_type: 2, eye_type: 1, mandible_type: 2,
       spine_density: 0.35, tail_length: 0.08, stinger_size: 0.02,
       eye_count: 2, eye_size: 0.28, antenna_length: 0.55,
       metabolism: 0.28, aggression: 0.30,
       saturation: 0.30, lightness: 0.20,
-      pattern: 0.5, setae: 0.45, iridescence: 0.55, translucency: 0.05,
+      pattern_leg: 0.5, setae: 0.45, iridescence: 0.55, translucency: 0.05,
     },
   },
 ];
 
+/**
+ * MIGRATION NOTE — `mandible_type` 3 no longer exists.
+ *
+ * `chelicerae_teeth` (2) and `chelicerae_smooth` (3) merged into one
+ * `chelicerae` at index 2, with the fang moved onto `mandible_serration ≥ 1`.
+ * Every archetype that pinned 3 now pins 2, and each one keeps the jaw it was
+ * drawn with, because their serration values already fall on the right side:
+ * Wasp .30, Roach .25, Moth .05 and Weevil .15 all bucket to 0 and stay
+ * fang-less exactly as `smooth` was, while Spider .70 and Mantis .85 — the two
+ * that pinned the toothed variant — bucket to 2 and keep their fang.
+ *
+ * `pattern` was likewise split three ways. Every archetype that set it set it
+ * for the LIMB reading (a roach at 0.9 is a drab bug with black legs, not a bug
+ * asking for an oval highlight on its jaws), so each moved to `pattern_leg` at
+ * the same value; none of them ever expressed an opinion about horn or jaw
+ * surface, so they take the flat default.
+ */
 export const ARCHETYPE_KEYS = ARCHETYPES.map((a) => a.key);
 
 /**

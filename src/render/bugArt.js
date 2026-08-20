@@ -9,8 +9,10 @@
 //   • Body segments are FLAT: one solid shell fill with a soft warm blob near
 //     the middle and NO darkening toward the rim. Centred on the thorax and
 //     myriapod rings, skewed low on the abdomen; elongated segments also get a
-//     soft centreline. The blob colour is a fixed reference-palette cream/tan,
-//     never a lighten of the body hue (see REF_PALETTE). The blob is DELIBERATELY
+//     soft centreline. The blob's CORE colour is a reference-palette swatch
+//     picked by `light_hue` — a fixed palette, never a lighten of the body hue
+//     (see REF_PALETTE) — and only its outer fade is derived from the body, so
+//     the edge harmonises instead of going muddy. The blob is DELIBERATELY
 //     faint — see BLOB_ALPHA.
 //   • The HEAD CARRIES NO LIGHTING AT ALL. One solid `col.shell` fill, no
 //     gradient, no bloom, no rim darkening. The single exception is the crown
@@ -142,14 +144,37 @@ export function palette(g) {
   const accentH = h + 0.5;
 
   // Limbs are either near-black or a deep tone of the body. Both appear in the
-  // reference set; `pattern` picks, so it is heritable rather than arbitrary.
+  // reference set; `pattern_leg` picks, so it is heritable rather than arbitrary.
   //
-  // This reading of `pattern` is INDEPENDENT of the three-way horn/mandible
-  // surface treatment it also drives (see surfacePattern). Different body part,
-  // different question — "are the legs inked" is not one of gradient/dots/oval —
-  // so the 0.5 threshold is kept exactly as it was rather than being bent onto a
-  // bucket boundary, and every existing genome keeps the limbs it had.
-  const inkLimbs = g.pattern > 0.5;
+  // This used to be a third reading of the single shared `pattern` gene, sat
+  // alongside the horn and mandible treatments it also drove. "Are the legs
+  // inked" is not one of flat/gradient/dots/oval — it is a different body part
+  // asking a different question — so it now has a gene of its own. The 0.5
+  // threshold is unchanged, so a leg that inked before inks at the same value.
+  const inkLimbs = (g.pattern_leg ?? 0) > 0.5;
+
+  /**
+   * THE LIGHTING COLOUR — a REF_PALETTE swatch chosen by `light_hue`, not a
+   * lighten of the body. Still off the fixed palette per the mandate above;
+   * what changed is that the swatch is a gene rather than a hardcoded cream, so
+   * two bugs of the same colour can carry different light.
+   */
+  const lightHex = REF_PALETTE[REF_PALETTE_ORDER[
+    clamp(Math.round(g.light_hue ?? 7), 0, REF_PALETTE_ORDER.length - 1)]];
+
+  /**
+   * THE BLOOM'S OUTER STOPS, derived from the BODY rather than from the palette.
+   *
+   * This is the one place the mandate bends, and on purpose. The far stops used
+   * to fade REF_PALETTE.tan out to nothing, and a fixed tan crossing a cool or
+   * a dark shell read as dirt — the blob's edge went muddy on every body that
+   * was not warm. The colour the fade APPROACHES is now built from the bug's own
+   * h/s/l: same hue, saturation pulled back, lightness pushed well up. It is a
+   * lighter version of the body meeting the body, which cannot go muddy on any
+   * hue. The alpha behaviour is untouched — it still reaches zero before the
+   * rim, so the flat undarkened edge the last pass fought for is still there.
+   */
+  const lift = (a) => hsl(h, clamp(s * 0.52, 0, 1), clamp(l + 0.30, 0, 0.94), a);
 
   return {
     shell:   hsl(h, s, l),
@@ -157,16 +182,17 @@ export function palette(g) {
     // treatment any more (the head is flat `shell`, see drawBug); the elytra
     // pass is its only consumer, where it separates the two wing covers.
     deep:    hsl(h, s * 1.02, Math.max(0.20, l - 0.14)),
-    // Body-segment bloom, straight off the fixed reference palette — cream at
-    // the core, warm tan on the way out, then out to nothing well short of the
-    // rim so the edge stays flat undarkened `shell`. Six stops, all faint: see
-    // BLOB_ALPHA for why the numbers are this low.
-    segBloom:     refA(REF_PALETTE.cream, BLOB_ALPHA),
-    segBloomMid:  refA(REF_PALETTE.cream, BLOB_ALPHA * 0.68),
-    segBloomMid2: refA(REF_PALETTE.cream, BLOB_ALPHA * 0.44),
-    segBloomFar:  refA(REF_PALETTE.tan, BLOB_ALPHA * 0.24),
-    segBloomFar2: refA(REF_PALETTE.tan, BLOB_ALPHA * 0.10),
-    segBloomOut:  refA(REF_PALETTE.tan, 0),
+    // Body-segment bloom. The CORE three stops are the `light_hue` swatch off
+    // the fixed reference palette; the OUTER three fade into a light tone of the
+    // bug's own colour (see `lift`) rather than into a fixed tan, then out to
+    // nothing well short of the rim so the edge stays flat undarkened `shell`.
+    // Six stops, all faint: see BLOB_ALPHA for why the numbers are this low.
+    segBloom:     refA(lightHex, BLOB_ALPHA),
+    segBloomMid:  refA(lightHex, BLOB_ALPHA * 0.68),
+    segBloomMid2: refA(lightHex, BLOB_ALPHA * 0.44),
+    segBloomFar:  lift(BLOB_ALPHA * 0.24),
+    segBloomFar2: lift(BLOB_ALPHA * 0.10),
+    segBloomOut:  lift(0),
     // The crown mark — a flat colour patch on the head's own surface. Gold and
     // orange straight off REF_PALETTE, never computed from the body hue.
     crownSolid:    REF_PALETTE.gold,
@@ -214,8 +240,8 @@ export function bodyPlan(g) {
 }
 
 /**
- * Horns, redrawn from the reference sheet. Every one of them mounts on the
- * THORAX (see drawHorn) and points away from it, with `horn_serration` adding
+ * Horns, redrawn from the reference sheet. Every one of them mounts on the REAR
+ * OF THE HEAD (see drawHorn) and points forward, with `horn_serration` adding
  * notches at 0/1/2 without changing the silhouette underneath.
  *
  * `crown` is the one survivor of the old set and is deliberately exempt from the
@@ -305,13 +331,45 @@ const WING_FAMILY = {
  *
  * Measured from the body's long axis (0° = straight forward, past the head) to
  * the wing's own axis, across the four full-bug panels: top-left ≈ 55°,
- * bottom-left ≈ 100°, top-middle ≈ 110°, bottom-middle ≈ 150°. The window is set
- * to span that range with headroom — 35° at `wing_angle` 0, 165° at 1 — which
- * puts the sketch's median of ≈100° at exactly the midpoint, so `wing_angle`
- * defaults to 0.50 and a default bug rests at the sketch-typical angle.
+ * bottom-left ≈ 100°, top-middle ≈ 110°, bottom-middle ≈ 150°. The MAPPING is
+ * unchanged and does not need to be — 35° at gene 0, 165° at gene 1.
+ *
+ * WHAT CHANGED IS THE GENE'S REACHABLE WINDOW: `wing_angle` is now 0.7–1.0
+ * (see genes.js), i.e. 126°–165°, so a resting wing is always swept well back
+ * the way the sheet draws it. Its 0.85 default renders
+ * lerp(35°, 165°, 0.85) = 145.5°. The old comment claimed 0.50 renders the
+ * sketch's ≈100° median; 0.50 is no longer reachable, and 100° is now a FLIGHT
+ * angle rather than a resting one — see FLIGHT_SWEEP_OFFSET.
  */
 const WING_SWEEP_MIN = 0.61;   // 35°
 const WING_SWEEP_MAX = 2.88;   // 165°
+
+/**
+ * "WHEN FLYING" — there is no `flying` state in this codebase.
+ *
+ * The pose machine has exactly three states: `idle`, `walk`, `attack` (see
+ * ANIM_ORDER, and the builder's pose buttons). Nothing in it represents flight
+ * as a distinct thing. The two states that DO represent locomotion are `walk`
+ * and `attack`, and they are already the two that beat the wings at all — the
+ * flap term in drawSoftWings() turns on for exactly those two. So "flying" is
+ * read here as "the wings are beating", i.e. walk or attack, which keeps the
+ * sweep offset and the flap perfectly in step: a bug either has its wings back
+ * and still, or forward and beating, never one without the other.
+ *
+ * The offset swings them 0.3 of the gene's range FORWARD (−0.3 → −39°) for the
+ * beat. Given the gene's own 0.7–1.0 window the result lands in 0.4–0.7
+ * (87°–126°), so the clamp floor of 0 is never actually reached; it is there
+ * because the sweep mapping's domain is 0–1 and a value outside it would
+ * extrapolate the lerp, not because 0.4 needs defending.
+ */
+const FLIGHT_SWEEP_OFFSET = 0.30;
+
+/** Sweep in radians for a pose state. Exported so tests can state the claim. */
+export function wingSweep(g, state) {
+  const flying = state === 'walk' || state === 'attack';
+  const v = clamp((g.wing_angle ?? 0.85) - (flying ? FLIGHT_SWEEP_OFFSET : 0), 0, 1);
+  return lerp(WING_SWEEP_MIN, WING_SWEEP_MAX, v);
+}
 /**
  * EYES ARE ONE SHAPE NOW.
  *
@@ -343,8 +401,15 @@ export const EYE_FILLS = ['dark', 'notched', 'hooked'];
  *               no edge — the ONLY gradient permitted anywhere on the head
  */
 export const CROWN_MARKS = ['none', 'solid', 'blended'];
-/** Two blade kinds that take serration, plus the chelicerae teeth/no-teeth pair. */
-export const MANDIBLE_TYPES = ['wide_thin', 'narrow_thick', 'chelicerae_teeth', 'chelicerae_smooth'];
+/**
+ * THREE kinds, not four. `chelicerae_teeth` and `chelicerae_smooth` were the
+ * same column drawn twice, differing by a single fang at the tip — a serration
+ * level pretending to be a kind, and the one place in the file where
+ * `mandible_serration` was deliberately ignored. They are merged: `chelicerae`
+ * is one kind, and its fang appears at `mandible_serration ≥ 1` exactly like
+ * every other tooth on every other jaw here.
+ */
+export const MANDIBLE_TYPES = ['wide_thin', 'narrow_thick', 'chelicerae'];
 
 /** The sketch's 0 SR / 1 SR / 2 SR. Horn serration is already an integer gene. */
 export const hornSerration = (g) => clamp(Math.round(g.horn_serration ?? 0), 0, 2);
@@ -383,7 +448,7 @@ export function layout(g, ppu = 26) {
     wingShape: wingShape(g),
     eyeFill: EYE_FILLS[clamp(Math.round(g.eye_type ?? 0), 0, 2)],
     crownMark: CROWN_MARKS[clamp(Math.round(g.crown_mark_style ?? 0), 0, 2)],
-    mandibleType: MANDIBLE_TYPES[g.mandible_type ?? 0],
+    mandibleType: MANDIBLE_TYPES[clamp(Math.round(g.mandible_type ?? 0), 0, MANDIBLE_TYPES.length - 1)],
     wingPairs: g.wing_count / 2,
     wingArea: g.wing_area,
     setae: g.setae,
@@ -399,9 +464,10 @@ export function layout(g, ppu = 26) {
   for (const p of L.parts) { bump(p.x + p.rx, p.ry); bump(p.x - p.rx, p.ry); }
   for (const leg of L.legs) { bump(leg.foot.x, leg.foot.y); bump(leg.knee.x, leg.knee.y); }
   for (const e of L.eyes) bump(e.x + e.rx, e.y + e.ry);
-  // Horns hang off the THORAX now, so the bound is measured from there. The 1.1
-  // covers `split`, whose tip lands at 1.05 × hornLen past its own base.
-  bump(L.thorax.x + L.thorax.rx + L.hornLen * 1.1, L.hornLen * 0.7);
+  // Horns grow off the REAR OF THE HEAD now, so the bound is measured from
+  // there — same origin drawHorn() uses, see HORN_BASE_K. The 1.1 covers
+  // `split`, whose tip lands at 1.05 × hornLen past its own base.
+  bump(hornOriginX(L) + L.hornLen * 1.1, L.hornLen * 0.7);
   bump(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
   if (L.wingPairs > 0) bump(L.wingSpan.x, L.wingSpan.y);
 
@@ -524,9 +590,9 @@ function buildLegs(L) {
     for (const side of [-1, 1]) {
       L.legs.push(buildLeg({
         ax, ay: ay * side, side, pair: i, t,
-        // NOT `foot` — buildLeg() already returns a `foot` POINT, and spreading
-        // this object into it would collide. `footSize` is the gene scalar.
-        len: len * lerp(1.05, 0.92, t), w, fan, footSize: g.foot_size,
+        // The foot pad is a fixed size now (FOOT_PAD_R), so there is nothing
+        // per-leg to carry here any more — `footSize` is gone with its gene.
+        len: len * lerp(1.05, 0.92, t), w, fan,
       }));
     }
   }
@@ -633,7 +699,10 @@ function wingMetrics(L) {
   const size = lerp(0.62, 1.30, L.wingArea);                      // overall size
   const len = L.unit * lerp(0.85, 2.30, g.wing_length ?? 0.55) * fam.lenK * size;
   const wid = len * lerp(0.09, 0.52, g.wing_width ?? 0.46) * fam.widK;
-  const sweep = lerp(WING_SWEEP_MIN, WING_SWEEP_MAX, g.wing_angle ?? 0.50);
+  // The RESTING sweep. Flight subtracts from it at draw time, where the state
+  // is known — see wingSweep()/FLIGHT_SWEEP_OFFSET. The bounding box is measured
+  // off reach rather than angle, so a swung-forward blade cannot escape it.
+  const sweep = wingSweep(g, 'idle');
   return { len, wid, sweep, round: clamp(g.wing_roundness ?? 0.55, 0, 1), fam: L.wingShape };
 }
 
@@ -774,6 +843,24 @@ function taperedCurve(ctx, p0, p1, p2, w0, w1, fill, steps = 16) {
  * when the caller asks for a fatter tip, which the serration callers now do.
  */
 function taperedPath(ctx, p0, p1, p2, w0, w1, steps = 16) {
+  ctx.beginPath();
+  return taperedOutline(ctx, p0, p1, p2, w0, w1, steps);
+}
+
+/**
+ * taperedPath's geometry WITHOUT the beginPath(), so several pieces can be
+ * accumulated into one path and filled together.
+ *
+ * That is the whole mechanism behind patternedSilhouette(): canvas 2D fills any
+ * number of sub-paths under a single fill() with non-zero winding, so a horn
+ * made of a shaft plus four barbs can be one shape as far as the fill, the
+ * gradient and the clip are concerned — no path union needed, just the
+ * discipline of not calling beginPath() or fill() between pieces.
+ *
+ * Returns the piece's bounding box, which the silhouette pass unions up to size
+ * the gradient and the decoration across the WHOLE shape.
+ */
+function taperedOutline(ctx, p0, p1, p2, w0, w1, steps = 16) {
   const left = [], right = [];
   let tipAngle = 0;
   for (let i = 0; i <= steps; i++) {
@@ -791,7 +878,6 @@ function taperedPath(ctx, p0, p1, p2, w0, w1, steps = 16) {
   }
   const tip = qpoint(p0, p1, p2, 1);
   const r = Math.abs(w1) * 0.5;
-  ctx.beginPath();
   ctx.moveTo(left[0].x, left[0].y);
   for (const p of left) ctx.lineTo(p.x, p.y);
   // Round the tip: the left flank ends at tipAngle + 90°, the right at
@@ -800,21 +886,48 @@ function taperedPath(ctx, p0, p1, p2, w0, w1, steps = 16) {
   if (r > 0.02) ctx.arc(tip.x, tip.y, r, tipAngle + Math.PI / 2, tipAngle - Math.PI / 2, true);
   for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
   ctx.closePath();
+
+  const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const p of [...left, ...right,
+                   { x: tip.x - r, y: tip.y - r }, { x: tip.x + r, y: tip.y + r }]) {
+    box.minX = Math.min(box.minX, p.x); box.maxX = Math.max(box.maxX, p.x);
+    box.minY = Math.min(box.minY, p.y); box.maxY = Math.max(box.maxY, p.y);
+  }
+  return box;
 }
 
 /* ------------------------------------------------- horn / jaw patterning -- */
 
 /**
- * `pattern`, `pattern_scale` and `pattern_contrast` used to reach nothing but a
- * black-limbs toggle. They now carry the reference sheet's three surface
- * treatments, applied to the HORN and the MANDIBLES only — body patterns are a
- * later pass, so the shell path is untouched.
+ * SURFACE TREATMENTS for the HORN and the MANDIBLES. Body patterns are a later
+ * pass; the shell path is untouched.
  *
- *   pattern           min(2, floor(v × 3))  →  0 gradient · 1 dots · 2 oval
- *   pattern_scale     dot size and count (bigger = fewer, larger dots)
- *   pattern_contrast  how far the light tone departs from the base, for all three
+ * FOUR modes, not three, and the new one is index 0:
+ *
+ *   flat      solid base colour. No gradient, no dots, no highlight, nothing.
+ *   gradient  base lifting to a warm amber toward the tip
+ *   dots      light speckle scattered over the silhouette
+ *   oval      one lighter oval patch near the tip, the rest flat
+ *
+ * `flat` exists because there was no way to ask for a plain horn. Bucket 0 was
+ * `gradient`, so every genome — including an untouched one — wore a gradient it
+ * had not chosen. Now:
+ *
+ *   mode = min(3, floor(v × 4))   over `pattern_horn` / `pattern_mandible`
+ *
+ * TWO GENES, not one. The horn and the jaws are separate objects and there is
+ * no reason they should agree; `surfacePattern(g, col, 'horn' | 'mandible')`
+ * reads the matching gene and every caller says which component it is.
+ *
+ * `pattern_scale` and `pattern_contrast` stay SHARED across both. They do not
+ * choose a treatment, they modulate whichever treatment was chosen — dot
+ * coarseness and overall loudness — which is a house style rather than a
+ * per-part decision. See the note in genes.js.
  */
-const PATTERN_MODES = ['gradient', 'dots', 'oval'];
+const PATTERN_MODES = ['flat', 'gradient', 'dots', 'oval'];
+
+/** Which gene each component's treatment comes off. */
+const PATTERN_GENE = { horn: 'pattern_horn', mandible: 'pattern_mandible' };
 
 /** Shortest way round the wheel, so red never travels through green to amber. */
 function hueToward(from, to, t) {
@@ -822,12 +935,14 @@ function hueToward(from, to, t) {
   return from + d * t;
 }
 
-export function surfacePattern(g, col) {
+/** @param {'horn'|'mandible'} which — which component's own gene to read. */
+export function surfacePattern(g, col, which = 'horn') {
   const k = clamp(g.pattern_contrast ?? 0, 0, 1);
   // Warm lift: the reference sheet shifts red → amber toward the tip.
   const h = hueToward(col.h, 0.095, 0.35 + k * 0.5);
+  const v = clamp(g[PATTERN_GENE[which] ?? 'pattern_horn'] ?? 0, 0, 1);
   return {
-    mode: PATTERN_MODES[Math.min(2, Math.floor(clamp(g.pattern ?? 0, 0, 1) * 3))],
+    mode: PATTERN_MODES[Math.min(PATTERN_MODES.length - 1, Math.floor(v * PATTERN_MODES.length))],
     scale: clamp(g.pattern_scale ?? 0, 0, 1),
     k,
     lite: hsl(h, clamp(col.s * 1.02, 0, 1), clamp(col.l + 0.10 + k * 0.26, 0, 0.90)),
@@ -835,14 +950,83 @@ export function surfacePattern(g, col) {
 }
 
 /**
- * Fill one tapered piece and then decorate it. The decoration clips to the piece
- * itself — that is the whole reason taperedPath exists separately — so dots and
- * highlights can never float off the silhouette.
+ * ONE HORN IS ONE SURFACE. So is one mandible.
+ *
+ * This used to be `patternedCurve()`, called once per tapered PIECE — and a
+ * horn is not one piece. A serrated `split` horn is a shaft plus four antler
+ * branches, five separate calls, so it got five separate gradients each running
+ * base→amber across its own few pixels, five independent dot scatters, five
+ * oval highlights. The result read as a pile of separately-painted parts rather
+ * than as one object with a finish on it, and the smaller the piece the louder
+ * the mismatch, because every gradient completed over its own tiny span.
+ *
+ * The fix is to treat the whole component as one shape:
+ *
+ *   1. ACCUMULATE  every piece's outline into a single path — one beginPath(),
+ *      taperedOutline() per piece, no fill in between (canvas fills any number
+ *      of sub-paths under non-zero winding, so no real path union is needed).
+ *   2. FILL ONCE   flat, or with a gradient spanning the COMBINED bounding
+ *      geometry from the base of the first piece to the far end of the shape.
+ *   3. CLIP ONCE   to that same combined path.
+ *   4. DECORATE ONCE  dots scattered across the whole silhouette's box, or a
+ *      single oval highlight near its far end.
+ *
+ * `pieces` is an array of `{p0, p1, p2, w0, w1}` descriptors. The horn and
+ * mandible cases build the array first and hand the lot over, rather than
+ * drawing as they go.
  */
-function patternedCurve(ctx, p0, p1, p2, w0, w1, base, pat, seed) {
-  taperedPath(ctx, p0, p1, p2, w0, w1);
+function patternedSilhouette(ctx, pieces, base, pat, seed) {
+  if (!pieces.length) return;
+
+  // 1. one path, every piece.
+  ctx.beginPath();
+  const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  let widest = 0;
+  for (const p of pieces) {
+    let b;
+    if (p.circle) {
+      // A disc sub-path, for a piece that is a cap rather than a taper (the
+      // chelicera's dome). Same accumulation, so it takes the same fill, the
+      // same gradient and the same clip as everything else in the silhouette
+      // instead of being a separately-coloured lump on the end.
+      // ANTICLOCKWISE, and that is load-bearing. Sub-paths are filled by the
+      // non-zero rule, so a disc wound against the tapered outlines around it
+      // SUBTRACTS where it overlaps them — which turned the chelicera's dome
+      // into a ring with the column's tip punched out of it. taperedOutline
+      // caps its tip with an anticlockwise arc, so this matches it.
+      const { x, y, r } = p.circle;
+      ctx.moveTo(x + r, y);
+      ctx.arc(x, y, r, 0, TAU, true);
+      ctx.closePath();
+      b = { minX: x - r, maxX: x + r, minY: y - r, maxY: y + r };
+      widest = Math.max(widest, r * 2);
+    } else {
+      b = taperedOutline(ctx, p.p0, p.p1, p.p2, p.w0, p.w1);
+      widest = Math.max(widest, Math.abs(p.w0));
+    }
+    box.minX = Math.min(box.minX, b.minX); box.maxX = Math.max(box.maxX, b.maxX);
+    box.minY = Math.min(box.minY, b.minY); box.maxY = Math.max(box.maxY, b.maxY);
+  }
+
+  // The shape's own axis: from the first piece's base to whichever piece tip is
+  // furthest from it. On every horn and every jaw here the first piece IS the
+  // main shaft, so this is the silhouette's long direction, and the gradient
+  // laid along it therefore spans the whole object rather than one facet.
+  const root = pieces[0].circle
+    ? { x: pieces[0].circle.x, y: pieces[0].circle.y }
+    : pieces[0].p0;
+  let far = root, farD = -1;
+  for (const p of pieces) {
+    const tip = p.circle
+      ? { x: p.circle.x, y: p.circle.y }
+      : qpoint(p.p0, p.p1, p.p2, 1);
+    const d = Math.hypot(tip.x - root.x, tip.y - root.y);
+    if (d > farD) { farD = d; far = tip; }
+  }
+
+  // 2. fill once.
   if (pat.mode === 'gradient' && ctx.createLinearGradient) {
-    const gr = ctx.createLinearGradient(p0.x, p0.y, p2.x, p2.y);
+    const gr = ctx.createLinearGradient(root.x, root.y, far.x, far.y);
     gr.addColorStop(0, base);
     gr.addColorStop(1, pat.lite);
     ctx.fillStyle = gr;
@@ -850,38 +1034,42 @@ function patternedCurve(ctx, p0, p1, p2, w0, w1, base, pat, seed) {
     ctx.fillStyle = base;
   }
   ctx.fill();
-  if (pat.mode === 'gradient') return;
 
+  // `flat` is exactly what it says: the solid fill above and nothing else.
+  if (pat.mode === 'flat' || pat.mode === 'gradient') return;
+
+  // 3. clip once — to the combined path, which is still the current path.
   ctx.save();
   ctx.clip();
-  const px = (t) => qpoint(p0, p1, p2, t);
+
+  const bw = Math.max(1, box.maxX - box.minX);
+  const bh = Math.max(1, box.maxY - box.minY);
+
   if (pat.mode === 'dots') {
-    // Same even sqrt-jittered scatter as speckle(), walked along the curve
-    // instead of around an ellipse, because a horn is not an ellipse.
-    const n = Math.round(lerp(34, 9, pat.scale));
-    const r = Math.max(0.6, lerp(0.16, 0.40, pat.scale) * w0);
+    // 4. one scatter over the whole silhouette's box. The clip discards
+    // whatever lands off the shape, which is what keeps the density even
+    // across a shaft and its barbs instead of restarting on each.
+    const n = Math.round(lerp(34, 9, pat.scale) * (1 + Math.min(2, pieces.length - 1) * 0.5));
+    const r = Math.max(0.6, lerp(0.16, 0.40, pat.scale) * widest);
     ctx.fillStyle = pat.lite;
     ctx.globalAlpha = 0.35 + pat.k * 0.6;
     for (let i = 0; i < n; i++) {
-      const t = Math.sqrt(hash01(i, seed)) * 0.98;
-      const c = px(t);
-      const j = hash01(i, seed + 11) - 0.5, j2 = hash01(i, seed + 23) - 0.5;
-      const spread = lerp(w0, w1, t) * 1.1;
+      const x = box.minX + hash01(i, seed) * bw;
+      const y = box.minY + hash01(i, seed + 11) * bh;
       ctx.beginPath();
-      ctx.arc(c.x + j * spread, c.y + j2 * spread, r * (0.6 + hash01(i, seed + 31)), 0, TAU);
+      ctx.arc(x, y, r * (0.6 + hash01(i, seed + 31)), 0, TAU);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
   } else {
-    // oval — one highlight patch near the tip, the rest stays flat.
-    const c = px(0.78);
-    const d = px(0.92);
-    const a = Math.atan2(d.y - c.y, d.x - c.x);
-    const w = Math.max(1, lerp(w0, w1, 0.78));
+    // 4. ONE highlight patch, near the far end of the whole shape.
+    const c = { x: lerp(root.x, far.x, 0.74), y: lerp(root.y, far.y, 0.74) };
+    const a = Math.atan2(far.y - root.y, far.x - root.x);
+    const w = Math.max(1, widest * 0.55);
     ctx.fillStyle = pat.lite;
     ctx.globalAlpha = 0.55 + pat.k * 0.45;
     ctx.beginPath();
-    ctx.ellipse(c.x, c.y, w * 1.05, w * 0.46, a, 0, TAU);
+    ctx.ellipse(c.x, c.y, Math.max(w * 1.05, farD * 0.16), w * 0.60, a, 0, TAU);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -963,7 +1151,12 @@ function drawSoftWings(ctx, L, col, phase, state) {
   const { g } = L;
   const flap = state === 'walk' || state === 'attack'
     ? Math.sin(phase * TAU * (1 + g.wing_beat * 2.5)) * 0.13 : 0.02;
-  const { len: baseLen, wid: baseWid, sweep, round, fam } = L.wing;
+  const { len: baseLen, wid: baseWid, round, fam } = L.wing;
+  // FLIGHT SWEEP. L.wing.sweep is the resting angle; a bug in motion swings its
+  // blades forward by FLIGHT_SWEEP_OFFSET to beat them. "In motion" is walk or
+  // attack — the same two states that turn the flap on, and the closest thing
+  // this pose machine has to flying. See FLIGHT_SWEEP_OFFSET for the reasoning.
+  const sweep = wingSweep(g, state);
   // Wings attach to the THORAX, always.
   const anchor = L.thorax;
   const n = L.wingPairs;                       // one blade per wing, per side
@@ -1030,6 +1223,9 @@ function drawElytra(ctx, L, col) {
 
 /* ----------------------------------------------------------------- legs -- */
 
+/** Foot pad radius as a fraction of the leg width. Was `foot_size`'s maximum. */
+const FOOT_PAD_R = 0.95;
+
 function drawLegs(ctx, L, col, phase) {
   for (const leg of L.legs) {
     const off = (leg.pair * 0.34 + (leg.side > 0 ? 0.5 : 0)) % 1;
@@ -1047,13 +1243,18 @@ function drawLegs(ctx, L, col, phase) {
             lerp(leg.attach.x, foot.x, 0.30), lerp(knee.y, foot.y, 0.18),
             foot.x, foot.y, leg.w, col.limb);
 
-    // Foot: a round pad at the tip, sized by `foot_size`. The hooked tarsal
-    // claw that used to grow off it is GONE — the pad is the whole foot now, so
-    // the gene drives its radius instead of a fixed 0.42 of the leg width.
-    // 0.30 of leg width still reads as bare punctuation under the capsule cap;
-    // 0.95 is a heavy bulb that clearly overhangs it.
-    const fr = leg.w * lerp(0.30, 0.95, clamp(leg.footSize ?? 0, 0, 1));
-    fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limbLo);
+    // Foot: a round pad at the tip, FIXED at the maximum the old `foot_size`
+    // gene could reach. The gene is gone (see genes.js): every value under this
+    // one read as a leg that stopped short rather than as a smaller foot, so
+    // "as big as possible" was the only answer the slider had. 0.95 of the leg
+    // width is a pad that clearly overhangs the capsule cap.
+    //
+    // Colour is `col.limb`, the LEG's own tone — not the darker `col.limbLo` it
+    // used to take. A darker pad read as a separate object stuck on the end; the
+    // foot is part of the leg, so it is the colour of the leg, and the overhang
+    // alone is what makes it visible.
+    const fr = leg.w * FOOT_PAD_R;
+    fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limb);
     speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
   }
 }
@@ -1061,31 +1262,50 @@ function drawLegs(ctx, L, col, phase) {
 /* ----------------------------------------------------------------- horn -- */
 
 /**
- * HORNS MOUNT ON THE THORAX.
+ * HORNS GROW OUT OF THE BASE OF THE HEAD.
  *
- * They used to grow off the head edge. The origin is now the front of the
- * thorax — the reference sheet's blue attachment dot — so a horn reads as part
- * of the trunk rather than as headgear. Two consequences, both handled:
+ * They mounted on the front of the thorax before that, and off the head edge
+ * before THAT. The origin is now the head's REAR edge — the side facing the
+ * thorax, so the horn springs from the head/thorax junction and runs forward
+ * over the head. Local +x points forward and buildHead() places the head at
+ * `trunkFrontX + headR × 0.54`, so the rear edge is at `head.x − head.rx`; the
+ * origin sits a shade inside that (HORN_BASE_K = 0.55) which, at the default
+ * head placement, is within a hair of `trunkFrontX` — the junction itself.
  *
- *   • the horn is drawn AFTER the thorax in drawBug(), not with the rest of the
- *     face furniture, or the thorax ellipse (topmost of the trunk) would bury
- *     its base;
- *   • layout() bumps the sprite bounds off the thorax, not the head.
+ * Two consequences, both handled:
+ *
+ *   • the horn is drawn BEFORE the trunk in drawBug() — a reversal of the old
+ *     dead-last position. The thorax is now meant to cover the horn's base:
+ *     that overlap is what sells the horn as ROOTED at the junction rather than
+ *     as a shape resting on top of the bug. Everything past the base is clear
+ *     of the thorax, so the silhouette still reads whole;
+ *   • layout() bumps the sprite bounds off the same origin — hornOriginX().
  *
  * Lateral spread is measured in `sp`, a fraction of the horn's own length, so
- * the silhouette holds its proportions whatever the thorax is doing.
+ * the silhouette holds its proportions whatever the head is doing.
  */
+const HORN_BASE_K = 0.55;
+
+/** The horn's attachment point. layout() and drawHorn() must never disagree. */
+function hornOriginX(L) {
+  return L.head.x - L.head.rx * HORN_BASE_K;
+}
+
 function drawHorn(ctx, L, col, pat) {
   if (!L.hornLen) return;
-  const th = L.thorax;
-  const x0 = th.x + th.rx * 0.52;
+  const x0 = hornOriginX(L);
   const len = L.hornLen;
   const sp = len * 0.42;                         // lateral unit
   const base = Math.max(3, L.unit * 0.115);      // horns want real mass
   const fill = col.horn;
   const sr = hornSerration(L.g);
-  const piece = (p0, p1, p2, w0, w1, seed) =>
-    patternedCurve(ctx, p0, p1, p2, w0, w1, fill, pat, seed);
+  // Collected, not drawn. The whole horn — shaft, barbs, branches, every prong
+  // — is one silhouette carrying one treatment; see patternedSilhouette().
+  // The per-piece `seed` argument survives as the scatter seed for the whole
+  // silhouette — the FIRST piece's, since that is the shaft. It no longer varies
+  // between pieces, because there is only one scatter now.
+  const pieces = [];
+  const piece = (p0, p1, p2, w0, w1, seed) => pieces.push({ p0, p1, p2, w0, w1, seed });
 
   switch (L.hornType) {
     case 'nose': {
@@ -1181,6 +1401,8 @@ function drawHorn(ctx, L, col, pat) {
       break;
     }
   }
+
+  patternedSilhouette(ctx, pieces, fill, pat, pieces[0]?.seed ?? 3);
 }
 
 /* ------------------------------------------------------------- mandible -- */
@@ -1188,11 +1410,12 @@ function drawHorn(ctx, L, col, pat) {
 /**
  * Mandibles stay on the HEAD — only the horn moved to the thorax.
  *
- * Two of the four kinds take serration, and they read it off
- * `mandible_serration` bucketed to the sheet's 0/1/2 rather than blending
- * continuously. The chelicerae pair is the deliberate exception: `teeth` vs
- * `no teeth` is the sketch's own toggle between two VARIANTS, a fixed feature of
- * the shape, so those two kinds ignore the serration gene entirely.
+ * ALL THREE kinds take serration now, read off `mandible_serration` bucketed to
+ * the sheet's 0/1/2 rather than blending continuously. The chelicerae used to be
+ * the exception — a `teeth` kind and a `smooth` kind that ignored the serration
+ * gene entirely — but the only difference between them was one fang at the tip,
+ * which is a serration level by any reading. They are one kind now, and the fang
+ * appears at serration ≥ 1 like every other tooth here.
  *
  * RE-TRACED from `Image References/Horns_alts.png`, MANDIBLES block, because the
  * first cut drifted badly from it. What the sheet actually draws, and what each
@@ -1214,8 +1437,8 @@ function drawHorn(ctx, L, col, pat) {
  *                  which left the two kinds reading as the same blade)
  *
  *   CHELICERAE    a blunt vertical COLUMN with parallel sides and a domed top —
- *                 not a blade and not curved. TEETH adds ONE small fang at the
- *                 tip on the inner side; NO TEETH is the bare column.
+ *                 not a blade and not curved. Serration 0 is the bare column;
+ *                 1 or 2 adds ONE small fang at the tip on the inner side.
  *                 (was: a tapering curved stub with three side-teeth down its
  *                  length, none of which the sheet draws)
  */
@@ -1233,8 +1456,11 @@ function drawMandibles(ctx, L, col, state, lunge, pat) {
     ctx.save();
     ctx.translate(ax, side * h.ry * 0.52);
     ctx.rotate(side * open);
-    const piece = (p0, p1, p2, w0, w1, seed) =>
-      patternedCurve(ctx, p0, p1, p2, w0, w1, fill, pat, seed);
+    // Collected, not drawn — one jaw is ONE silhouette carrying one treatment,
+    // blade plus every tooth on it. See patternedSilhouette().
+    const pieces = [];
+    const piece = (p0, p1, p2, w0, w1, seed) => pieces.push({ p0, p1, p2, w0, w1, seed });
+    const cap = (x, y, r, seed) => pieces.push({ circle: { x, y, r }, seed });
 
     /**
      * `n` inward-pointing teeth on the inner edge of a blade. `t0`/`dt` place
@@ -1264,14 +1490,13 @@ function drawMandibles(ctx, L, col, state, lunge, pat) {
         teeth(p0, p1, p2, sr, 1.58, 0.32, 0.34, 0.26, 111 + side);
         break;
       }
-      case 'chelicerae_teeth': {
-        // The bare column plus ONE fang at the tip. That single fang is part of
-        // the KIND, not a serration level — mandible_serration is not consulted.
-        chelicera(ctx, piece, m, w, side, fill, true);
-        break;
-      }
-      case 'chelicerae_smooth': {
-        chelicera(ctx, piece, m, w, side, fill, false);
+      case 'chelicerae': {
+        // The blunt column. The fang at its tip is a SERRATION now, not a
+        // second kind: level 0 leaves the column bare, 1 and 2 both add it.
+        // (One fang is all the sheet ever draws on a chelicera, so 2 does not
+        // add a second — the levels above 0 agree, the way `crown` and
+        // horn_serration already agree.)
+        chelicera(piece, cap, m, w, side, sr >= 1);
         break;
       }
       default: {
@@ -1286,33 +1511,35 @@ function drawMandibles(ctx, L, col, state, lunge, pat) {
         break;
       }
     }
+    patternedSilhouette(ctx, pieces, fill, pat, pieces[0]?.seed ?? 101);
     ctx.restore();
   }
 }
 
 /**
  * The chelicera: a blunt column with parallel sides and a domed top, per the
- * sheet. Shared by both variants so only the tip fang differs.
+ * sheet. The tip fang is a serration level, not a variant of the shape.
  *
- * `taperedCurve` gives flat ends, so the dome is a plain circle capping the tip.
- * It is filled with the base colour rather than run through `piece` — it is the
- * silhouette's cap, not another patterned facet.
+ * The dome is a disc sub-path contributed to the SAME accumulated silhouette as
+ * the column (see `cap`), not a separate fill. It used to be painted straight
+ * onto the canvas with the flat base colour, which meant that on a patterned
+ * jaw the dome was the one part carrying no pattern at all.
  */
-function chelicera(ctx, piece, m, w, side, fill, withTeeth) {
+function chelicera(piece, cap, m, w, side, withFang) {
   const p0 = { x: 0, y: 0 };
   const p1 = { x: m * 0.32, y: side * m * 0.02 };
   const p2 = { x: m * 0.62, y: side * m * 0.04 };
-  const cap = w * 1.88;
+  const capR = w * 1.88;
   // Stout: roughly twice as tall as it is wide, which is the sheet's proportion.
   // A slimmer column reads as a stick rather than a blunt fang.
   piece(p0, p1, p2, w * 3.75, w * 3.58, 151 + side);
-  fillEllipse(ctx, p2.x, p2.y, cap, cap, fill);
-  if (!withTeeth) return;
+  cap(p2.x, p2.y, capR, 151 + side);
+  if (!withFang) return;
   // one small fang off the tip, on the inner side — rounded, not needled
   piece(
-    { x: p2.x, y: p2.y - side * cap * 0.55 },
-    { x: p2.x + m * 0.10, y: p2.y - side * cap * 0.95 },
-    { x: p2.x + m * 0.24, y: p2.y - side * cap * 1.05 },
+    { x: p2.x, y: p2.y - side * capR * 0.55 },
+    { x: p2.x + m * 0.10, y: p2.y - side * capR * 0.95 },
+    { x: p2.x + m * 0.24, y: p2.y - side * capR * 1.05 },
     w * 0.88, w * 0.30, 161 + side);
 }
 
@@ -1374,25 +1601,36 @@ function drawTail(ctx, L, col, state, lunge) {
  */
 function eyeWedgePath(ctx, R, r, side) {
   const v = (w) => side * w;              // +v = away from the midline
+  // WIDENED toward a semicircle. The wedge was too narrow across its short axis
+  // — it read as a comma rather than as an eye, and next to the sketch it was
+  // visibly thinner than what is drawn there. Every lateral control point is
+  // pushed out by roughly a third and the inner edge is bowed further back, so
+  // the body of the shape approaches half a disc. The IDENTITY is unchanged and
+  // deliberately so: one broad rounded corner at the outer-top, one point at the
+  // inner-lower end, asymmetric on both diagonals.
   ctx.beginPath();
-  ctx.moveTo(-R * 0.92, v(-r * 0.26));                                  // the point: inner-lower
-  ctx.quadraticCurveTo(-R * 0.34, v(r * 1.00), R * 0.24, v(r * 1.14));  // outer edge, bellying out
-  ctx.quadraticCurveTo(R * 0.94, v(r * 1.24), R * 0.96, v(r * 0.34));   // the broad rounded outer-top corner
-  ctx.quadraticCurveTo(R * 0.98, v(-r * 0.32), R * 0.44, v(-r * 0.60)); // inner shoulder
-  ctx.quadraticCurveTo(-R * 0.26, v(-r * 0.90), -R * 0.92, v(-r * 0.26)); // inner edge, back to the point
+  ctx.moveTo(-R * 0.94, v(-r * 0.14));                                  // the point: inner-lower
+  ctx.quadraticCurveTo(-R * 0.30, v(r * 1.32), R * 0.24, v(r * 1.50));  // outer edge, bellying well out
+  ctx.quadraticCurveTo(R * 1.00, v(r * 1.62), R * 1.02, v(r * 0.30));   // the broad rounded outer-top corner
+  ctx.quadraticCurveTo(R * 1.04, v(-r * 0.52), R * 0.40, v(-r * 0.82)); // inner shoulder
+  ctx.quadraticCurveTo(-R * 0.30, v(-r * 1.10), -R * 0.94, v(-r * 0.14)); // inner edge, back to the point
   ctx.closePath();
 }
 
 function drawEyes(ctx, L, col) {
-  const { g } = L;
-  // A flat white eye reads as graphic; an iris reads as a face. Bright, saturated
-  // bugs get the iris — it's the cyan-on-red of the reference.
+  // A flat white eye reads as graphic; an iris reads as a face.
   //
-  // NOT on the `dark` treatment. That fill is near-black with white speckle, and
-  // a mid-tone coloured disc dropped on it either vanishes or fights the dots;
-  // the sketch's own dark-eyed head shows speckle and nothing else. So the iris
-  // is gated on a LIGHT sclera as well as on saturation.
-  const hasIris = g.saturation > 0.35 && L.eyeFill !== 'dark';
+  // THE SATURATION GATE IS GONE. It used to also require `saturation > 0.35`,
+  // which made the iris an accident of the body's colour — a drab bug lost its
+  // eyes entirely, for no reason anybody could see on the sprite. The fill
+  // treatment is the only thing that decides now: both light treatments carry an
+  // iris, always.
+  //
+  // NOT on the `dark` treatment, which is the one real reason there ever was.
+  // That fill is near-black with white speckle, and a mid-tone coloured disc
+  // dropped on it either vanishes or fights the dots; the sketch's own dark-eyed
+  // head shows speckle and nothing else.
+  const hasIris = L.eyeFill !== 'dark';
 
   for (const e of L.eyes) {
     if (e.minor) { fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil); continue; }
@@ -1438,9 +1676,12 @@ function drawEyes(ctx, L, col) {
 
     if (hasIris) {
       // Sit the iris in the light body of the wedge, clear of the corner mark.
+      // ONE disc. A second, smaller `col.pupil` circle used to sit on top of it
+      // — a leftover from the iris+pupil eye that predates the fill-treatment
+      // redesign. The treatments carry the dark mark now (the notch, the hook),
+      // so a pupil on top of them was a third mark nobody asked for.
       const ir = Math.min(R, r) * 0.56;
       fillEllipse(ctx, -R * 0.06, v(r * 0.10), ir, ir, col.iris);
-      fillEllipse(ctx, -R * 0.06, v(r * 0.10), ir * 0.50, ir * 0.50, col.pupil);
     }
     ctx.restore();
   }
@@ -1468,11 +1709,18 @@ function drawSetae(ctx, L, col) {
 /* ---------------------------------------------------- body-segment fill -- */
 
 /**
- * How far the blob reaches, as a fraction of the part's semi-axes. Under 1 by a
- * wide margin on purpose: the gradient has to be fully transparent before it
- * gets anywhere near the outline, so the rim stays flat, undarkened `shell`.
+ * How far the blob reaches, as a fraction of the part's semi-axes. Still under
+ * 1 on purpose: the gradient has to be fully transparent before it gets to the
+ * outline, so the rim stays flat, undarkened `shell`.
+ *
+ * RAISED 0.74 → 0.88. At 0.74 the highlight sat as a small disc in the middle
+ * of a large flat field and the segment read as unlit with a spot on it; the
+ * light now covers most of the mass, which is what the reference does. 0.88
+ * leaves a 12% band of untouched flat `shell` at the rim — visibly flat, which
+ * is the whole point of the previous pass, but no longer the majority of the
+ * segment. Past ~0.92 that band closes up and the flatness goes with it.
  */
-const BLOB_R = 0.74;
+const BLOB_R = 0.88;
 /**
  * Abdomen only: the blob sits low. Local +x points at the head, so a NEGATIVE
  * multiple of the part's own along-axis radius pushes the highlight toward the
@@ -1580,7 +1828,9 @@ export function drawBug(ctx, g, opts = {}) {
   const { phase = 0, state = 'idle', ppu = 26 } = opts;
   const L = layout(g, ppu);
   const col = palette(g);
-  const pat = surfacePattern(g, col);        // horn + mandible surface treatment
+  // Two treatments, one per component, off two independent genes.
+  const patHorn = surfacePattern(g, col, 'horn');
+  const patMandible = surfacePattern(g, col, 'mandible');
   const breathe = state === 'idle' ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
   const lunge = state === 'attack' ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
 
@@ -1594,8 +1844,8 @@ export function drawBug(ctx, g, opts = {}) {
    * THE ABDOMEN/THORAX RELATIONSHIP DEPENDS ON WINGS. This is a flip from the
    * previous rule, where the thorax was unconditionally the topmost trunk piece.
    *
-   *   NO WINGS    … → head → THORAX → abdomen → horn
-   *   HAS WINGS   … → head → abdomen → THORAX → horn → WINGS
+   *   NO WINGS    … → head → antennae → horn → THORAX → abdomen
+   *   HAS WINGS   … → head → antennae → horn → abdomen → THORAX → WINGS
    *
    * The reason the winged case inverts abdomen/thorax: wings attach to the
    * thorax, so the thorax has to clear the abdomen or the wing roots sit over a
@@ -1605,10 +1855,9 @@ export function drawBug(ctx, g, opts = {}) {
    * put the thorax over them so a blade could not cover its own root. The wing
    * membrane is a fixed 0.70 alpha, so a blade lying over its root (or over the
    * horn) still shows what is under it; nothing is actually hidden, and the
-   * sketch draws the wings as the frontmost plane. The horn keeps its place as
-   * the last SOLID thing drawn, immediately under the wings, so its base is
-   * still clear of the thorax it grows out of — and since the horn points
-   * forward while the blades sweep backward, the two barely overlap at all.
+   * sketch draws the wings as the frontmost plane. The horn no longer sits
+   * immediately under them — see below — but since the horn points forward while
+   * the blades sweep backward, the two barely overlap at all either way.
    *
    * The abdomen is a GROUP, not a single fill, and the whole group moves as one:
    * the abdominal segment masses, the elytra that lie on them, the speckle over
@@ -1632,11 +1881,34 @@ export function drawBug(ctx, g, opts = {}) {
    *   from behind it, and their bases sit inside the head ellipse — drawn
    *   underneath they would simply disappear.
    *
-   * THE HORN IS NOT FACE FURNITURE. It mounts on the thorax, so it is drawn dead
-   * last, above everything, in both cases — anywhere earlier and its base is
-   * buried under the very mass it grows out of. It points forward, away from the
-   * trunk, so the abdomen sitting above the thorax in the wingless case cannot
-   * cover it.
+   * THE HORN IS DRAWN UNDER THE TRUNK, and that is a deliberate reversal.
+   *
+   * It used to be dead last, above everything, because it mounted on the FRONT
+   * OF THE THORAX and anywhere earlier buried its base under the very mass it
+   * grew out of. Both halves of that changed together: the horn now springs
+   * from the REAR OF THE HEAD (see drawHorn/HORN_BASE_K), and its base is
+   * SUPPOSED to disappear under the thorax. A horn whose root is visible sits on
+   * the bug; a horn whose root runs under the mass behind it grows out of it.
+   *
+   * So it is drawn immediately after the antennae and BEFORE the trunk block, in
+   * both cases. Whichever ordering the trunk block then takes, the thorax is
+   * drawn after the horn and covers the few pixels of root nearest the junction.
+   * Everything past that — the whole visible length, the tip, every serration —
+   * is forward of the head's rear edge and so clear of the thorax entirely, and
+   * the shape still reads as a horn. It is drawn AFTER the head, so it lies over
+   * the face rather than being cropped by it; head-up, that is a horn running up
+   * the front of the skull, which is what the reference draws.
+   *
+   * Resulting call sequence, traced end to end:
+   *
+   *   NO WINGS   setae → legs → tail → eyes → mandibles → head → crown mark →
+   *              antennae → HORN → thorax → abdomen group
+   *   HAS WINGS  setae → legs → tail → eyes → mandibles → head → crown mark →
+   *              antennae → HORN → abdomen group → thorax → wings
+   *
+   * In the wingless case the abdomen is drawn after the horn as well, which is
+   * harmless: the horn points forward, away from the trunk, and the abdomen is
+   * at the other end of the bug.
    */
 
   // 1. behind everything
@@ -1654,7 +1926,7 @@ export function drawBug(ctx, g, opts = {}) {
   //    forward past the silhouette, so nothing that matters is covered.
   //    Antennae stay ABOVE the head (step 5) — they sprout from the face plate
   //    itself and would vanish into it from underneath.
-  drawMandibles(ctx, L, col, state, lunge, pat);
+  drawMandibles(ctx, L, col, state, lunge, patMandible);
 
   // 4. the head — FLAT. One solid fill, no gradient, no bloom, no rim darkening.
   //    The crown mark that follows is the only blend allowed to touch it.
@@ -1667,7 +1939,11 @@ export function drawBug(ctx, g, opts = {}) {
   // 5. antennae, in front of the head
   drawAntennae(ctx, L, col, phase);
 
-  // 6/7. the trunk, ordered by whether the bug has wings
+  // 6. the horn, UNDER the trunk. It springs from the rear of the head, and the
+  //    thorax drawn after it is meant to bury that root — see the Z-ORDER note.
+  drawHorn(ctx, L, col, patHorn);
+
+  // 7/8. the trunk, ordered by whether the bug has wings
   const trunk = L.parts.filter((p) => p !== L.thorax);
 
   /** The abdomen group: segment masses, elytra, speckle, seam. Moves as one. */
@@ -1698,9 +1974,6 @@ export function drawBug(ctx, g, opts = {}) {
     drawTrunkThorax();
     drawTrunkAbdomen();
   }
-
-  // 8. the horn, which grows OUT of the thorax and so has to sit over it
-  drawHorn(ctx, L, col, pat);
 
   // 9. the wings, topmost of everything. See the Z-ORDER note above.
   drawSoftWings(ctx, L, col, phase, state);      // no-op for elytra

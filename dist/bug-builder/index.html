@@ -131,7 +131,7 @@ select,input[type=text]{font:700 13px/1 var(--font);padding:9px 10px;border-radi
 /* The library is a grid of the parts themselves — each tile is the CURRENT bug
    framed on that one part, so the catalogue shows your animal rather than a
    stock one. Tapping a tile expands it in place, full width of the grid. */
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .tile{position:relative;border:2px solid var(--line);border-radius:var(--r-md);
   background:var(--paper);padding:6px 6px 7px;text-align:center;overflow:hidden;
   display:flex;flex-direction:column;justify-content:flex-start}
@@ -349,11 +349,15 @@ pre b{color:var(--yellow);font-weight:600}
     leg_thickness: { min: 0, max: 1, default: 1 },
     leg_spread: { min: 0, max: 1, default: 0.75 },
     leg_joints: { min: 1, max: 5, integer: true, default: 2 },
-    // RENAMED from `claw_size`. Tarsal claws are gone from the art entirely; the
-    // gene now sizes the round foot pad at the tip of every leg, from a small dot
-    // at 0 to a heavy bulb at 1. It keeps its grip/attack roles in stats.js —
-    // a broad foot is still traction, and still something to press with.
-    foot_size: { min: 0, max: 1, default: 0.3 },
+    // `foot_size` IS GONE. It was `claw_size` before that, and by the end it was a
+    // slider whose only honest answer was "as big as possible": the foot pad is
+    // punctuation at the end of a capsule leg, and every value under the maximum
+    // read as a leg that had been cut short rather than as a design choice. The
+    // pad is now HARDCODED at its old maximum (0.95 of the leg width, see
+    // drawLegs) and there is no gene. stats.js keeps the grip and attack terms it
+    // used to feed, as constants — calibrated at this gene's old DEFAULT, not at
+    // the maximum the pad is drawn at, so removing a slider does not hand every
+    // bug a free stat. See FOOT_GRIP/FOOT_ATTACK.
     /* ---- wings ---- */
     // 0 / 2 / 4 / 6. Unchanged: zero is still a legal, meaningful genome (every
     // arachnid archetype uses it) and six still fans three blades a side.
@@ -380,10 +384,18 @@ pre b{color:var(--yellow);font-weight:600}
     // Blunt vs. finely tapered tip. Moves outline control points only, never the
     // bounding box, so it is independent of both length and width.
     wing_roundness: { min: 0, max: 1, default: 0.55 },
-    // Sweep away from the body's long axis: 35° at 0, 165° at 1. The 0.50 default
-    // is CALIBRATED, not picked — it renders 100°, the median resting angle across
-    // the four full-bug panels of `Image References/WIngs.jpg`.
-    wing_angle: { min: 0, max: 1, default: 0.5 },
+    // NARROWED 0–1 → 0.7–1.0. The mapping behind it is unchanged (35° at gene 0,
+    // 165° at gene 1, see WING_SWEEP_MIN/MAX in bugArt.js) — what narrowed is the
+    // part of it a genome may REACH. Wings at rest are swept well back in the
+    // reference sheet; the bottom two thirds of the old window drew blades held
+    // out sideways, which never appeared in the art. 0.85 renders 145.5°, and the
+    // window spans 126°–165°. The old 0.50 default is now out of range and
+    // clampGene pulls any stored value below 0.7 up to it.
+    //
+    // Flight is the exception, and it is applied in the renderer rather than here:
+    // drawSoftWings() subtracts 0.3 from this value while the bug is in motion,
+    // reaching 0.4–0.7 (i.e. 87°–126°) — wings swung forward to beat.
+    wing_angle: { min: 0.7, max: 1, default: 0.85 },
     // Tip wash colour. 0 = white (the default, and NOT a REF_PALETTE entry — the
     // reference palette has no white); 1–10 select a REF_PALETTE swatch in order:
     // tan/brown/rust/orange/gold/sage/ink/cream/pink/blue.
@@ -391,8 +403,14 @@ pre b{color:var(--yellow);font-weight:600}
     wing_beat: { min: 0, max: 1, default: 0.15 },
     /* ---- weapons & defence ---- */
     mandible_size: { min: 0, max: 1, default: 0.9 },
-    mandible_type: { min: 0, max: 3, integer: true, default: 0 },
-    // wide_thin/narrow_thick/chelicerae_teeth/chelicerae_smooth
+    // NARROWED 0–3 → 0–2. `chelicerae_teeth` and `chelicerae_smooth` were the same
+    // column differing by one fang, i.e. a serration level wearing a kind's
+    // clothes. They merged into a single `chelicerae` at index 2, and the fang is
+    // now `mandible_serration ≥ 1` like every other tooth on every other jaw.
+    // clampGene pulls any stored 3 down to 2 — which is the merged kind, so an old
+    // `chelicerae_smooth` genome still renders chelicerae.
+    mandible_type: { min: 0, max: 2, integer: true, default: 0 },
+    // wide_thin/narrow_thick/chelicerae
     // Stays CONTINUOUS: stats.js reads it as a bite multiplier. The renderer
     // buckets it into the sketch's three levels itself — min(2, floor(v * 3)).
     mandible_serration: { min: 0, max: 1, default: 0.53 },
@@ -432,14 +450,48 @@ pre b{color:var(--yellow);font-weight:600}
     hue: { min: 0, max: 1, circular: true, default: 0.04 },
     saturation: { min: 0, max: 1, default: 0.57 },
     lightness: { min: 0, max: 1, default: 0.5 },
-    // Three-way surface treatment for the horn and the mandibles:
-    // gradient / dots / oval, bucketed as min(2, floor(pattern × 3)). The old
-    // `pattern > 0.5 → black limbs` reading is unchanged and still independent.
-    pattern: { min: 0, max: 1, default: 0.05 },
+    /**
+     * THE `pattern` GENE IS SPLIT, one gene per component it used to speak for.
+     *
+     * One knob used to answer three unrelated questions at once: what treatment
+     * the horn wears, what treatment the mandibles wear, and whether the legs are
+     * inked black. Nothing about a bug requires those three to agree, and the
+     * shared gene made it impossible to give a bug dotted jaws and a flat horn.
+     *
+     * The two surface genes bucket FOUR ways now, not three:
+     *
+     *     mode = min(3, floor(v × 4))   →  0 flat · 1 gradient · 2 dots · 3 oval
+     *
+     * `flat` is new and is the whole point of the low defaults: bucket 0 used to
+     * be `gradient`, so an untouched genome had a gradient on its horn and jaws
+     * whether anyone asked for one or not. 0.08 lands in `flat` — solid colour,
+     * no gradient, no dots, no highlight — so the default bug is genuinely plain
+     * and every treatment is something a genome opted into.
+     */
+    pattern_horn: { min: 0, max: 1, default: 0.08 },
+    // flat/gradient/dots/oval
+    pattern_mandible: { min: 0, max: 1, default: 0.08 },
+    // flat/gradient/dots/oval
+    // The old `pattern > 0.5 → black limbs` reading, on its own gene now. Same
+    // threshold, so a leg that was inked before is inked at the same value.
+    pattern_leg: { min: 0, max: 1, default: 0.2 },
+    // above 0.5 the limbs ink
+    // SHARED, deliberately. These two do not pick a treatment, they modulate
+    // whichever treatment each component already picked — how loud it reads, how
+    // coarse the dots are. That is a house style, not a per-part decision, and
+    // splitting them would add sliders whose difference nobody can state an
+    // intention about. The mode gene is where the per-part identity lives.
     pattern_scale: { min: 0, max: 1, default: 0.11 },
     // dot size/density
     pattern_contrast: { min: 0, max: 1, default: 0.21 },
-    // how loud all three read
+    // how loud all four read
+    // THE LIGHTING COLOUR, heritable and independent of the body's own colour.
+    // The body-segment bloom used to be a hardcoded cream whatever the genome
+    // said. It still comes off the fixed REF_PALETTE (lighting colour never gets
+    // computed from the body hue — see the mandate in bugArt.js), but WHICH
+    // swatch is now a gene: 0–9 index REF_PALETTE_ORDER. 7 is cream, which is
+    // what every bug used to get, so the default is the old fixed behaviour.
+    light_hue: { min: 0, max: 9, integer: true, default: 7 },
     // A flat colour patch capping the top of the head: none / solid gold with a
     // hard edge / the same cap blended down into the head colour. Its colours come
     // straight off bugArt's fixed REF_PALETTE, never from the body hue.
@@ -551,7 +603,6 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.28,
         leg_thickness: 0.72,
         leg_joints: 3,
-        foot_size: 0.5,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.2,
@@ -596,7 +647,6 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.55,
         leg_thickness: 0.22,
         leg_joints: 3,
-        foot_size: 0.3,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.8,
@@ -605,14 +655,14 @@ pre b{color:var(--yellow);font-weight:600}
         wing_length: 0.85,
         wing_width: 0.12,
         wing_roundness: 0.15,
-        wing_angle: 0.7,
+        wing_angle: 0.95,
         wing_tip_hue: 5,
         mandible_size: 0.3,
         mandible_serration: 0.3,
         horn_size: 0.02,
         horn_type: 4,
         eye_type: 0,
-        mandible_type: 3,
+        mandible_type: 2,
         spine_density: 0.1,
         tail_length: 0.55,
         stinger_size: 0.9,
@@ -624,7 +674,7 @@ pre b{color:var(--yellow);font-weight:600}
         hue: 0.14,
         saturation: 0.92,
         lightness: 0.55,
-        pattern: 0.15,
+        pattern_leg: 0.15,
         pattern_contrast: 0.95,
         setae: 0.25,
         iridescence: 0.2,
@@ -635,7 +685,12 @@ pre b{color:var(--yellow);font-weight:600}
       key: "spider",
       name: "Spider",
       blurb: "Eight legs, many eyes, no wings. Big vision radius, ambushes with venomous fangs.",
-      spread: 0.1,
+      // TIGHTER than the rest. A spider is defined by two COUNTS — eight legs and
+      // eight eyes — and at 0.10 the jitter on a 2–12 count gene is a full leg
+      // pair of sigma, so half the draws walked off the arachnid plan entirely
+      // and classified as something else. 0.06 keeps the counts while leaving the
+      // continuous genes plenty of room.
+      spread: 0.06,
       bias: {
         body_segments: 2,
         body_length: 0.42,
@@ -649,7 +704,6 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.92,
         leg_thickness: 0.28,
         leg_joints: 3,
-        foot_size: 0.65,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -694,7 +748,6 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.62,
         leg_thickness: 0.35,
         leg_joints: 3,
-        foot_size: 0.55,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.35,
@@ -704,7 +757,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_size: 0.02,
         horn_type: 3,
         eye_type: 2,
-        mandible_type: 3,
+        mandible_type: 2,
         spine_density: 0.45,
         tail_length: 0.45,
         stinger_size: 0.05,
@@ -716,7 +769,7 @@ pre b{color:var(--yellow);font-weight:600}
         hue: 0.08,
         saturation: 0.35,
         lightness: 0.24,
-        pattern: 0.9,
+        pattern_leg: 0.9,
         setae: 0.3,
         iridescence: 0.3,
         translucency: 0.1
@@ -736,11 +789,14 @@ pre b{color:var(--yellow);font-weight:600}
         head_size: 0.38,
         thorax_ratio: 0.75,
         abdomen_taper: 0.6,
+        // leg_spread is pinned rather than left to the random draw: the Mantis
+        // window asks for a wide stance now that `foot_size` is gone, and "reach
+        // as a weapon" is exactly what a wide stance on long legs describes.
         leg_count: 6,
         leg_length: 0.78,
         leg_thickness: 0.32,
         leg_joints: 3,
-        foot_size: 0.95,
+        leg_spread: 0.88,
         wing_count: 2,
         wing_type: 0,
         wing_area: 0.45,
@@ -749,7 +805,7 @@ pre b{color:var(--yellow);font-weight:600}
         wing_length: 0.7,
         wing_width: 0.25,
         wing_roundness: 0.3,
-        wing_angle: 0.55,
+        wing_angle: 0.8,
         wing_tip_hue: 0,
         mandible_size: 0.7,
         mandible_serration: 0.85,
@@ -790,7 +846,6 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.38,
         leg_thickness: 0.2,
         leg_joints: 2,
-        foot_size: 0.25,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.98,
@@ -799,14 +854,14 @@ pre b{color:var(--yellow);font-weight:600}
         wing_length: 0.6,
         wing_width: 0.82,
         wing_roundness: 0.85,
-        wing_angle: 0.35,
+        wing_angle: 0.7,
         wing_tip_hue: 8,
         mandible_size: 0.08,
         mandible_serration: 0.05,
         horn_size: 0.02,
         horn_type: 4,
         eye_type: 2,
-        mandible_type: 3,
+        mandible_type: 2,
         spine_density: 0.05,
         tail_length: 0.2,
         stinger_size: 0.02,
@@ -817,7 +872,7 @@ pre b{color:var(--yellow);font-weight:600}
         aggression: 0.1,
         saturation: 0.2,
         lightness: 0.62,
-        pattern: 0.45,
+        pattern_leg: 0.45,
         setae: 0.95,
         iridescence: 0.35,
         translucency: 0.3
@@ -841,7 +896,6 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.48,
         leg_thickness: 0.18,
         leg_joints: 2,
-        foot_size: 0.45,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -885,7 +939,6 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.3,
         leg_thickness: 0.45,
         leg_joints: 2,
-        foot_size: 0.4,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.15,
@@ -895,7 +948,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_size: 0.95,
         horn_type: 2,
         eye_type: 1,
-        mandible_type: 3,
+        mandible_type: 2,
         spine_density: 0.35,
         tail_length: 0.08,
         stinger_size: 0.02,
@@ -906,7 +959,7 @@ pre b{color:var(--yellow);font-weight:600}
         aggression: 0.3,
         saturation: 0.3,
         lightness: 0.2,
-        pattern: 0.5,
+        pattern_leg: 0.5,
         setae: 0.45,
         iridescence: 0.55,
         translucency: 0.05
@@ -1028,9 +1081,11 @@ pre b{color:var(--yellow);font-weight:600}
       taper
     };
   }
+  var FOOT_GRIP = 0.165;
+  var FOOT_ATTACK = 0.045;
   function computeStats(g) {
     const m = morphology(g);
-    const grip = clamp(100 * sig(0.55 * g.foot_size + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
+    const grip = clamp(100 * sig(FOOT_GRIP + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
     const stride = m.legLen * (0.55 + 0.45 * Math.log2(m.legs) / Math.log2(10));
     const cadence = 1 / (0.35 + m.strideLoad * 0.55);
     const speed = clamp(stride * cadence * 19 * (0.82 + grip / 100 * 0.3), 1, 100);
@@ -1047,7 +1102,7 @@ pre b{color:var(--yellow);font-weight:600}
     );
     const bite = g.mandible_size * (0.6 + 0.6 * g.mandible_serration);
     const horn = g.horn_size * 0.55;
-    const feet = g.foot_size * 0.15;
+    const feet = FOOT_ATTACK;
     const attack = clamp(
       100 * sig(bite * 0.85 + horn + feet + Math.min(m.mass, 3) * 0.12, 5),
       1,
@@ -1314,7 +1369,9 @@ pre b{color:var(--yellow);font-weight:600}
       clade: "hexapod",
       adjective: "Skittering",
       status: "coded",
-      window: { antenna_length: [0.75, 1], pattern: [0.7, 1], aggression: [0, 0.4] },
+      // `pattern` split three ways; this window wanted the LIMB reading — a drab
+      // roach with black legs — so it moved to `pattern_leg` at the same numbers.
+      window: { antenna_length: [0.75, 1], pattern_leg: [0.7, 1], aggression: [0, 0.4] },
       locks: [],
       unlocks: ["metabolism"],
       specialty: null,
@@ -1328,9 +1385,12 @@ pre b{color:var(--yellow);font-weight:600}
       clade: "hexapod",
       adjective: "Hooked",
       status: "coded",
-      window: { foot_size: [0.8, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
+      // `foot_size` is gone (every bug now wears the maximum pad), so the reach
+      // this window was really describing is stated with the two genes that still
+      // carry it: a long body on long legs, held in a wide stance.
+      window: { leg_spread: [0.7, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
       locks: [],
-      unlocks: ["foot_size"],
+      unlocks: ["leg_spread"],
       specialty: null,
       blurb: "Reach as a weapon. Waits, then closes the distance once."
     },
@@ -1637,8 +1697,9 @@ pre b{color:var(--yellow);font-weight:600}
         pattern_contrast: [0.8, 1],
         aggression: [0, 0.3]
       },
+      // Spotted: the surface treatments, both of them, on their own genes now.
       locks: ["pattern_contrast"],
-      unlocks: ["pattern", "hue"],
+      unlocks: ["pattern_horn", "pattern_mandible"],
       specialty: { key: "aposematic", name: "Warning Colours", mods: { defense: 1.1 } },
       blurb: "Warning colouration instead of armour. Nothing wants to bite it twice."
     },
@@ -1741,13 +1802,14 @@ pre b{color:var(--yellow);font-weight:600}
       adjective: "Barbed",
       status: "drafted",
       window: {
+        // `foot_size` dropped with the gene. The remaining three are what
+        // actually made a scorpion a scorpion — armoured AND venomous at once.
         stinger_size: [0.7, 1],
         tail_length: [0.6, 1],
-        foot_size: [0.6, 1],
         carapace_thickness: [0.5, 1]
       },
       locks: ["tail_length"],
-      unlocks: ["stinger_size", "foot_size"],
+      unlocks: ["stinger_size", "carapace_thickness"],
       specialty: { key: "pincer_and_tail", name: "Pincer and Tail", mods: { venom: 1.12, defense: 1.08 } },
       blurb: "Armoured and venomous at once, which is rare and unfair."
     },
@@ -1807,7 +1869,7 @@ pre b{color:var(--yellow);font-weight:600}
         saturation: [0.65, 1]
       },
       locks: [],
-      unlocks: ["hue", "pattern"],
+      unlocks: ["hue", "pattern_horn"],
       specialty: { key: "flash_colour", name: "Flash Colour", mods: { agility: 1.1, camouflage: 0.85 } },
       blurb: "Same chassis as a moth, opposite surface entirely."
     },
@@ -2195,7 +2257,8 @@ pre b{color:var(--yellow);font-weight:600}
     palette: () => palette,
     surfacePattern: () => surfacePattern,
     wingShape: () => wingShape,
-    wingShapeCoefficient: () => wingShapeCoefficient
+    wingShapeCoefficient: () => wingShapeCoefficient,
+    wingSweep: () => wingSweep
   });
   var TAU = Math.PI * 2;
   var clamp2 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -2271,23 +2334,26 @@ pre b{color:var(--yellow);font-weight:600}
     const s = clamp2(sw.s * (0.8 + g.saturation * 0.35), 0.34, 0.86);
     const l = clamp2(sw.l * (0.86 + g.lightness * 0.3), 0.38, 0.7);
     const accentH = h + 0.5;
-    const inkLimbs = g.pattern > 0.5;
+    const inkLimbs = (g.pattern_leg ?? 0) > 0.5;
+    const lightHex = REF_PALETTE[REF_PALETTE_ORDER[clamp2(Math.round(g.light_hue ?? 7), 0, REF_PALETTE_ORDER.length - 1)]];
+    const lift = (a) => hsl(h, clamp2(s * 0.52, 0, 1), clamp2(l + 0.3, 0, 0.94), a);
     return {
       shell: hsl(h, s, l),
       // The one surviving tone of the old airbrush gradient. It is NOT a head
       // treatment any more (the head is flat `shell`, see drawBug); the elytra
       // pass is its only consumer, where it separates the two wing covers.
       deep: hsl(h, s * 1.02, Math.max(0.2, l - 0.14)),
-      // Body-segment bloom, straight off the fixed reference palette — cream at
-      // the core, warm tan on the way out, then out to nothing well short of the
-      // rim so the edge stays flat undarkened `shell`. Six stops, all faint: see
-      // BLOB_ALPHA for why the numbers are this low.
-      segBloom: refA(REF_PALETTE.cream, BLOB_ALPHA),
-      segBloomMid: refA(REF_PALETTE.cream, BLOB_ALPHA * 0.68),
-      segBloomMid2: refA(REF_PALETTE.cream, BLOB_ALPHA * 0.44),
-      segBloomFar: refA(REF_PALETTE.tan, BLOB_ALPHA * 0.24),
-      segBloomFar2: refA(REF_PALETTE.tan, BLOB_ALPHA * 0.1),
-      segBloomOut: refA(REF_PALETTE.tan, 0),
+      // Body-segment bloom. The CORE three stops are the `light_hue` swatch off
+      // the fixed reference palette; the OUTER three fade into a light tone of the
+      // bug's own colour (see `lift`) rather than into a fixed tan, then out to
+      // nothing well short of the rim so the edge stays flat undarkened `shell`.
+      // Six stops, all faint: see BLOB_ALPHA for why the numbers are this low.
+      segBloom: refA(lightHex, BLOB_ALPHA),
+      segBloomMid: refA(lightHex, BLOB_ALPHA * 0.68),
+      segBloomMid2: refA(lightHex, BLOB_ALPHA * 0.44),
+      segBloomFar: lift(BLOB_ALPHA * 0.24),
+      segBloomFar2: lift(BLOB_ALPHA * 0.1),
+      segBloomOut: lift(0),
       // The crown mark — a flat colour patch on the head's own surface. Gold and
       // orange straight off REF_PALETTE, never computed from the body hue.
       crownSolid: REF_PALETTE.gold,
@@ -2349,9 +2415,15 @@ pre b{color:var(--yellow);font-weight:600}
   };
   var WING_SWEEP_MIN = 0.61;
   var WING_SWEEP_MAX = 2.88;
+  var FLIGHT_SWEEP_OFFSET = 0.3;
+  function wingSweep(g, state) {
+    const flying = state === "walk" || state === "attack";
+    const v = clamp2((g.wing_angle ?? 0.85) - (flying ? FLIGHT_SWEEP_OFFSET : 0), 0, 1);
+    return lerp(WING_SWEEP_MIN, WING_SWEEP_MAX, v);
+  }
   var EYE_FILLS = ["dark", "notched", "hooked"];
   var CROWN_MARKS = ["none", "solid", "blended"];
-  var MANDIBLE_TYPES = ["wide_thin", "narrow_thick", "chelicerae_teeth", "chelicerae_smooth"];
+  var MANDIBLE_TYPES = ["wide_thin", "narrow_thick", "chelicerae"];
   var hornSerration = (g) => clamp2(Math.round(g.horn_serration ?? 0), 0, 2);
   var mandibleSerration = (g) => Math.min(2, Math.floor((g.mandible_serration ?? 0) * 3));
   function layout(g, ppu = 26) {
@@ -2381,7 +2453,7 @@ pre b{color:var(--yellow);font-weight:600}
       wingShape: wingShape(g),
       eyeFill: EYE_FILLS[clamp2(Math.round(g.eye_type ?? 0), 0, 2)],
       crownMark: CROWN_MARKS[clamp2(Math.round(g.crown_mark_style ?? 0), 0, 2)],
-      mandibleType: MANDIBLE_TYPES[g.mandible_type ?? 0],
+      mandibleType: MANDIBLE_TYPES[clamp2(Math.round(g.mandible_type ?? 0), 0, MANDIBLE_TYPES.length - 1)],
       wingPairs: g.wing_count / 2,
       wingArea: g.wing_area,
       setae: g.setae,
@@ -2404,7 +2476,7 @@ pre b{color:var(--yellow);font-weight:600}
       bump(leg.knee.x, leg.knee.y);
     }
     for (const e of L.eyes) bump(e.x + e.rx, e.y + e.ry);
-    bump(L.thorax.x + L.thorax.rx + L.hornLen * 1.1, L.hornLen * 0.7);
+    bump(hornOriginX(L) + L.hornLen * 1.1, L.hornLen * 0.7);
     bump(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
     if (L.wingPairs > 0) bump(L.wingSpan.x, L.wingSpan.y);
     L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + 3);
@@ -2485,12 +2557,11 @@ pre b{color:var(--yellow);font-weight:600}
           side,
           pair: i,
           t,
-          // NOT `foot` — buildLeg() already returns a `foot` POINT, and spreading
-          // this object into it would collide. `footSize` is the gene scalar.
+          // The foot pad is a fixed size now (FOOT_PAD_R), so there is nothing
+          // per-leg to carry here any more — `footSize` is gone with its gene.
           len: len * lerp(1.05, 0.92, t),
           w,
-          fan,
-          footSize: g.foot_size
+          fan
         }));
       }
     }
@@ -2559,7 +2630,7 @@ pre b{color:var(--yellow);font-weight:600}
     const size = lerp(0.62, 1.3, L.wingArea);
     const len = L.unit * lerp(0.85, 2.3, g.wing_length ?? 0.55) * fam.lenK * size;
     const wid = len * lerp(0.09, 0.52, g.wing_width ?? 0.46) * fam.widK;
-    const sweep = lerp(WING_SWEEP_MIN, WING_SWEEP_MAX, g.wing_angle ?? 0.5);
+    const sweep = wingSweep(g, "idle");
     return { len, wid, sweep, round: clamp2(g.wing_roundness ?? 0.55, 0, 1), fam: L.wingShape };
   }
   function fillEllipse(ctx, x, y, rx, ry, fill) {
@@ -2652,6 +2723,10 @@ pre b{color:var(--yellow);font-weight:600}
     ctx.fill();
   }
   function taperedPath(ctx, p0, p1, p2, w0, w1, steps = 16) {
+    ctx.beginPath();
+    return taperedOutline(ctx, p0, p1, p2, w0, w1, steps);
+  }
+  function taperedOutline(ctx, p0, p1, p2, w0, w1, steps = 16) {
     const left = [], right = [];
     let tipAngle = 0;
     for (let i = 0; i <= steps; i++) {
@@ -2669,32 +2744,77 @@ pre b{color:var(--yellow);font-weight:600}
     }
     const tip = qpoint(p0, p1, p2, 1);
     const r = Math.abs(w1) * 0.5;
-    ctx.beginPath();
     ctx.moveTo(left[0].x, left[0].y);
     for (const p of left) ctx.lineTo(p.x, p.y);
     if (r > 0.02) ctx.arc(tip.x, tip.y, r, tipAngle + Math.PI / 2, tipAngle - Math.PI / 2, true);
     for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
     ctx.closePath();
+    const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    for (const p of [
+      ...left,
+      ...right,
+      { x: tip.x - r, y: tip.y - r },
+      { x: tip.x + r, y: tip.y + r }
+    ]) {
+      box.minX = Math.min(box.minX, p.x);
+      box.maxX = Math.max(box.maxX, p.x);
+      box.minY = Math.min(box.minY, p.y);
+      box.maxY = Math.max(box.maxY, p.y);
+    }
+    return box;
   }
-  var PATTERN_MODES = ["gradient", "dots", "oval"];
+  var PATTERN_MODES = ["flat", "gradient", "dots", "oval"];
+  var PATTERN_GENE = { horn: "pattern_horn", mandible: "pattern_mandible" };
   function hueToward(from, to, t) {
     let d = ((to - from) % 1 + 1.5) % 1 - 0.5;
     return from + d * t;
   }
-  function surfacePattern(g, col) {
+  function surfacePattern(g, col, which = "horn") {
     const k = clamp2(g.pattern_contrast ?? 0, 0, 1);
     const h = hueToward(col.h, 0.095, 0.35 + k * 0.5);
+    const v = clamp2(g[PATTERN_GENE[which] ?? "pattern_horn"] ?? 0, 0, 1);
     return {
-      mode: PATTERN_MODES[Math.min(2, Math.floor(clamp2(g.pattern ?? 0, 0, 1) * 3))],
+      mode: PATTERN_MODES[Math.min(PATTERN_MODES.length - 1, Math.floor(v * PATTERN_MODES.length))],
       scale: clamp2(g.pattern_scale ?? 0, 0, 1),
       k,
       lite: hsl(h, clamp2(col.s * 1.02, 0, 1), clamp2(col.l + 0.1 + k * 0.26, 0, 0.9))
     };
   }
-  function patternedCurve(ctx, p0, p1, p2, w0, w1, base, pat, seed) {
-    taperedPath(ctx, p0, p1, p2, w0, w1);
+  function patternedSilhouette(ctx, pieces, base, pat, seed) {
+    if (!pieces.length) return;
+    ctx.beginPath();
+    const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    let widest = 0;
+    for (const p of pieces) {
+      let b;
+      if (p.circle) {
+        const { x, y, r } = p.circle;
+        ctx.moveTo(x + r, y);
+        ctx.arc(x, y, r, 0, TAU, true);
+        ctx.closePath();
+        b = { minX: x - r, maxX: x + r, minY: y - r, maxY: y + r };
+        widest = Math.max(widest, r * 2);
+      } else {
+        b = taperedOutline(ctx, p.p0, p.p1, p.p2, p.w0, p.w1);
+        widest = Math.max(widest, Math.abs(p.w0));
+      }
+      box.minX = Math.min(box.minX, b.minX);
+      box.maxX = Math.max(box.maxX, b.maxX);
+      box.minY = Math.min(box.minY, b.minY);
+      box.maxY = Math.max(box.maxY, b.maxY);
+    }
+    const root = pieces[0].circle ? { x: pieces[0].circle.x, y: pieces[0].circle.y } : pieces[0].p0;
+    let far = root, farD = -1;
+    for (const p of pieces) {
+      const tip = p.circle ? { x: p.circle.x, y: p.circle.y } : qpoint(p.p0, p.p1, p.p2, 1);
+      const d = Math.hypot(tip.x - root.x, tip.y - root.y);
+      if (d > farD) {
+        farD = d;
+        far = tip;
+      }
+    }
     if (pat.mode === "gradient" && ctx.createLinearGradient) {
-      const gr = ctx.createLinearGradient(p0.x, p0.y, p2.x, p2.y);
+      const gr = ctx.createLinearGradient(root.x, root.y, far.x, far.y);
       gr.addColorStop(0, base);
       gr.addColorStop(1, pat.lite);
       ctx.fillStyle = gr;
@@ -2702,34 +2822,32 @@ pre b{color:var(--yellow);font-weight:600}
       ctx.fillStyle = base;
     }
     ctx.fill();
-    if (pat.mode === "gradient") return;
+    if (pat.mode === "flat" || pat.mode === "gradient") return;
     ctx.save();
     ctx.clip();
-    const px = (t) => qpoint(p0, p1, p2, t);
+    const bw = Math.max(1, box.maxX - box.minX);
+    const bh = Math.max(1, box.maxY - box.minY);
     if (pat.mode === "dots") {
-      const n = Math.round(lerp(34, 9, pat.scale));
-      const r = Math.max(0.6, lerp(0.16, 0.4, pat.scale) * w0);
+      const n = Math.round(lerp(34, 9, pat.scale) * (1 + Math.min(2, pieces.length - 1) * 0.5));
+      const r = Math.max(0.6, lerp(0.16, 0.4, pat.scale) * widest);
       ctx.fillStyle = pat.lite;
       ctx.globalAlpha = 0.35 + pat.k * 0.6;
       for (let i = 0; i < n; i++) {
-        const t = Math.sqrt(hash01(i, seed)) * 0.98;
-        const c = px(t);
-        const j = hash01(i, seed + 11) - 0.5, j2 = hash01(i, seed + 23) - 0.5;
-        const spread = lerp(w0, w1, t) * 1.1;
+        const x = box.minX + hash01(i, seed) * bw;
+        const y = box.minY + hash01(i, seed + 11) * bh;
         ctx.beginPath();
-        ctx.arc(c.x + j * spread, c.y + j2 * spread, r * (0.6 + hash01(i, seed + 31)), 0, TAU);
+        ctx.arc(x, y, r * (0.6 + hash01(i, seed + 31)), 0, TAU);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
     } else {
-      const c = px(0.78);
-      const d = px(0.92);
-      const a = Math.atan2(d.y - c.y, d.x - c.x);
-      const w = Math.max(1, lerp(w0, w1, 0.78));
+      const c = { x: lerp(root.x, far.x, 0.74), y: lerp(root.y, far.y, 0.74) };
+      const a = Math.atan2(far.y - root.y, far.x - root.x);
+      const w = Math.max(1, widest * 0.55);
       ctx.fillStyle = pat.lite;
       ctx.globalAlpha = 0.55 + pat.k * 0.45;
       ctx.beginPath();
-      ctx.ellipse(c.x, c.y, w * 1.05, w * 0.46, a, 0, TAU);
+      ctx.ellipse(c.x, c.y, Math.max(w * 1.05, farD * 0.16), w * 0.6, a, 0, TAU);
       ctx.fill();
       ctx.globalAlpha = 1;
     }
@@ -2776,7 +2894,8 @@ pre b{color:var(--yellow);font-weight:600}
     if (L.wingPairs < 1 || L.wingType === "elytra" || !L.wing) return;
     const { g } = L;
     const flap = state === "walk" || state === "attack" ? Math.sin(phase * TAU * (1 + g.wing_beat * 2.5)) * 0.13 : 0.02;
-    const { len: baseLen, wid: baseWid, sweep, round, fam } = L.wing;
+    const { len: baseLen, wid: baseWid, round, fam } = L.wing;
+    const sweep = wingSweep(g, state);
     const anchor = L.thorax;
     const n = L.wingPairs;
     const STAGGER = 0.3;
@@ -2823,6 +2942,7 @@ pre b{color:var(--yellow);font-weight:600}
     ctx.fillRect(body.x - rx * 0.92, -Math.max(0.6, L.unit * 0.012), rx * 1.84, Math.max(1.2, L.unit * 0.024));
     ctx.globalAlpha = 1;
   }
+  var FOOT_PAD_R = 0.95;
   function drawLegs(ctx, L, col, phase) {
     for (const leg of L.legs) {
       const off = (leg.pair * 0.34 + (leg.side > 0 ? 0.5 : 0)) % 1;
@@ -2846,21 +2966,25 @@ pre b{color:var(--yellow);font-weight:600}
         leg.w,
         col.limb
       );
-      const fr = leg.w * lerp(0.3, 0.95, clamp2(leg.footSize ?? 0, 0, 1));
-      fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limbLo);
+      const fr = leg.w * FOOT_PAD_R;
+      fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limb);
       speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
     }
   }
+  var HORN_BASE_K = 0.55;
+  function hornOriginX(L) {
+    return L.head.x - L.head.rx * HORN_BASE_K;
+  }
   function drawHorn(ctx, L, col, pat) {
     if (!L.hornLen) return;
-    const th = L.thorax;
-    const x0 = th.x + th.rx * 0.52;
+    const x0 = hornOriginX(L);
     const len = L.hornLen;
     const sp = len * 0.42;
     const base = Math.max(3, L.unit * 0.115);
     const fill = col.horn;
     const sr = hornSerration(L.g);
-    const piece = (p0, p1, p2, w0, w1, seed) => patternedCurve(ctx, p0, p1, p2, w0, w1, fill, pat, seed);
+    const pieces = [];
+    const piece = (p0, p1, p2, w0, w1, seed) => pieces.push({ p0, p1, p2, w0, w1, seed });
     switch (L.hornType) {
       case "nose": {
         piece(
@@ -2974,6 +3098,7 @@ pre b{color:var(--yellow);font-weight:600}
         break;
       }
     }
+    patternedSilhouette(ctx, pieces, fill, pat, pieces[0]?.seed ?? 3);
   }
   function drawMandibles(ctx, L, col, state, lunge, pat) {
     if (!L.mandible) return;
@@ -2988,7 +3113,9 @@ pre b{color:var(--yellow);font-weight:600}
       ctx.save();
       ctx.translate(ax, side * h.ry * 0.52);
       ctx.rotate(side * open);
-      const piece = (p0, p1, p2, w0, w1, seed) => patternedCurve(ctx, p0, p1, p2, w0, w1, fill, pat, seed);
+      const pieces = [];
+      const piece = (p0, p1, p2, w0, w1, seed) => pieces.push({ p0, p1, p2, w0, w1, seed });
+      const cap = (x, y, r, seed) => pieces.push({ circle: { x, y, r }, seed });
       const teeth = (p0, p1, p2, n, size, reach, t0, dt, seed) => {
         for (let i = 0; i < n; i++) {
           const c = qpoint(p0, p1, p2, t0 + i * dt);
@@ -3011,12 +3138,8 @@ pre b{color:var(--yellow);font-weight:600}
           teeth(p0, p1, p2, sr, 1.58, 0.32, 0.34, 0.26, 111 + side);
           break;
         }
-        case "chelicerae_teeth": {
-          chelicera(ctx, piece, m, w, side, fill, true);
-          break;
-        }
-        case "chelicerae_smooth": {
-          chelicera(ctx, piece, m, w, side, fill, false);
+        case "chelicerae": {
+          chelicera(piece, cap, m, w, side, sr >= 1);
           break;
         }
         default: {
@@ -3028,21 +3151,22 @@ pre b{color:var(--yellow);font-weight:600}
           break;
         }
       }
+      patternedSilhouette(ctx, pieces, fill, pat, pieces[0]?.seed ?? 101);
       ctx.restore();
     }
   }
-  function chelicera(ctx, piece, m, w, side, fill, withTeeth) {
+  function chelicera(piece, cap, m, w, side, withFang) {
     const p0 = { x: 0, y: 0 };
     const p1 = { x: m * 0.32, y: side * m * 0.02 };
     const p2 = { x: m * 0.62, y: side * m * 0.04 };
-    const cap = w * 1.88;
+    const capR = w * 1.88;
     piece(p0, p1, p2, w * 3.75, w * 3.58, 151 + side);
-    fillEllipse(ctx, p2.x, p2.y, cap, cap, fill);
-    if (!withTeeth) return;
+    cap(p2.x, p2.y, capR, 151 + side);
+    if (!withFang) return;
     piece(
-      { x: p2.x, y: p2.y - side * cap * 0.55 },
-      { x: p2.x + m * 0.1, y: p2.y - side * cap * 0.95 },
-      { x: p2.x + m * 0.24, y: p2.y - side * cap * 1.05 },
+      { x: p2.x, y: p2.y - side * capR * 0.55 },
+      { x: p2.x + m * 0.1, y: p2.y - side * capR * 0.95 },
+      { x: p2.x + m * 0.24, y: p2.y - side * capR * 1.05 },
       w * 0.88,
       w * 0.3,
       161 + side
@@ -3087,16 +3211,15 @@ pre b{color:var(--yellow);font-weight:600}
   function eyeWedgePath(ctx, R, r, side) {
     const v = (w) => side * w;
     ctx.beginPath();
-    ctx.moveTo(-R * 0.92, v(-r * 0.26));
-    ctx.quadraticCurveTo(-R * 0.34, v(r * 1), R * 0.24, v(r * 1.14));
-    ctx.quadraticCurveTo(R * 0.94, v(r * 1.24), R * 0.96, v(r * 0.34));
-    ctx.quadraticCurveTo(R * 0.98, v(-r * 0.32), R * 0.44, v(-r * 0.6));
-    ctx.quadraticCurveTo(-R * 0.26, v(-r * 0.9), -R * 0.92, v(-r * 0.26));
+    ctx.moveTo(-R * 0.94, v(-r * 0.14));
+    ctx.quadraticCurveTo(-R * 0.3, v(r * 1.32), R * 0.24, v(r * 1.5));
+    ctx.quadraticCurveTo(R * 1, v(r * 1.62), R * 1.02, v(r * 0.3));
+    ctx.quadraticCurveTo(R * 1.04, v(-r * 0.52), R * 0.4, v(-r * 0.82));
+    ctx.quadraticCurveTo(-R * 0.3, v(-r * 1.1), -R * 0.94, v(-r * 0.14));
     ctx.closePath();
   }
   function drawEyes(ctx, L, col) {
-    const { g } = L;
-    const hasIris = g.saturation > 0.35 && L.eyeFill !== "dark";
+    const hasIris = L.eyeFill !== "dark";
     for (const e of L.eyes) {
       if (e.minor) {
         fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil);
@@ -3137,7 +3260,6 @@ pre b{color:var(--yellow);font-weight:600}
       if (hasIris) {
         const ir = Math.min(R, r) * 0.56;
         fillEllipse(ctx, -R * 0.06, v(r * 0.1), ir, ir, col.iris);
-        fillEllipse(ctx, -R * 0.06, v(r * 0.1), ir * 0.5, ir * 0.5, col.pupil);
       }
       ctx.restore();
     }
@@ -3165,7 +3287,7 @@ pre b{color:var(--yellow);font-weight:600}
       );
     }
   }
-  var BLOB_R = 0.74;
+  var BLOB_R = 0.88;
   var ABDOMEN_BLOB_SKEW = -0.3;
   var CENTRELINE_RATIO = 1.18;
   function segmentMass(ctx, p, col) {
@@ -3217,7 +3339,8 @@ pre b{color:var(--yellow);font-weight:600}
     const { phase = 0, state = "idle", ppu = 26 } = opts;
     const L = layout(g, ppu);
     const col = palette(g);
-    const pat = surfacePattern(g, col);
+    const patHorn = surfacePattern(g, col, "horn");
+    const patMandible = surfacePattern(g, col, "mandible");
     const breathe = state === "idle" ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
     const lunge = state === "attack" ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
     ctx.save();
@@ -3228,13 +3351,14 @@ pre b{color:var(--yellow);font-weight:600}
     drawLegs(ctx, L, col, phase);
     drawTail(ctx, L, col, state, lunge);
     drawEyes(ctx, L, col);
-    drawMandibles(ctx, L, col, state, lunge, pat);
+    drawMandibles(ctx, L, col, state, lunge, patMandible);
     ctx.beginPath();
     ctx.ellipse(L.head.x, 0, L.head.rx, L.head.ry, 0, 0, TAU);
     ctx.fillStyle = col.shell;
     ctx.fill();
     drawCrownMark(ctx, L, col);
     drawAntennae(ctx, L, col, phase);
+    drawHorn(ctx, L, col, patHorn);
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
       for (const p of trunk) segmentMass(ctx, p, col);
@@ -3259,7 +3383,6 @@ pre b{color:var(--yellow);font-weight:600}
       drawTrunkThorax();
       drawTrunkAbdomen();
     }
-    drawHorn(ctx, L, col, pat);
     drawSoftWings(ctx, L, col, phase, state);
     ctx.restore();
   }
@@ -3444,12 +3567,12 @@ pre b{color:var(--yellow);font-weight:600}
       id: "feet",
       group: "limbs",
       name: "Feet",
-      blurb: "A round pad on the tip of every leg, from a dot to a heavy bulb. Always present \u2014 foot_size sets how much of it there is.",
+      blurb: "A round pad on the tip of every leg, in the leg's own colour. Always present and always the same size \u2014 there is no foot gene any more.",
       core: true,
       drawnBy: "drawLegs() \u2192 the foot circle at leg.foot",
+      gate: "always, at a fixed 0.95 of the leg width (FOOT_PAD_R)",
       genes: [
-        { gene: "foot_size", effect: "pad radius, 0.30\u20130.95 of the leg width" },
-        { gene: "leg_thickness", effect: "the leg width the pad is measured against" },
+        { gene: "leg_thickness", effect: "the only thing that changes a foot: the pad is a fixed 0.95 of the leg width, so a thicker leg is the only way to a bigger foot" },
         { gene: "leg_count", effect: "one foot per leg" }
       ]
     },
@@ -3476,7 +3599,7 @@ pre b{color:var(--yellow);font-weight:600}
         { gene: "wing_length", effect: "blade length along its own axis, 0.85\u20132.30 of the body unit" },
         { gene: "wing_width", effect: "blade half-width as 0.09\u20130.52 of its length \u2014 aspect ratio, never length" },
         { gene: "wing_roundness", effect: "blunt vs. finely tapered tip; moves the outline only, never the size" },
-        { gene: "wing_angle", effect: "sweep off the body axis, 35\xB0\u2013165\xB0; 0.50 is the sketch-calibrated 100\xB0 rest angle" },
+        { gene: "wing_angle", effect: "resting sweep off the body axis. The gene reaches 0.7\u20131.0 only, i.e. 126\xB0\u2013165\xB0; its 0.85 default renders 145.5\xB0. Walking and attacking subtract 0.3, swinging the blades forward to 87\xB0\u2013126\xB0 to beat" },
         { gene: "wing_tip_hue", effect: "0 = white tip wash; 1\u201310 pick a reference-palette swatch instead" },
         { gene: "wing_beat", effect: "flap rate \u2014 only visible in the walk and attack states" }
       ],
@@ -3499,7 +3622,7 @@ pre b{color:var(--yellow);font-weight:600}
       id: "horn",
       group: "weapons",
       name: "Horn",
-      blurb: "Tapered filled curves off the front of the THORAX \u2014 mass at the base, a point at the tip. Drawn last of everything, because the thorax it grows out of is the topmost trunk mass.",
+      blurb: "Tapered filled curves off the REAR OF THE HEAD \u2014 mass at the base, a point at the tip. Drawn under the trunk, so the thorax buries the root and the horn reads as growing out of the head/thorax junction rather than resting on it.",
       drawnBy: "drawHorn()",
       gate: "horn_size \u2265 0.12",
       present: (g) => g.horn_size >= 0.12,
@@ -3516,8 +3639,8 @@ pre b{color:var(--yellow);font-weight:600}
       genes: [
         { gene: "horn_size", effect: "length, 0.18\u20131.55 of the body unit depending on kind" },
         { gene: "horn_type", effect: "which of the five shapes gets drawn" },
-        { gene: "thorax_ratio", effect: "the horn is anchored to the thorax edge, so a wider thorax pushes its base forward" },
-        { gene: "pattern", effect: "gradient / dots / oval surface treatment on the horn fill" },
+        { gene: "head_size", effect: "the horn is anchored to the head's rear edge, so a bigger head moves its base" },
+        { gene: "pattern_horn", effect: "flat / gradient / dots / oval surface treatment on the horn fill \u2014 its own gene, independent of the jaws" },
         { gene: "pattern_contrast", effect: "how far the light tone departs from the horn colour" }
       ]
     },
@@ -3549,19 +3672,18 @@ pre b{color:var(--yellow);font-weight:600}
       off: { mandible_size: 0 },
       variantGene: "mandible_type",
       variants: variants(MANDIBLE_TYPES, [
-        "thin curved blades, hooking hard inward at the tips",
-        "heavier, straighter, thicker at the base and set closer together",
-        "short rounded fangs with tooth marks along the edge",
-        "the same fangs, smooth-edged"
+        "a long slender crescent sweeping outward to a fine point; the pair splays",
+        "short and heavy, bulk at the base, hooking hard inward so the tips converge",
+        "a blunt column with parallel sides and a domed top, bare or fanged by serration"
       ]),
       genes: [
         { gene: "mandible_size", effect: "jaw length, 0.38\u20131.22 of the head radius" },
-        { gene: "mandible_type", effect: "which of the four shapes gets drawn" },
+        { gene: "mandible_type", effect: "which of the three shapes gets drawn" },
         {
           gene: "mandible_serration",
-          effect: "multiplies the bite stat, AND cuts teeth into the inner edge at three levels \u2014 min(2, floor(v \xD7 3)), so 0\u20130.33 smooth, 0.33\u20130.67 one tooth, 0.67+ two. Only on wide_thin and narrow_thick: the chelicerae carry their teeth as a kind, not a level"
+          effect: "multiplies the bite stat, AND cuts teeth into the inner edge at three levels \u2014 min(2, floor(v \xD7 3)), so 0\u20130.33 smooth, 0.33\u20130.67 one tooth, 0.67+ two. Every kind reads it now: on the chelicerae, 1 or 2 both add the single tip fang that used to be a kind of its own"
         },
-        { gene: "pattern", effect: "gradient / dots / oval surface treatment on the jaw fill" },
+        { gene: "pattern_mandible", effect: "flat / gradient / dots / oval surface treatment on the jaw fill \u2014 its own gene, independent of the horn" },
         { gene: "pattern_contrast", effect: "how far the light tone departs from the jaw colour" }
       ]
     },
@@ -3617,18 +3739,17 @@ pre b{color:var(--yellow);font-weight:600}
       blurb: "One shape only: a wedge, wide and rounded at the outer-top corner and drawn to a point at the inner-lower side. Big, set wide, and drawn UNDER the head so its edge crops the inner half. `eye_type` picks how it is FILLED, not what shape it is.",
       core: true,
       drawnBy: "drawEyes() \u2192 eyeWedgePath()",
-      gate: "the iris only appears when saturation > 0.35 AND the sclera is light (never on the dark speckled fill)",
+      gate: "the iris appears on both light fills and never on the dark one. It no longer consults saturation at all",
       variantGene: "eye_type",
       variants: variants(EYE_FILLS, [
         "near-black, with a scatter of small white dots. No iris \u2014 a coloured disc is lost on it",
-        "white, with a dark notch cut into the outer-top corner",
-        "white, with a small dark hook curling in from the outer-top corner"
+        "white, with a dark notch cut into the outer-top corner, plus the iris disc",
+        "white, with a small dark hook curling in from the outer-top corner, plus the iris disc"
       ]),
       genes: [
         { gene: "eye_size", effect: "radius, 0.45\u20131.05 of head radius" },
         { gene: "eye_type", effect: "the fill treatment \u2014 dark speckled / notched / hooked. It no longer changes the silhouette; there is only one" },
-        { gene: "eye_count", effect: "pairs past the first are drawn as small dark ocelli" },
-        { gene: "saturation", effect: "above 0.35 a light-scleraed eye gains a coloured iris and pupil" }
+        { gene: "eye_count", effect: "pairs past the first are drawn as small dark ocelli" }
       ]
     },
     {
@@ -3711,37 +3832,57 @@ pre b{color:var(--yellow);font-weight:600}
       name: "Ink limbs",
       blurb: "Legs, antennae and tail go near-black instead of a deep tone of the body.",
       drawnBy: "palette() \u2192 col.limb",
-      gate: "pattern > 0.5",
-      present: (g) => g.pattern > 0.5,
-      on: { pattern: 0.8 },
-      off: { pattern: 0.2 },
+      gate: "pattern_leg > 0.5",
+      present: (g) => g.pattern_leg > 0.5,
+      on: { pattern_leg: 0.8 },
+      off: { pattern_leg: 0.2 },
       genes: [
-        { gene: "pattern", effect: "above 0.5 the limbs ink. Independent of the same gene's horn/jaw treatment \u2014 this is a different body part asking a different question" }
+        { gene: "pattern_leg", effect: "above 0.5 the limbs ink. Its own gene now \u2014 this used to be a third reading of the shared `pattern`, which meant black legs and a dotted horn could not be asked for separately" }
       ]
     },
     {
       id: "hornpattern",
       group: "surface",
       name: "Horn & jaw pattern",
-      blurb: "A surface treatment on the horn and the mandibles: a warm gradient to the tip, light speckle dots, or one oval highlight. Body patterns are a later pass \u2014 this reaches the weapons only.",
-      drawnBy: "surfacePattern() \u2192 patternedCurve()",
-      gate: "a horn or a mandible has to be drawn (horn_size \u2265 0.12 or mandible_size \u2265 0.10); mode = min(2, floor(pattern \xD7 3))",
+      blurb: "A surface treatment applied to the whole horn or the whole jaw as ONE shape \u2014 flat, a warm gradient to the tip, light speckle dots, or one oval highlight. The horn and the mandibles pick independently. Body patterns are a later pass \u2014 this reaches the weapons only.",
+      drawnBy: "surfacePattern() \u2192 patternedSilhouette()",
+      gate: "a horn or a mandible has to be drawn (horn_size \u2265 0.12 or mandible_size \u2265 0.10); mode = min(3, floor(pattern_horn \xD7 4)) for the horn, the same over pattern_mandible for the jaws",
       present: (g) => g.horn_size >= 0.12 || g.mandible_size >= 0.1,
       on: { mandible_size: 0.75 },
       off: { mandible_size: 0, horn_size: 0 },
-      variantGene: "pattern",
-      variants: variants(["gradient", "dots", "oval"], [
+      // The variant strip drives the HORN's gene. The mandible's is the same four
+      // states over its own slider; showing both strips would be two identical
+      // pickers side by side.
+      variantGene: "pattern_horn",
+      variants: variants(["flat", "gradient", "dots", "oval"], [
+        "solid colour, nothing on it at all \u2014 the default",
         "the base colour lifting to a warm amber at the tip",
         "light speckle dots scattered over the shape",
         "one lighter oval patch near the tip, the rest flat"
       ]),
-      variantOf: (g) => Math.min(2, Math.floor(Math.max(0, Math.min(1, g.pattern)) * 3)),
-      setVariant: (_g, i) => ({ pattern: (i + 0.5) / 3 }),
+      variantOf: (g) => Math.min(3, Math.floor(Math.max(0, Math.min(1, g.pattern_horn)) * 4)),
+      setVariant: (_g, i) => ({ pattern_horn: (i + 0.5) / 4, pattern_mandible: (i + 0.5) / 4 }),
       genes: [
-        { gene: "pattern", effect: "picks the treatment: 0\u20130.33 gradient, 0.33\u20130.67 dots, 0.67+ oval" },
-        { gene: "pattern_scale", effect: "dots only \u2014 bigger scale means fewer, larger dots (34 small \u2192 9 large)" },
-        { gene: "pattern_contrast", effect: "how loud all three read: gradient depth, dot opacity, oval tone gap" },
+        { gene: "pattern_horn", effect: "the HORN's treatment: 0\u20130.25 flat, 0.25\u20130.5 gradient, 0.5\u20130.75 dots, 0.75+ oval" },
+        { gene: "pattern_mandible", effect: "the JAWS' treatment, same four buckets, chosen independently of the horn's" },
+        { gene: "pattern_scale", effect: "dots only \u2014 bigger scale means fewer, larger dots. Shared by both components" },
+        { gene: "pattern_contrast", effect: "how loud a treatment reads: gradient depth, dot opacity, oval tone gap. Shared by both components" },
         { gene: "hue", effect: "the light tone is the shell hue walked toward amber, so it stays in family" }
+      ]
+    },
+    {
+      id: "seglight",
+      group: "surface",
+      name: "Segment lighting",
+      blurb: "The soft warm bloom on every trunk segment. Its core colour is a reference-palette swatch of its own \u2014 heritable, and not tied to the body colour \u2014 while its outer fade is built from the body's own lightness and saturation so the edge never goes muddy.",
+      core: true,
+      drawnBy: "palette() \u2192 segmentMass()",
+      gate: "always, on every trunk mass. Never on the head, which carries no lighting at all",
+      genes: [
+        { gene: "light_hue", effect: "which of the ten reference-palette swatches the bloom's core is. 7 is cream, which is what every bug used to get" },
+        { gene: "lightness", effect: "the outer stops fade toward a lightened version of the body, so a lighter body has a lighter blob edge" },
+        { gene: "saturation", effect: "that same outer tone keeps roughly half the body's saturation, which is what stops the edge reading as dirt" },
+        { gene: "body_segments", effect: "one bloom per trunk segment" }
       ]
     },
     {
@@ -3796,6 +3937,7 @@ pre b{color:var(--yellow);font-weight:600}
     ocelli: { zoom: 3.1, y: 0.54 },
     antennae: { zoom: 2.2, y: 0.56 },
     inklimbs: { zoom: 1.3, y: 0 },
+    seglight: { zoom: 1.55, y: -0.1 },
     setae: { zoom: 1.55, y: -0.24 },
     speckle: { zoom: 1.75, y: -0.12 }
   };
@@ -4205,14 +4347,14 @@ function partDetail(part) {
     </div>
     <div class="pbody">
       <p class="blurb">${esc(part.blurb)}</p>
-      ${part.gate ? `<div class="gate">appears when · ${esc(part.gate)}</div>` : ''}
-      ${part.drawnBy ? `<div class="gate">drawn by · ${esc(part.drawnBy)}</div>` : ''}
       ${part.variants ? `<div class="vars">${part.variants.map((v) => `
         <button class="var" data-var="${v.index}" aria-pressed="${v.index === vi}" title="${esc(v.blurb)}">
           <canvas data-thumb="${part.id}:${v.index}"></canvas><b>${esc(v.name)}</b>
         </button>`).join('')}</div>
         <p class="vhint">${esc(part.variants[vi]?.blurb ?? '')}</p>` : ''}
       ${part.genes.map((entry) => geneRow(entry.gene, entry.effect)).join('')}
+      ${part.gate ? `<div class="gate">appears when · ${esc(part.gate)}</div>` : ''}
+      ${part.drawnBy ? `<div class="gate">drawn by · ${esc(part.drawnBy)}</div>` : ''}
     </div>
   </article>`;
 }
@@ -4571,8 +4713,9 @@ function hitCandidates(L, px, py) {
       segDist(px, py, leg.knee.x, leg.knee.y, leg.foot.x, leg.foot.y, hw));
     add('legs', d, APP);
     // The tip of a leg is its foot — a tighter radius than the shaft, so a
-    // mid-leg click still says "legs". foot_size sets how big the pad is.
-    const pad = hw * (1.2 + (g.foot_size ?? 0.3) * 1.4);
+    // mid-leg click still says "legs". The pad is now fixed-size (FOOT_PAD_R
+    // in bugArt.js), not gene-driven, so this mirrors that constant directly.
+    const pad = hw * (1.2 + 0.95 * 1.4);
     add('feet', dist2(px, py, leg.foot.x, leg.foot.y) - pad, APP);
   }
 

@@ -5,7 +5,7 @@ import { GENE_SPECS, GENE_ORDER, normalizeGenome, randomGenome } from '../src/co
 import { makeRng } from '../src/core/rng.js';
 import { classify, CLASS_TREE } from '../src/core/classification.js';
 import { buildForTaxon, TAXON_MENU, mergedWindow } from '../src/core/taxonBuild.js';
-import { drawBug, layout, palette, wingShape, wingShapeCoefficient } from '../src/render/bugArt.js';
+import { drawBug, layout, palette, wingShape, wingShapeCoefficient, wingSweep } from '../src/render/bugArt.js';
 import {
   PARTS, PART_IDS, PART_GROUPS, GENE_INFO, SIM_ONLY, partById, isPresent,
   addPart, removePart, setVariant, variantOf, isSimOnly,
@@ -16,7 +16,7 @@ import {
 /**
  * drawBug() only ever talks to a 2D context, so a recorder standing in for one
  * turns "does this gene change the sprite" into a string comparison. Property
- * writes are recorded too — `pattern` changes nothing but fill colours.
+ * writes are recorded too — the pattern genes change nothing but fill colours.
  */
 function trace(genome, opts = {}) {
   const log = [];
@@ -53,10 +53,10 @@ function trace(genome, opts = {}) {
 
 const BASE = normalizeGenome({
   body_length: 0.42, body_width: 0.60, head_size: 0.62, leg_count: 6,
-  leg_length: 0.55, leg_thickness: 0.55, foot_size: 0.2, wing_count: 0,
+  leg_length: 0.55, leg_thickness: 0.55, wing_count: 0,
   wing_area: 0, horn_size: 0, mandible_size: 0.4, tail_length: 0, stinger_size: 0,
   eye_count: 2, eye_size: 0.8, antenna_length: 0, setae: 0, iridescence: 0,
-  hue: 0.015, saturation: 0.55, lightness: 0.55, pattern: 0.2, spine_density: 0,
+  hue: 0.015, saturation: 0.55, lightness: 0.55, pattern_leg: 0.2, spine_density: 0,
 });
 
 /* ------------------------------------------------------------- the wiring -- */
@@ -71,7 +71,7 @@ test('every gene a part names actually exists', () => {
   }
 });
 
-test('all 48 genes are accounted for — a part, a sim note, or both', () => {
+test('all 50 genes are accounted for — a part, a sim note, or both', () => {
   for (const gene of GENE_ORDER) {
     const row = GENE_INFO[gene];
     assert.ok(row, `${gene} is missing from GENE_INFO`);
@@ -248,9 +248,32 @@ test('length, width and roundness move independent axes of the blade', () => {
     'wing_area must not change the aspect ratio');
 });
 
-test('the default wing angle is the 100° median calibrated from the sketches', () => {
-  const deg = layout(normalizeGenome({ ...WINGED })).wing.sweep * 180 / Math.PI;
-  assert.ok(Math.abs(deg - 100) < 0.5, `default sweep should be ~100°, got ${deg.toFixed(1)}°`);
+test('wing_angle reaches 126°–165° at rest, and flight swings it forward', () => {
+  // The 35°-165° MAPPING is unchanged; what changed is the window the gene can
+  // reach. It is 0.7-1.0 now, so a resting wing is always swept well back the
+  // way the reference sheet draws it, and the old "0.50 renders the 100° median"
+  // claim is no longer sayable — 0.50 is not a legal wing_angle.
+  const at = (wing_angle) => layout(normalizeGenome({ ...WINGED, wing_angle })).wing.sweep * 180 / Math.PI;
+  assert.ok(Math.abs(at(0.85) - 145.5) < 0.5, `the 0.85 default should render ~145.5°, got ${at(0.85).toFixed(1)}°`);
+  // Out-of-range values clamp INTO the window rather than reaching below it.
+  assert.ok(Math.abs(at(0.7) - 126.0) < 0.5, 'the gene floor must render 126°');
+  assert.ok(Math.abs(at(0) - at(0.7)) < 1e-9, 'below 0.7 must clamp up to the floor');
+  assert.ok(Math.abs(at(1) - 165) < 0.5, 'the gene ceiling must render 165°');
+
+  // Flight subtracts 0.3 — 39° forward — in walk and attack, and nowhere else.
+  const g = normalizeGenome({ ...WINGED, wing_angle: 0.85 });
+  assert.ok(Math.abs(wingSweep(g, 'idle') - wingSweep(g, 'walk')) > 0.6,
+    'walking must swing the blades visibly forward of the resting angle');
+  assert.equal(wingSweep(g, 'walk'), wingSweep(g, 'attack'),
+    'attack is a flight state too — the same two states that beat the wings');
+  assert.equal(wingSweep(g, 'idle'), layout(g).wing.sweep,
+    'the resting sweep is what layout() measures');
+  // Even at the bottom of the window the offset stays inside the mapping's own
+  // 0-1 domain, so the sweep can never come out negative or extrapolated.
+  const low = normalizeGenome({ ...WINGED, wing_angle: 0.7 });
+  const flying = wingSweep(low, 'walk') * 180 / Math.PI;
+  assert.ok(flying > 34.9 && flying < 165.1, `flight sweep escaped the mapping: ${flying}`);
+  assert.ok(Math.abs(flying - 87.0) < 0.5, `0.7 - 0.3 should render ~87°, got ${flying.toFixed(1)}°`);
 });
 
 test('wings are exactly symmetric about the body centreline', () => {

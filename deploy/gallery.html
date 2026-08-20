@@ -36,10 +36,10 @@ function section(label, nodes) {
 const BASE = normalizeGenome({
   body_length: 0.42, body_width: 0.60, body_mass: 0.45, head_size: 0.62,
   thorax_ratio: 0.45, abdomen_taper: 0.25, leg_count: 6, leg_length: 0.55,
-  leg_thickness: 0.55, leg_spread: 0.5, foot_size: 0.4,
+  leg_thickness: 0.55, leg_spread: 0.5,
   wing_count: 0, wing_area: 0, mandible_size: 0.62, horn_size: 0.80,
   eye_count: 2, eye_size: 0.80, antenna_length: 0.25,
-  hue: 0.015, saturation: 0.55, lightness: 0.55, pattern: 0.8,
+  hue: 0.015, saturation: 0.55, lightness: 0.55, pattern_leg: 0.8,
   iridescence: 0.1, setae: 0,
 });
 
@@ -55,10 +55,16 @@ section('crown marks', CROWN_MARKS.map((n, i) =>
 
 section('horn serration', [0, 1, 2].flatMap((sr) =>
   HORN_TYPES.map((n, i) => card({ ...BASE, horn_type: i, horn_serration: sr }, `${n} ${sr}SR`))));
-section('horn / jaw patterns', ['gradient', 'dots', 'oval'].map((n, i) =>
-  card({ ...BASE, horn_type: 2, horn_serration: 2, pattern: (i + 0.5) / 3, pattern_contrast: 0.85 }, n)));
+section('horn patterns', ['flat', 'gradient', 'dots', 'oval'].map((n, i) =>
+  card({ ...BASE, horn_type: 2, horn_serration: 2, pattern_horn: (i + 0.5) / 4, pattern_contrast: 0.85 }, n)));
+// The jaw gene is separate — the same four states, chosen independently.
+section('jaw patterns', ['flat', 'gradient', 'dots', 'oval'].map((n, i) =>
+  card({ ...BASE, horn_size: 0.1, mandible_size: 0.9, pattern_mandible: (i + 0.5) / 4, pattern_contrast: 0.85 }, n)));
 section('mandible kinds', MANDIBLE_TYPES.map((n, i) =>
   card({ ...BASE, mandible_type: i, horn_size: 0.1, mandible_size: 0.9 }, n)));
+// The chelicerae fang is a serration level now, not a kind of its own.
+section('chelicerae serration', [0.1, 0.5, 0.9].map((v, i) =>
+  card({ ...BASE, mandible_type: 2, horn_size: 0.1, mandible_size: 0.9, mandible_serration: v }, `chelicerae ${i}SR`)));
 
 section('wing kinds', WING_TYPES.map((n, i) =>
   card({ ...BASE, wing_type: i, wing_count: 4, wing_area: 0.8, horn_size: 0.1 }, n)));

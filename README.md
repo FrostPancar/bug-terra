@@ -104,7 +104,7 @@ means: steer, place, or select a bug (`TerrariumScene.handleClick`).
 
 ### 1. Genetics — `src/core/genes.js`, `genes.schema.json`
 
-A genome is a flat object of **48 scalar genes** across six groups — body plan,
+A genome is a flat object of **50 scalar genes** across six groups — body plan,
 limbs, wings, weapons/defence, sensory, and surface/colour. Four of them
 (`wing_type`, `mandible_type`, `horn_type`, `eye_type`, `crown_mark_style`) are categorical "kind"
 genes rather than continuous amounts. `GENE_ORDER` is the

@@ -131,7 +131,7 @@ select,input[type=text]{font:700 13px/1 var(--font);padding:9px 10px;border-radi
 /* The library is a grid of the parts themselves — each tile is the CURRENT bug
    framed on that one part, so the catalogue shows your animal rather than a
    stock one. Tapping a tile expands it in place, full width of the grid. */
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .tile{position:relative;border:2px solid var(--line);border-radius:var(--r-md);
   background:var(--paper);padding:6px 6px 7px;text-align:center;overflow:hidden;
   display:flex;flex-direction:column;justify-content:flex-start}
@@ -586,14 +586,14 @@ function partDetail(part) {
     </div>
     <div class="pbody">
       <p class="blurb">${esc(part.blurb)}</p>
-      ${part.gate ? `<div class="gate">appears when · ${esc(part.gate)}</div>` : ''}
-      ${part.drawnBy ? `<div class="gate">drawn by · ${esc(part.drawnBy)}</div>` : ''}
       ${part.variants ? `<div class="vars">${part.variants.map((v) => `
         <button class="var" data-var="${v.index}" aria-pressed="${v.index === vi}" title="${esc(v.blurb)}">
           <canvas data-thumb="${part.id}:${v.index}"></canvas><b>${esc(v.name)}</b>
         </button>`).join('')}</div>
         <p class="vhint">${esc(part.variants[vi]?.blurb ?? '')}</p>` : ''}
       ${part.genes.map((entry) => geneRow(entry.gene, entry.effect)).join('')}
+      ${part.gate ? `<div class="gate">appears when · ${esc(part.gate)}</div>` : ''}
+      ${part.drawnBy ? `<div class="gate">drawn by · ${esc(part.drawnBy)}</div>` : ''}
     </div>
   </article>`;
 }
@@ -952,8 +952,9 @@ function hitCandidates(L, px, py) {
       segDist(px, py, leg.knee.x, leg.knee.y, leg.foot.x, leg.foot.y, hw));
     add('legs', d, APP);
     // The tip of a leg is its foot — a tighter radius than the shaft, so a
-    // mid-leg click still says "legs". foot_size sets how big the pad is.
-    const pad = hw * (1.2 + (g.foot_size ?? 0.3) * 1.4);
+    // mid-leg click still says "legs". The pad is now fixed-size (FOOT_PAD_R
+    // in bugArt.js), not gene-driven, so this mirrors that constant directly.
+    const pad = hw * (1.2 + 0.95 * 1.4);
     add('feet', dist2(px, py, leg.foot.x, leg.foot.y) - pad, APP);
   }
 

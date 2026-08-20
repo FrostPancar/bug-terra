@@ -54,15 +54,35 @@ export function morphology(g) {
  * Gameplay stats. All on a 0..100 scale except where noted.
  * Every formula is deterministic and total — any legal genome yields finite numbers.
  */
+/**
+ * THE FOOT IS NO LONGER A GENE, so the two stats it fed take constants.
+ *
+ * `foot_size` was deleted (see genes.js) and every bug now wears the pad at what
+ * used to be that gene's maximum. The obvious move — evaluate the old terms at
+ * that maximum, 0.55 and 0.15 — is WRONG, and measurably so: a constant inside a
+ * sigmoid is not a bonus anybody earned, it just slides every bug up together,
+ * and at the maximum it slid the whole population into "you could tip the
+ * terrarium and it would stay put" territory. Grip stopped distinguishing
+ * anything, which is the opposite of what a stat is for.
+ *
+ * So they are calibrated at the old gene's DEFAULT (0.30) instead: 0.55 × 0.30
+ * and 0.15 × 0.30. A default bug scores exactly what it scored before this pass,
+ * the population's grip and attack distributions do not move, and what actually
+ * changed — that the pad is drawn the same size on everyone — stays an art
+ * decision rather than becoming a free stat.
+ */
+const FOOT_GRIP = 0.165;
+const FOOT_ATTACK = 0.045;
+
 export function computeStats(g) {
   const m = morphology(g);
 
-  // GRIP — traction. A broad foot pad and an extra leg joint let a bug push
-  // off harder. This used to read `claw_size`; the gene was renamed to
-  // `foot_size` when tarsal claws left the art, and the coefficient is
-  // UNCHANGED — contact area with the ground is what grip was always modelling,
-  // and a wide pad supplies it as well as a hook did.
-  const grip = clamp(100 * sig(0.55 * g.foot_size + 0.25 * (m.joints - 2)
+  // GRIP — traction. An extra leg joint and a thicker leg let a bug push off
+  // harder. The foot term is now a CONSTANT: `foot_size` (`claw_size` before
+  // that) is gone and every bug wears the same pad, so it cannot distinguish
+  // anything. See FOOT_GRIP for why it is calibrated at the old gene's default
+  // rather than at the maximum the pad is actually drawn at.
+  const grip = clamp(100 * sig(FOOT_GRIP + 0.25 * (m.joints - 2)
                              + 0.20 * g.leg_thickness, 5), 1, 100);
 
   // SPEED — long legs and more of them move you faster; mass per leg drags,
@@ -90,10 +110,10 @@ export function computeStats(g) {
   // ATTACK — mandibles, plus horn and feet, plus the body behind the blow.
   const bite = g.mandible_size * (0.6 + 0.6 * g.mandible_serration);
   const horn = g.horn_size * 0.55;
-  // HALVED, 0.30 → 0.15. The old term paid for a hooked claw that could rake;
-  // a foot pad is a blunt thing to strike with, so it keeps a contribution but
-  // no longer the same one. Feet still raise attack, just less than claws did.
-  const feet = g.foot_size * 0.15;
+  // Halved once already (0.30 → 0.15) when the hooked claw became a blunt pad,
+  // and now a constant for the same reason grip's is: the pad is the same size
+  // on every bug, so its contribution cannot vary. See FOOT_ATTACK.
+  const feet = FOOT_ATTACK;
   const attack = clamp(
     100 * sig(bite * 0.85 + horn + feet + Math.min(m.mass, 3) * 0.12, 5), 1, 100
   );

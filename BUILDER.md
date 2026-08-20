@@ -98,13 +98,13 @@ the build button, and a **never** badge beside that taxon in the drift line.
 
 ### 2. The part library — `src/render/partLibrary.js`
 
-The **Part library** and **All 48 genes** tabs cut the same data two ways. The
+The **Part library** and **All 50 genes** tabs cut the same data two ways. The
 library is organised by *what you see on the bug* — 20 things the renderer can
 draw, each owning the two to five genes that shape it, with the threshold where
 it appears, a thumbnail per kind, and a grid tile framed on the part itself
 (`FOCUS` in `partLibrary.js` says how each one is framed: the pose is head-up,
 so a positive `y` brings the head into the tile and a negative one the tail). The gene tab is organised by *the vector* —
-all 48 in `GENE_ORDER`, including the eight that reach no part of the sprite, each
+all 50 in `GENE_ORDER`, including the eight that reach no part of the sprite, each
 saying which parts it feeds. Start in the library when you are building a bug;
 go to the genes when you need one specific dial, or the ones no part exposes.
 
@@ -141,7 +141,7 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | Part | Appears when | Genes |
 |---|---|---|
 | **Legs** | _always on_ | `leg_count`, `leg_length`, `leg_thickness`, `leg_spread`, `leg_joints` |
-| **Feet** | always drawn (core) | `foot_size`, `leg_thickness`, `leg_count` |
+| **Feet** | always drawn (core), at a fixed 0.95 of the leg width | `leg_thickness` |
 
 ### Wings — four kinds fan, one kind covers
 
@@ -153,9 +153,9 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 
 | Part | Appears when | Genes |
 |---|---|---|
-| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `thorax_ratio`, `pattern`, `pattern_contrast` |
+| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `head_size`, `pattern_horn`, `pattern_contrast` |
 | **Horn serration** | `horn_serration ≥ 1, and the horn must be drawn at all (horn_size ≥ 0.12). NEVER on crown (horn_type 4)` | `horn_serration`, `horn_type`, `horn_size` |
-| **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration`, `pattern`, `pattern_contrast` |
+| **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration`, `pattern_mandible`, `pattern_contrast` |
 | **Tail** | `tail_length × 0.44 > 0.08  →  tail_length > 0.182` | `tail_length`, `stinger_size` |
 | **Stinger** | `stinger_size > 0.18, and the tail must be drawn at all` | `stinger_size`, `tail_length` |
 | **Defensive spines** _(stats only)_ | `never drawn — spine_density reaches stats and classification only` | `spine_density` |
@@ -174,8 +174,9 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | Part | Appears when | Genes |
 |---|---|---|
 | **Shell colour** | _always on_ | `hue`, `saturation`, `lightness` |
-| **Ink limbs** | `pattern > 0.5` | `pattern` |
-| **Horn & jaw pattern** | `a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(2, floor(pattern × 3))` | `pattern`, `pattern_scale`, `pattern_contrast`, `hue` |
+| **Ink limbs** | `pattern_leg > 0.5` | `pattern_leg` |
+| **Horn & jaw pattern** | `a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(3, floor(pattern_horn × 4)) for the horn, the same over pattern_mandible for the jaws` | `pattern_horn`, `pattern_mandible`, `pattern_scale`, `pattern_contrast`, `hue` |
+| **Segment lighting** | always drawn (core) | `light_hue`, `lightness`, `saturation`, `body_segments` |
 | **Setae** | `setae ≥ 0.35` | `setae`, `body_width` |
 | **Iridescent speckle** | `iridescence ≥ 0.28 on the shell, ≥ 0.34 on the limbs` | `iridescence`, `hue` |
 
@@ -190,14 +191,15 @@ than leaving you to wonder why the slider does nothing:
 Three genes left this list in the horn pass. `mandible_serration` now cuts
 teeth into the blade mandibles as well as multiplying the bite, and
 `pattern_scale` and `pattern_contrast` drive the horn-and-jaw surface treatment
-instead of nothing at all. `spine_density` is still the odd one out: required by
+instead of nothing at all. `foot_size` left the list in the other direction — it
+left the genome entirely, because the foot is drawn at one fixed size now. `spine_density` is still the odd one out: required by
 the Centipede and Millipede windows while being invisible on the bug.
 
 ### 3. Export
 
 | Format | What it is |
 |---|---|
-| **JS genome** | the full 48 genes as a `normalizeGenome({...})` literal, grouped and commented |
+| **JS genome** | the full 50 genes as a `normalizeGenome({...})` literal, grouped and commented |
 | **JSON** | the raw genome object |
 | **Patch vs base** | only the genes you changed since loading the build — the parameter combination on its own |
 | **Archetype entry** | a `{ key, name, blurb, spread, bias }` block ready to paste into `ARCHETYPES` |

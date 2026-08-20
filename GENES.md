@@ -1,6 +1,6 @@
 # Gene and archetype reference
 
-The pool went from **20 genes to 48**, and generation 0 is now seeded from eight
+The pool went from **20 genes to 50**, and generation 0 is now seeded from eight
 body-plan archetypes instead of uniform random noise.
 
 Every gene below is a scalar on a fixed range, clamped on every write — an
@@ -10,7 +10,7 @@ GLB mapping all read it.
 
 ---
 
-## The 48 genes
+## The 50 genes
 
 ### Body plan — 8
 
@@ -34,7 +34,6 @@ GLB mapping all read it.
 | `leg_thickness` | 0–1 | Limb width. Feeds grip. |
 | `leg_spread` | 0–1 | How far legs splay. Wider stance = more agility. |
 | `leg_joints` | int 2–3 | Limb sections. A third joint improves grip and gait. |
-| `foot_size` | 0–1 | Round foot pad radius, 0.30–0.95 of leg width. Main grip input, small attack contribution. (Renamed from `claw_size`; tarsal claws are no longer drawn.) |
 
 ### Wings — 3
 
@@ -46,7 +45,7 @@ GLB mapping all read it.
 | `wing_length` | 0–1 | Blade length along its own axis. |
 | `wing_width` | 0–1 | Blade half-width as a fraction of length — aspect ratio, not a second length. |
 | `wing_roundness` | 0–1 | Blunt vs. finely tapered tip. Outline only, never the size. |
-| `wing_angle` | 0–1 | Sweep off the body axis, 35°–165°. Default 0.50 = 100°, calibrated from the wing sketches. |
+| `wing_angle` | 0.7–1.0 | Resting sweep off the body axis. The mapping is still 35°–165° at gene 0–1, but only 0.7–1.0 is reachable, i.e. 126°–165°; the 0.85 default renders 145.5°. Walking and attacking subtract 0.3, swinging the blades forward to 87°–126° to beat. |
 | `wing_tip_hue` | int 0–10 | Tip wash colour: 0 = white, 1–10 = a reference-palette swatch. |
 | `wing_beat` | 0–1 | Beat rate. |
 
@@ -55,8 +54,8 @@ GLB mapping all read it.
 | Gene | Range | What it does |
 |---|---|---|
 | `mandible_size` | 0–1 | Jaw mass. Raises attack, *lowers* attack rate. |
-| `mandible_type` | int 0–3 | wide_thin / narrow_thick / chelicerae_teeth / chelicerae_smooth. Categorical. |
-| `mandible_serration` | 0–1 | Cutting edge. Multiplies the bite, and cuts teeth into the blade mandibles at three levels — `min(2, floor(v × 3))`. The chelicerae ignore it; their teeth are a kind, not a level. |
+| `mandible_type` | int 0–2 | wide_thin / narrow_thick / chelicerae. Categorical. The two chelicerae kinds merged; their fang is a serration level now. |
+| `mandible_serration` | 0–1 | Cutting edge. Multiplies the bite, and cuts teeth at three levels — `min(2, floor(v × 3))`. Every kind reads it: on the chelicerae, level 1 or 2 adds the single tip fang. |
 | `horn_size` | 0–1 | Horn length. Second-largest attack input. |
 | `horn_type` | int 0–4 | nose / pincer / y_shaped / split / crown. Categorical. |
 | `horn_serration` | int 0–2 (default 0) | Notch level on the horn. Each level is the one below it plus more notches. `crown` is exempt and shows none at any level. |
@@ -87,9 +86,12 @@ GLB mapping all read it.
 | `hue` | 0–1, wraps | Base hue. The only circular gene — it wraps rather than clamps. |
 | `saturation` | 0–1 | Colour intensity. Costs camouflage. |
 | `lightness` | 0–1 | Brightness. Costs camouflage. |
-| `pattern` | 0–1 | Two independent readings. `min(2, floor(v × 3))` picks the horn and mandible surface treatment — gradient / dots / oval. Above 0.5 the limbs also go near-black. |
-| `pattern_scale` | 0–1 | Dot size and count for the `dots` treatment: 34 small dots at 0, 9 large ones at 1. |
-| `pattern_contrast` | 0–1 | How loud all three treatments read — gradient depth, dot opacity, oval tone gap. Firefly, Ladybird and Butterfly all window on it. |
+| `pattern_horn` | 0–1 | The HORN's surface treatment: `min(3, floor(v × 4))` → flat / gradient / dots / oval. The 0.08 default is flat — a default bug's horn carries nothing. |
+| `pattern_mandible` | 0–1 | The MANDIBLES' treatment. Same four buckets, chosen independently of the horn's. |
+| `pattern_leg` | 0–1 | Above 0.5 the limbs go near-black. (These three were one `pattern` gene; it answered three unrelated questions at once.) |
+| `light_hue` | int 0–9 | Which reference-palette swatch the body-segment lighting bloom is. 7 = cream, the colour every bug used to get. Heritable and independent of `hue`. |
+| `pattern_scale` | 0–1 | Dot size and count for the `dots` treatment: 34 small dots at 0, 9 large ones at 1. Shared by the horn and the jaws. |
+| `pattern_contrast` | 0–1 | How loud a treatment reads — gradient depth, dot opacity, oval tone gap. Shared by the horn and the jaws. Firefly, Ladybird and Butterfly all window on it. |
 | `setae` | 0–1 | Hairiness. Breaks up the outline, helps camouflage. |
 | `iridescence` | 0–1 | Metallic sheen. Looks great, **costs camouflage** — a real trade-off. |
 | `translucency` | 0–1 | See-through cuticle. Helps camouflage. |
@@ -103,10 +105,10 @@ Two new ones, and several formulas now read the new genes.
 | Stat | Driven by |
 |---|---|
 | **venom** *(new)* | `stinger_size`, `tail_length`. Bypasses armour, lands over time. 0 without a stinger. |
-| **grip** *(new)* | `foot_size`, `leg_joints`, `leg_thickness`. Converts effort into motion — gates speed. |
+| **grip** *(new)* | `leg_joints`, `leg_thickness`, plus a constant foot term. Converts effort into motion — gates speed. |
 | speed | stride × cadence, now scaled by grip |
 | defense | carapace + `spine_density` |
-| attack | mandibles + `horn_size` + `foot_size` (half its old claw weight) + body mass |
+| attack | mandibles + `horn_size` + a constant foot term + body mass |
 | health | bulk + shell + `body_segments` |
 | flight | 0 unless `wing_count` > 0; then wing loading vs. beat |
 | vision | `eye_size` × `eye_count` gain + antennae |
@@ -231,17 +233,23 @@ completely flat, with no gradient, bloom or rim darkening. It has nothing to do
 with `horn_type`'s `nose`, which is a spike of horn geometry on the thorax — the
 name deliberately avoids the word.
 
-**Mandibles** (4), re-traced from the reference sheet — `wide_thin` long slender
+**Mandibles** (3), re-traced from the reference sheet — `wide_thin` long slender
 crescents sweeping OUTWARD to a fine point, the pair splaying apart, barbs low on
 the inner edge · `narrow_thick` short and heavy, bulk at the base, hooking hard
-INWARD so the tips converge, with deep teeth mid-inner-edge · `chelicerae_teeth`
-a blunt stout column with a domed top and one small fang at the tip ·
-`chelicerae_smooth` the same column, bare. The two blade kinds take `mandible_serration` as a 0/1/2 tooth
-count; the chelicerae pair does not — teeth-vs-no-teeth is the choice between
-those two kinds.
+INWARD so the tips converge, with deep teeth mid-inner-edge · `chelicerae` a
+blunt stout column with a domed top, bare at serration 0 and carrying one small
+fang at the tip at 1 or 2.
 
-All four are drawn as filled tapered silhouettes, not strokes — mass at the base
-and a point at the tip is what separates a designed horn from a bent line.
+Four kinds became three. `chelicerae_teeth` and `chelicerae_smooth` were the same
+column differing by that one fang — a serration level wearing a kind's clothes,
+and the only place `mandible_serration` was deliberately ignored. They merged, so
+every kind now reads the serration gene the same way.
+
+All three are drawn as filled tapered silhouettes, not strokes — mass at the base
+and a point at the tip is what separates a designed horn from a bent line. A horn
+or a jaw is accumulated into ONE path and filled, gradiented and decorated once,
+so a serrated shape reads as a single patterned object rather than as a pile of
+separately-painted pieces.
 
 ---
 

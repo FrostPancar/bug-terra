@@ -56,11 +56,15 @@ export const GENE_SPECS = {
   leg_thickness:      { min: 0, max: 1, default: 1.00 },
   leg_spread:         { min: 0, max: 1, default: 0.75 },
   leg_joints:         { min: 1, max: 5, integer: true, default: 2 },
-  // RENAMED from `claw_size`. Tarsal claws are gone from the art entirely; the
-  // gene now sizes the round foot pad at the tip of every leg, from a small dot
-  // at 0 to a heavy bulb at 1. It keeps its grip/attack roles in stats.js —
-  // a broad foot is still traction, and still something to press with.
-  foot_size:          { min: 0, max: 1, default: 0.30 },
+  // `foot_size` IS GONE. It was `claw_size` before that, and by the end it was a
+  // slider whose only honest answer was "as big as possible": the foot pad is
+  // punctuation at the end of a capsule leg, and every value under the maximum
+  // read as a leg that had been cut short rather than as a design choice. The
+  // pad is now HARDCODED at its old maximum (0.95 of the leg width, see
+  // drawLegs) and there is no gene. stats.js keeps the grip and attack terms it
+  // used to feed, as constants — calibrated at this gene's old DEFAULT, not at
+  // the maximum the pad is drawn at, so removing a slider does not hand every
+  // bug a free stat. See FOOT_GRIP/FOOT_ATTACK.
 
   /* ---- wings ---- */
   // 0 / 2 / 4 / 6. Unchanged: zero is still a legal, meaningful genome (every
@@ -87,10 +91,18 @@ export const GENE_SPECS = {
   // Blunt vs. finely tapered tip. Moves outline control points only, never the
   // bounding box, so it is independent of both length and width.
   wing_roundness:     { min: 0, max: 1, default: 0.55 },
-  // Sweep away from the body's long axis: 35° at 0, 165° at 1. The 0.50 default
-  // is CALIBRATED, not picked — it renders 100°, the median resting angle across
-  // the four full-bug panels of `Image References/WIngs.jpg`.
-  wing_angle:         { min: 0, max: 1, default: 0.50 },
+  // NARROWED 0–1 → 0.7–1.0. The mapping behind it is unchanged (35° at gene 0,
+  // 165° at gene 1, see WING_SWEEP_MIN/MAX in bugArt.js) — what narrowed is the
+  // part of it a genome may REACH. Wings at rest are swept well back in the
+  // reference sheet; the bottom two thirds of the old window drew blades held
+  // out sideways, which never appeared in the art. 0.85 renders 145.5°, and the
+  // window spans 126°–165°. The old 0.50 default is now out of range and
+  // clampGene pulls any stored value below 0.7 up to it.
+  //
+  // Flight is the exception, and it is applied in the renderer rather than here:
+  // drawSoftWings() subtracts 0.3 from this value while the bug is in motion,
+  // reaching 0.4–0.7 (i.e. 87°–126°) — wings swung forward to beat.
+  wing_angle:         { min: 0.7, max: 1.0, default: 0.85 },
   // Tip wash colour. 0 = white (the default, and NOT a REF_PALETTE entry — the
   // reference palette has no white); 1–10 select a REF_PALETTE swatch in order:
   // tan/brown/rust/orange/gold/sage/ink/cream/pink/blue.
@@ -99,7 +111,13 @@ export const GENE_SPECS = {
 
   /* ---- weapons & defence ---- */
   mandible_size:      { min: 0, max: 1, default: 0.90 },
-  mandible_type:      { min: 0, max: 3, integer: true, default: 0 },   // wide_thin/narrow_thick/chelicerae_teeth/chelicerae_smooth
+  // NARROWED 0–3 → 0–2. `chelicerae_teeth` and `chelicerae_smooth` were the same
+  // column differing by one fang, i.e. a serration level wearing a kind's
+  // clothes. They merged into a single `chelicerae` at index 2, and the fang is
+  // now `mandible_serration ≥ 1` like every other tooth on every other jaw.
+  // clampGene pulls any stored 3 down to 2 — which is the merged kind, so an old
+  // `chelicerae_smooth` genome still renders chelicerae.
+  mandible_type:      { min: 0, max: 2, integer: true, default: 0 },   // wide_thin/narrow_thick/chelicerae
   // Stays CONTINUOUS: stats.js reads it as a bite multiplier. The renderer
   // buckets it into the sketch's three levels itself — min(2, floor(v * 3)).
   mandible_serration: { min: 0, max: 1, default: 0.53 },
@@ -138,12 +156,43 @@ export const GENE_SPECS = {
   hue:                { min: 0, max: 1, circular: true, default: 0.04 },
   saturation:         { min: 0, max: 1, default: 0.57 },
   lightness:          { min: 0, max: 1, default: 0.50 },
-  // Three-way surface treatment for the horn and the mandibles:
-  // gradient / dots / oval, bucketed as min(2, floor(pattern × 3)). The old
-  // `pattern > 0.5 → black limbs` reading is unchanged and still independent.
-  pattern:            { min: 0, max: 1, default: 0.05 },
+  /**
+   * THE `pattern` GENE IS SPLIT, one gene per component it used to speak for.
+   *
+   * One knob used to answer three unrelated questions at once: what treatment
+   * the horn wears, what treatment the mandibles wear, and whether the legs are
+   * inked black. Nothing about a bug requires those three to agree, and the
+   * shared gene made it impossible to give a bug dotted jaws and a flat horn.
+   *
+   * The two surface genes bucket FOUR ways now, not three:
+   *
+   *     mode = min(3, floor(v × 4))   →  0 flat · 1 gradient · 2 dots · 3 oval
+   *
+   * `flat` is new and is the whole point of the low defaults: bucket 0 used to
+   * be `gradient`, so an untouched genome had a gradient on its horn and jaws
+   * whether anyone asked for one or not. 0.08 lands in `flat` — solid colour,
+   * no gradient, no dots, no highlight — so the default bug is genuinely plain
+   * and every treatment is something a genome opted into.
+   */
+  pattern_horn:       { min: 0, max: 1, default: 0.08 },   // flat/gradient/dots/oval
+  pattern_mandible:   { min: 0, max: 1, default: 0.08 },   // flat/gradient/dots/oval
+  // The old `pattern > 0.5 → black limbs` reading, on its own gene now. Same
+  // threshold, so a leg that was inked before is inked at the same value.
+  pattern_leg:        { min: 0, max: 1, default: 0.20 },   // above 0.5 the limbs ink
+  // SHARED, deliberately. These two do not pick a treatment, they modulate
+  // whichever treatment each component already picked — how loud it reads, how
+  // coarse the dots are. That is a house style, not a per-part decision, and
+  // splitting them would add sliders whose difference nobody can state an
+  // intention about. The mode gene is where the per-part identity lives.
   pattern_scale:      { min: 0, max: 1, default: 0.11 },   // dot size/density
-  pattern_contrast:   { min: 0, max: 1, default: 0.21 },   // how loud all three read
+  pattern_contrast:   { min: 0, max: 1, default: 0.21 },   // how loud all four read
+  // THE LIGHTING COLOUR, heritable and independent of the body's own colour.
+  // The body-segment bloom used to be a hardcoded cream whatever the genome
+  // said. It still comes off the fixed REF_PALETTE (lighting colour never gets
+  // computed from the body hue — see the mandate in bugArt.js), but WHICH
+  // swatch is now a gene: 0–9 index REF_PALETTE_ORDER. 7 is cream, which is
+  // what every bug used to get, so the default is the old fixed behaviour.
+  light_hue:          { min: 0, max: 9, integer: true, default: 7 },
   // A flat colour patch capping the top of the head: none / solid gold with a
   // hard edge / the same cap blended down into the head colour. Its colours come
   // straight off bugArt's fixed REF_PALETTE, never from the body hue.

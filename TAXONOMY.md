@@ -15,16 +15,16 @@ and not inherited — it is recomputed from the gene vector whenever anyone asks
 
 ---
 
-## Gene count: this build has 48, the design doc had 37
+## Gene count: this build has 50, the design doc had 37
 
-The taxonomy doc was written against a 37-gene vector. The live build has **43**.
+The taxonomy doc was written against a 37-gene vector. The live build has **50**.
 The extra genes are the categorical "kind" genes added during the art
 revamp:
 
 | Gene | Range | Kinds |
 |---|---|---|
 | `wing_type` | int 0–1 | membranous, elytra (blade shape is derived, not selected — see GENES.md) |
-| `mandible_type` | int 0–3 | wide_thin, narrow_thick, chelicerae_teeth, chelicerae_smooth |
+| `mandible_type` | int 0–2 | wide_thin, narrow_thick, chelicerae |
 | `horn_type` | int 0–4 | nose, pincer, y_shaped, split, crown |
 | `eye_type` | int 0–2 | the eye FILL treatment: dark speckled, notched, hooked (one shape, three fills) |
 | `crown_mark_style` | int 0–2 | head-top colour patch: none, solid, blended. Unrelated to `horn_type`'s `nose` |
@@ -117,8 +117,8 @@ Tier 0 · **Larva** — everything starts here and most things stay here.
 |---|---|---|
 | Beetle | Coleoptera | `carapace ≥.55`, `horn ≥.50`, `leg_length ≤.45`, **`wing_area ≤.35`** |
 | Wasp | Hymenoptera | `wing_count = 4`, `stinger ≥.60`, `carapace ≤.30` |
-| Roach | Blattodea | `antenna ≥.75`, `pattern ≥.7`, `aggression ≤.4` |
-| Mantis | Mantodea | `foot_size ≥.80`, `body_length ≥.75`, `leg_length ≥.60` |
+| Roach | Blattodea | `antenna ≥.75`, `pattern_leg ≥.7`, `aggression ≤.4` |
+| Mantis | Mantodea | `leg_spread ≥.70`, `body_length ≥.75`, `leg_length ≥.60` |
 | Moth | Lepidoptera | `wing_area ≥.85`, `setae ≥.75`, `mandible ≤.20` |
 | Dragonfly | Odonata | `wing_area ≥.7`, `eye_count ≥6`, `eye_size ≥.6`, `aggression ≥.5` |
 | Fly | Diptera | `wing_count = 2`, `wing_beat ≥.72`, `body_mass ≤.30`, `mandible ≤.25` |

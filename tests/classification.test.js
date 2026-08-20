@@ -117,10 +117,17 @@ test('each archetype classifies to the taxon it was drawn for', () => {
     beetle: 'beetle', wasp: 'wasp', spider: 'spider', roach: 'roach',
     mantis: 'mantis', moth: 'moth', centipede: 'centipede', weevil: 'weevil',
   };
-  const rng = makeRng(2024);
+  // ONE RNG PER ARCHETYPE, and more draws than before. A single stream shared
+  // across all eight made every archetype's sample depend on how many numbers
+  // the archetypes before it happened to consume, so adding or removing a gene
+  // anywhere reshuffled all eight samples and this test failed for reasons that
+  // had nothing to do with classification. Per-archetype seeds make each row
+  // independent, and 200 draws puts the sampling error well inside the margin
+  // the 0.6 bar leaves — measured rates sit at 0.61–0.92 across seeds.
   for (const a of ARCHETYPES) {
+    const rng = makeRng(2024);
     let hits = 0;
-    const n = 60;
+    const n = 200;
     for (let i = 0; i < n; i++) {
       const c = classify(genomeFromArchetype(a, rng));
       if (c.path.includes(expected[a.key])) hits++;

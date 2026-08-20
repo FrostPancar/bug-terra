@@ -213,15 +213,20 @@ export const CLASS_TREE = {
   roach: {
     taxon: 'Roach', tier: 1, parent: 'larva', order: 'Blattodea',
     clade: 'hexapod', adjective: 'Skittering', status: 'coded',
-    window: { antenna_length: [0.75, 1], pattern: [0.7, 1], aggression: [0, 0.4] },
+    // `pattern` split three ways; this window wanted the LIMB reading — a drab
+    // roach with black legs — so it moved to `pattern_leg` at the same numbers.
+    window: { antenna_length: [0.75, 1], pattern_leg: [0.7, 1], aggression: [0, 0.4] },
     locks: [], unlocks: ['metabolism'], specialty: null,
     blurb: 'Feels the room before it sees it. Avoids every fight it can.',
   },
   mantis: {
     taxon: 'Mantis', tier: 1, parent: 'larva', order: 'Mantodea',
     clade: 'hexapod', adjective: 'Hooked', status: 'coded',
-    window: { foot_size: [0.80, 1], body_length: [0.75, 1], leg_length: [0.60, 1] },
-    locks: [], unlocks: ['foot_size'], specialty: null,
+    // `foot_size` is gone (every bug now wears the maximum pad), so the reach
+    // this window was really describing is stated with the two genes that still
+    // carry it: a long body on long legs, held in a wide stance.
+    window: { leg_spread: [0.70, 1], body_length: [0.75, 1], leg_length: [0.60, 1] },
+    locks: [], unlocks: ['leg_spread'], specialty: null,
     blurb: 'Reach as a weapon. Waits, then closes the distance once.',
   },
   moth: {
@@ -403,7 +408,8 @@ export const CLASS_TREE = {
     window: {
       carapace_thickness: [0.4, 0.65], pattern_contrast: [0.8, 1], aggression: [0, 0.3],
     },
-    locks: ['pattern_contrast'], unlocks: ['pattern', 'hue'],
+    // Spotted: the surface treatments, both of them, on their own genes now.
+    locks: ['pattern_contrast'], unlocks: ['pattern_horn', 'pattern_mandible'],
     specialty: { key: 'aposematic', name: 'Warning Colours', mods: { defense: 1.10 } },
     blurb: 'Warning colouration instead of armour. Nothing wants to bite it twice.',
   },
@@ -467,10 +473,12 @@ export const CLASS_TREE = {
     taxon: 'Scorpion', tier: 2, parent: 'arachnid', order: 'Arachnida',
     clade: 'arachnid', adjective: 'Barbed', status: 'drafted',
     window: {
+      // `foot_size` dropped with the gene. The remaining three are what
+      // actually made a scorpion a scorpion — armoured AND venomous at once.
       stinger_size: [0.7, 1], tail_length: [0.6, 1],
-      foot_size: [0.6, 1], carapace_thickness: [0.5, 1],
+      carapace_thickness: [0.5, 1],
     },
-    locks: ['tail_length'], unlocks: ['stinger_size', 'foot_size'],
+    locks: ['tail_length'], unlocks: ['stinger_size', 'carapace_thickness'],
     specialty: { key: 'pincer_and_tail', name: 'Pincer and Tail', mods: { venom: 1.12, defense: 1.08 } },
     blurb: 'Armoured and venomous at once, which is rare and unfair.',
   },
@@ -510,7 +518,7 @@ export const CLASS_TREE = {
       wing_area: [0.85, 1], mandible_size: [0, 0.20], setae: [0, 0.3],
       pattern_contrast: [0.75, 1], saturation: [0.65, 1],
     },
-    locks: [], unlocks: ['hue', 'pattern'],
+    locks: [], unlocks: ['hue', 'pattern_horn'],
     specialty: { key: 'flash_colour', name: 'Flash Colour', mods: { agility: 1.10, camouflage: 0.85 } },
     blurb: 'Same chassis as a moth, opposite surface entirely.',
   },

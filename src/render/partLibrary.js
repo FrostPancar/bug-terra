@@ -170,13 +170,13 @@ export const PARTS = [
     id: 'feet',
     group: 'limbs',
     name: 'Feet',
-    blurb: 'A round pad on the tip of every leg, from a dot to a heavy bulb. '
-         + 'Always present — foot_size sets how much of it there is.',
+    blurb: 'A round pad on the tip of every leg, in the leg\'s own colour. '
+         + 'Always present and always the same size — there is no foot gene any more.',
     core: true,
     drawnBy: 'drawLegs() → the foot circle at leg.foot',
+    gate: 'always, at a fixed 0.95 of the leg width (FOOT_PAD_R)',
     genes: [
-      { gene: 'foot_size', effect: 'pad radius, 0.30–0.95 of the leg width' },
-      { gene: 'leg_thickness', effect: 'the leg width the pad is measured against' },
+      { gene: 'leg_thickness', effect: 'the only thing that changes a foot: the pad is a fixed 0.95 of the leg width, so a thicker leg is the only way to a bigger foot' },
       { gene: 'leg_count', effect: 'one foot per leg' },
     ],
   },
@@ -204,7 +204,7 @@ export const PARTS = [
       { gene: 'wing_length', effect: 'blade length along its own axis, 0.85–2.30 of the body unit' },
       { gene: 'wing_width', effect: 'blade half-width as 0.09–0.52 of its length — aspect ratio, never length' },
       { gene: 'wing_roundness', effect: 'blunt vs. finely tapered tip; moves the outline only, never the size' },
-      { gene: 'wing_angle', effect: 'sweep off the body axis, 35°–165°; 0.50 is the sketch-calibrated 100° rest angle' },
+      { gene: 'wing_angle', effect: 'resting sweep off the body axis. The gene reaches 0.7–1.0 only, i.e. 126°–165°; its 0.85 default renders 145.5°. Walking and attacking subtract 0.3, swinging the blades forward to 87°–126° to beat' },
       { gene: 'wing_tip_hue', effect: '0 = white tip wash; 1–10 pick a reference-palette swatch instead' },
       { gene: 'wing_beat', effect: 'flap rate — only visible in the walk and attack states' },
     ],
@@ -228,7 +228,7 @@ export const PARTS = [
     id: 'horn',
     group: 'weapons',
     name: 'Horn',
-    blurb: 'Tapered filled curves off the front of the THORAX — mass at the base, a point at the tip. Drawn last of everything, because the thorax it grows out of is the topmost trunk mass.',
+    blurb: 'Tapered filled curves off the REAR OF THE HEAD — mass at the base, a point at the tip. Drawn under the trunk, so the thorax buries the root and the horn reads as growing out of the head/thorax junction rather than resting on it.',
     drawnBy: 'drawHorn()',
     gate: 'horn_size ≥ 0.12',
     present: (g) => g.horn_size >= 0.12,
@@ -245,8 +245,8 @@ export const PARTS = [
     genes: [
       { gene: 'horn_size', effect: 'length, 0.18–1.55 of the body unit depending on kind' },
       { gene: 'horn_type', effect: 'which of the five shapes gets drawn' },
-      { gene: 'thorax_ratio', effect: 'the horn is anchored to the thorax edge, so a wider thorax pushes its base forward' },
-      { gene: 'pattern', effect: 'gradient / dots / oval surface treatment on the horn fill' },
+      { gene: 'head_size', effect: 'the horn is anchored to the head\'s rear edge, so a bigger head moves its base' },
+      { gene: 'pattern_horn', effect: 'flat / gradient / dots / oval surface treatment on the horn fill — its own gene, independent of the jaws' },
       { gene: 'pattern_contrast', effect: 'how far the light tone departs from the horn colour' },
     ],
   },
@@ -278,19 +278,18 @@ export const PARTS = [
     off: { mandible_size: 0 },
     variantGene: 'mandible_type',
     variants: variants(MANDIBLE_TYPES, [
-      'thin curved blades, hooking hard inward at the tips',
-      'heavier, straighter, thicker at the base and set closer together',
-      'short rounded fangs with tooth marks along the edge',
-      'the same fangs, smooth-edged',
+      'a long slender crescent sweeping outward to a fine point; the pair splays',
+      'short and heavy, bulk at the base, hooking hard inward so the tips converge',
+      'a blunt column with parallel sides and a domed top, bare or fanged by serration',
     ]),
     genes: [
       { gene: 'mandible_size', effect: 'jaw length, 0.38–1.22 of the head radius' },
-      { gene: 'mandible_type', effect: 'which of the four shapes gets drawn' },
+      { gene: 'mandible_type', effect: 'which of the three shapes gets drawn' },
       {
         gene: 'mandible_serration',
-        effect: 'multiplies the bite stat, AND cuts teeth into the inner edge at three levels — min(2, floor(v × 3)), so 0–0.33 smooth, 0.33–0.67 one tooth, 0.67+ two. Only on wide_thin and narrow_thick: the chelicerae carry their teeth as a kind, not a level',
+        effect: 'multiplies the bite stat, AND cuts teeth into the inner edge at three levels — min(2, floor(v × 3)), so 0–0.33 smooth, 0.33–0.67 one tooth, 0.67+ two. Every kind reads it now: on the chelicerae, 1 or 2 both add the single tip fang that used to be a kind of its own',
       },
-      { gene: 'pattern', effect: 'gradient / dots / oval surface treatment on the jaw fill' },
+      { gene: 'pattern_mandible', effect: 'flat / gradient / dots / oval surface treatment on the jaw fill — its own gene, independent of the horn' },
       { gene: 'pattern_contrast', effect: 'how far the light tone departs from the jaw colour' },
     ],
   },
@@ -347,18 +346,17 @@ export const PARTS = [
     blurb: 'One shape only: a wedge, wide and rounded at the outer-top corner and drawn to a point at the inner-lower side. Big, set wide, and drawn UNDER the head so its edge crops the inner half. `eye_type` picks how it is FILLED, not what shape it is.',
     core: true,
     drawnBy: 'drawEyes() → eyeWedgePath()',
-    gate: 'the iris only appears when saturation > 0.35 AND the sclera is light (never on the dark speckled fill)',
+    gate: 'the iris appears on both light fills and never on the dark one. It no longer consults saturation at all',
     variantGene: 'eye_type',
     variants: variants(EYE_FILLS, [
       'near-black, with a scatter of small white dots. No iris — a coloured disc is lost on it',
-      'white, with a dark notch cut into the outer-top corner',
-      'white, with a small dark hook curling in from the outer-top corner',
+      'white, with a dark notch cut into the outer-top corner, plus the iris disc',
+      'white, with a small dark hook curling in from the outer-top corner, plus the iris disc',
     ]),
     genes: [
       { gene: 'eye_size', effect: 'radius, 0.45–1.05 of head radius' },
       { gene: 'eye_type', effect: 'the fill treatment — dark speckled / notched / hooked. It no longer changes the silhouette; there is only one' },
       { gene: 'eye_count', effect: 'pairs past the first are drawn as small dark ocelli' },
-      { gene: 'saturation', effect: 'above 0.35 a light-scleraed eye gains a coloured iris and pupil' },
     ],
   },
   {
@@ -442,37 +440,57 @@ export const PARTS = [
     name: 'Ink limbs',
     blurb: 'Legs, antennae and tail go near-black instead of a deep tone of the body.',
     drawnBy: 'palette() → col.limb',
-    gate: 'pattern > 0.5',
-    present: (g) => g.pattern > 0.5,
-    on: { pattern: 0.8 },
-    off: { pattern: 0.2 },
+    gate: 'pattern_leg > 0.5',
+    present: (g) => g.pattern_leg > 0.5,
+    on: { pattern_leg: 0.8 },
+    off: { pattern_leg: 0.2 },
     genes: [
-      { gene: 'pattern', effect: 'above 0.5 the limbs ink. Independent of the same gene\'s horn/jaw treatment — this is a different body part asking a different question' },
+      { gene: 'pattern_leg', effect: 'above 0.5 the limbs ink. Its own gene now — this used to be a third reading of the shared `pattern`, which meant black legs and a dotted horn could not be asked for separately' },
     ],
   },
   {
     id: 'hornpattern',
     group: 'surface',
     name: 'Horn & jaw pattern',
-    blurb: 'A surface treatment on the horn and the mandibles: a warm gradient to the tip, light speckle dots, or one oval highlight. Body patterns are a later pass — this reaches the weapons only.',
-    drawnBy: 'surfacePattern() → patternedCurve()',
-    gate: 'a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(2, floor(pattern × 3))',
+    blurb: 'A surface treatment applied to the whole horn or the whole jaw as ONE shape — flat, a warm gradient to the tip, light speckle dots, or one oval highlight. The horn and the mandibles pick independently. Body patterns are a later pass — this reaches the weapons only.',
+    drawnBy: 'surfacePattern() → patternedSilhouette()',
+    gate: 'a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(3, floor(pattern_horn × 4)) for the horn, the same over pattern_mandible for the jaws',
     present: (g) => g.horn_size >= 0.12 || g.mandible_size >= 0.10,
     on: { mandible_size: 0.75 },
     off: { mandible_size: 0, horn_size: 0 },
-    variantGene: 'pattern',
-    variants: variants(['gradient', 'dots', 'oval'], [
+    // The variant strip drives the HORN's gene. The mandible's is the same four
+    // states over its own slider; showing both strips would be two identical
+    // pickers side by side.
+    variantGene: 'pattern_horn',
+    variants: variants(['flat', 'gradient', 'dots', 'oval'], [
+      'solid colour, nothing on it at all — the default',
       'the base colour lifting to a warm amber at the tip',
       'light speckle dots scattered over the shape',
       'one lighter oval patch near the tip, the rest flat',
     ]),
-    variantOf: (g) => Math.min(2, Math.floor(Math.max(0, Math.min(1, g.pattern)) * 3)),
-    setVariant: (_g, i) => ({ pattern: (i + 0.5) / 3 }),
+    variantOf: (g) => Math.min(3, Math.floor(Math.max(0, Math.min(1, g.pattern_horn)) * 4)),
+    setVariant: (_g, i) => ({ pattern_horn: (i + 0.5) / 4, pattern_mandible: (i + 0.5) / 4 }),
     genes: [
-      { gene: 'pattern', effect: 'picks the treatment: 0–0.33 gradient, 0.33–0.67 dots, 0.67+ oval' },
-      { gene: 'pattern_scale', effect: 'dots only — bigger scale means fewer, larger dots (34 small → 9 large)' },
-      { gene: 'pattern_contrast', effect: 'how loud all three read: gradient depth, dot opacity, oval tone gap' },
+      { gene: 'pattern_horn', effect: 'the HORN\'s treatment: 0–0.25 flat, 0.25–0.5 gradient, 0.5–0.75 dots, 0.75+ oval' },
+      { gene: 'pattern_mandible', effect: 'the JAWS\' treatment, same four buckets, chosen independently of the horn\'s' },
+      { gene: 'pattern_scale', effect: 'dots only — bigger scale means fewer, larger dots. Shared by both components' },
+      { gene: 'pattern_contrast', effect: 'how loud a treatment reads: gradient depth, dot opacity, oval tone gap. Shared by both components' },
       { gene: 'hue', effect: 'the light tone is the shell hue walked toward amber, so it stays in family' },
+    ],
+  },
+  {
+    id: 'seglight',
+    group: 'surface',
+    name: 'Segment lighting',
+    blurb: 'The soft warm bloom on every trunk segment. Its core colour is a reference-palette swatch of its own — heritable, and not tied to the body colour — while its outer fade is built from the body\'s own lightness and saturation so the edge never goes muddy.',
+    core: true,
+    drawnBy: 'palette() → segmentMass()',
+    gate: 'always, on every trunk mass. Never on the head, which carries no lighting at all',
+    genes: [
+      { gene: 'light_hue', effect: 'which of the ten reference-palette swatches the bloom\'s core is. 7 is cream, which is what every bug used to get' },
+      { gene: 'lightness', effect: 'the outer stops fade toward a lightened version of the body, so a lighter body has a lighter blob edge' },
+      { gene: 'saturation', effect: 'that same outer tone keeps roughly half the body\'s saturation, which is what stops the edge reading as dirt' },
+      { gene: 'body_segments', effect: 'one bloom per trunk segment' },
     ],
   },
   {
@@ -534,6 +552,7 @@ const FOCUS = {
   ocelli:    { zoom: 3.10, y: 0.54 },
   antennae:  { zoom: 2.20, y: 0.56 },
   inklimbs:  { zoom: 1.30, y: 0 },
+  seglight:  { zoom: 1.55, y: -0.10 },
   setae:     { zoom: 1.55, y: -0.24 },
   speckle:   { zoom: 1.75, y: -0.12 },
 };
@@ -625,7 +644,7 @@ export const SIM_ONLY = {
 
 /**
  * gene → every part it touches. Built once, so the parameter panel can answer
- * "what does this slider move" for all 48 genes without a search.
+ * "what does this slider move" for all 50 genes without a search.
  */
 export const GENE_INFO = (() => {
   const map = {};
