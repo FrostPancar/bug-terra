@@ -144,9 +144,14 @@ test('new genes drive their stats', () => {
   const horned = computeStats({ ...base, horn_size: 1 });
   assert.ok(horned.attack > hornless.attack, 'a horn must raise attack');
 
-  const smooth = computeStats({ ...base, claw_size: 0 });
-  const clawed = computeStats({ ...base, claw_size: 1 });
-  assert.ok(clawed.grip > smooth.grip, 'claws must raise grip');
+  // `claw_size` became `foot_size` when tarsal claws left the art. Grip still
+  // reads it at the same weight — contact area, not hooks, was always the model.
+  const narrowFoot = computeStats({ ...base, foot_size: 0 });
+  const broadFoot = computeStats({ ...base, foot_size: 1 });
+  assert.ok(broadFoot.grip > narrowFoot.grip, 'a broader foot must raise grip');
+  // Attack still carries a foot term (halved from the old claw term), but this
+  // fixture's attack sigmoid is already saturated, so it is not asserted here —
+  // grip is the stat foot_size actually gates.
 
   const twoEyes = computeStats({ ...base, eye_count: 2 });
   const eightEyes = computeStats({ ...base, eye_count: 8 });

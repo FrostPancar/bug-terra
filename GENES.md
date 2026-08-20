@@ -34,7 +34,7 @@ GLB mapping all read it.
 | `leg_thickness` | 0–1 | Limb width. Feeds grip. |
 | `leg_spread` | 0–1 | How far legs splay. Wider stance = more agility. |
 | `leg_joints` | int 2–3 | Limb sections. A third joint improves grip and gait. |
-| `claw_size` | 0–1 | Tarsal claws. Main grip input, small attack contribution. |
+| `foot_size` | 0–1 | Round foot pad radius, 0.30–0.95 of leg width. Main grip input, small attack contribution. (Renamed from `claw_size`; tarsal claws are no longer drawn.) |
 
 ### Wings — 3
 
@@ -103,10 +103,10 @@ Two new ones, and several formulas now read the new genes.
 | Stat | Driven by |
 |---|---|
 | **venom** *(new)* | `stinger_size`, `tail_length`. Bypasses armour, lands over time. 0 without a stinger. |
-| **grip** *(new)* | `claw_size`, `leg_joints`, `leg_thickness`. Converts effort into motion — gates speed. |
+| **grip** *(new)* | `foot_size`, `leg_joints`, `leg_thickness`. Converts effort into motion — gates speed. |
 | speed | stride × cadence, now scaled by grip |
 | defense | carapace + `spine_density` |
-| attack | mandibles + `horn_size` + `claw_size` + body mass |
+| attack | mandibles + `horn_size` + `foot_size` (half its old claw weight) + body mass |
 | health | bulk + shell + `body_segments` |
 | flight | 0 unless `wing_count` > 0; then wing loading vs. beat |
 | vision | `eye_size` × `eye_count` gain + antennae |
@@ -152,7 +152,7 @@ archetypes sit within 20 units of each other in stat space. Both are asserted in
 
 The art layer reads the new genes, so structure is visible rather than just
 numeric: segment lines on the abdomen, two- vs. three-jointed legs, tarsal
-claws, one or two wing pairs, horns, spine rows, tails with stingers, two to
+feet, one or two wing pairs, horns, spine rows, tails with stingers, two to
 eight eyes laid out along the head, fur, iridescent sheen, and translucent
 cuticle.
 

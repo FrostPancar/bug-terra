@@ -524,7 +524,9 @@ function buildLegs(L) {
     for (const side of [-1, 1]) {
       L.legs.push(buildLeg({
         ax, ay: ay * side, side, pair: i, t,
-        len: len * lerp(1.05, 0.92, t), w, fan, claw: g.claw_size,
+        // NOT `foot` — buildLeg() already returns a `foot` POINT, and spreading
+        // this object into it would collide. `footSize` is the gene scalar.
+        len: len * lerp(1.05, 0.92, t), w, fan, footSize: g.foot_size,
       }));
     }
   }
@@ -549,8 +551,11 @@ function buildHead(L) {
   const { g, plan, bodyWid, unit } = L;
   // Heads read smaller by default now: the window was 0.36–0.48 of body width,
   // which made even head_size=0 a boulder. Widened at both ends AND shifted
-  // down, so the calibrated default (0.22) lands well under the old midpoint.
-  const headR = bodyWid * (plan === 'arachnid' ? 0.28 : lerp(0.22, 0.62, g.head_size));
+  // down. The floor then went 0.22 → 0.16 when the median dropped to 0.10:
+  // at a 0.22 floor a 0.10 gene was only 6% off the old default and did not
+  // read as a smaller head at all. At 0.16 the new default lands at 0.206 of
+  // body width, a third under the old 0.308, which is visible.
+  const headR = bodyWid * (plan === 'arachnid' ? 0.28 : lerp(0.16, 0.62, g.head_size));
   const hx = L.trunkFrontX + headR * (plan === 'arachnid' ? 0.06 : 0.54);
   L.head = { x: hx, y: 0, rx: headR * 1.0, ry: headR, kind: 'head' };
 
@@ -748,7 +753,8 @@ function speckleLimb(ctx, leg, col, amount) {
 /**
  * A filled shape that follows a quadratic curve and tapers from w0 to w1.
  * This is what separates a designed horn from a bent line: real silhouettes
- * need mass at the base and a point at the tip, which a stroke can't give.
+ * need mass at the base and a rounded taper at the tip, which a stroke can't
+ * give. See taperedPath for the tip cap.
  */
 function taperedCurve(ctx, p0, p1, p2, w0, w1, fill, steps = 16) {
   taperedPath(ctx, p0, p1, p2, w0, w1, steps);
@@ -756,9 +762,20 @@ function taperedCurve(ctx, p0, p1, p2, w0, w1, fill, steps = 16) {
   ctx.fill();
 }
 
-/** taperedCurve's outline, left on the context so a caller can clip to it. */
+/**
+ * taperedCurve's outline, left on the context so a caller can clip to it.
+ *
+ * THE TIP IS CAPPED WITH AN ARC, not a flat chisel edge. Every spike, barb and
+ * tooth in the horn/mandible set ends here, and the old straight closing
+ * segment is exactly what made them read as cut-off needles: at a narrow w1 the
+ * two flanks met at a hard corner on each side of a razor-thin edge. A
+ * semicircle of radius w1/2 swung round the endpoint turns that into a blunt,
+ * rounded tip. It costs nothing when w1 is genuinely tiny and does all the work
+ * when the caller asks for a fatter tip, which the serration callers now do.
+ */
 function taperedPath(ctx, p0, p1, p2, w0, w1, steps = 16) {
   const left = [], right = [];
+  let tipAngle = 0;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps, u = 1 - t;
     const x = u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x;
@@ -770,10 +787,17 @@ function taperedPath(ctx, p0, p1, p2, w0, w1, steps = 16) {
     const w = lerp(w0, w1, t) * 0.5;
     left.push({ x: x + nx * w, y: y + ny * w });
     right.push({ x: x - nx * w, y: y - ny * w });
+    if (i === steps) tipAngle = Math.atan2(dy, dx);
   }
+  const tip = qpoint(p0, p1, p2, 1);
+  const r = Math.abs(w1) * 0.5;
   ctx.beginPath();
   ctx.moveTo(left[0].x, left[0].y);
   for (const p of left) ctx.lineTo(p.x, p.y);
+  // Round the tip: the left flank ends at tipAngle + 90°, the right at
+  // tipAngle - 90°, so sweep between them THROUGH the forward direction —
+  // decreasing angle, i.e. anticlockwise in canvas terms.
+  if (r > 0.02) ctx.arc(tip.x, tip.y, r, tipAngle + Math.PI / 2, tipAngle - Math.PI / 2, true);
   for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
   ctx.closePath();
 }
@@ -1023,17 +1047,13 @@ function drawLegs(ctx, L, col, phase) {
             lerp(leg.attach.x, foot.x, 0.30), lerp(knee.y, foot.y, 0.18),
             foot.x, foot.y, leg.w, col.limb);
 
-    // Foot: a small filled dot at the tip. Style only — it wants to punctuate
-    // the capsule, not compete with it, so it stays under the cap's own width.
-    fillEllipse(ctx, foot.x, foot.y, leg.w * 0.42, leg.w * 0.42, col.limbLo);
-
-    if (leg.claw > 0.30) {
-      const cl = leg.w * (0.5 + leg.claw * 1.1);
-      capsule(ctx, foot.x, foot.y,
-              foot.x + cl * 0.7, foot.y + leg.side * cl * 0.25,
-              foot.x + cl, foot.y - leg.side * cl * 0.10,
-              leg.w * 0.55, col.limbLo);
-    }
+    // Foot: a round pad at the tip, sized by `foot_size`. The hooked tarsal
+    // claw that used to grow off it is GONE — the pad is the whole foot now, so
+    // the gene drives its radius instead of a fixed 0.42 of the leg width.
+    // 0.30 of leg width still reads as bare punctuation under the capsule cap;
+    // 0.95 is a heavy bulb that clearly overhangs it.
+    const fr = leg.w * lerp(0.30, 0.95, clamp(leg.footSize ?? 0, 0, 1));
+    fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limbLo);
     speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
   }
 }
@@ -1069,18 +1089,20 @@ function drawHorn(ctx, L, col, pat) {
 
   switch (L.hornType) {
     case 'nose': {
-      // One straight central spike, wide at the base, sharp at the tip.
+      // One straight central spike, wide at the base, tapering to a BLUNT
+      // rounded tip — taperedPath caps every tip with an arc now, and the tip
+      // width went 0.10 → 0.30 of base so there is a cap to see.
       // Serration adds PAIRS of small barbs up the shaft — the sketch's stacked
       // flame notches — leaving the spike underneath exactly as it was.
       piece({ x: x0, y: 0 }, { x: x0 + len * 0.55, y: 0 }, { x: x0 + len, y: 0 },
-            base * 2.20, base * 0.10, 3);
+            base * 2.65, base * 0.30, 3);
       for (let i = 0; i < sr; i++) {
         const t = 0.40 + i * 0.26;
         for (const side of [-1, 1]) {
           piece({ x: x0 + len * t, y: side * base * 0.28 },
                 { x: x0 + len * (t + 0.05), y: side * base * 0.95 },
                 { x: x0 + len * (t + 0.17), y: side * base * 1.20 },
-                base * 0.55, base * 0.05, 11 + i * 5 + side);
+                base * 0.80, base * 0.34, 11 + i * 5 + side);
         }
       }
       break;
@@ -1092,14 +1114,14 @@ function drawHorn(ctx, L, col, pat) {
         const p0 = { x: x0, y: side * base * 0.30 };
         const p1 = { x: x0 + len * 0.80, y: side * sp * 1.25 };
         const p2 = { x: x0 + len * 1.00, y: side * sp * 0.30 };
-        piece(p0, p1, p2, base * 1.15, base * 0.10, 5 + side);
+        piece(p0, p1, p2, base * 1.40, base * 0.30, 5 + side);
         for (let i = 0; i < sr; i++) {
           // inward-pointing tooth on the inner edge
           const c = qpoint(p0, p1, p2, 0.52 + i * 0.20);
           piece(c,
                 { x: c.x + len * 0.04, y: c.y - side * sp * 0.18 },
                 { x: c.x + len * 0.10, y: c.y - side * sp * 0.44 },
-                base * 0.60, base * 0.06, 41 + i * 7 + side);
+                base * 0.86, base * 0.36, 41 + i * 7 + side);
         }
       }
       break;
@@ -1108,18 +1130,18 @@ function drawHorn(ctx, L, col, pat) {
       // A stem that forks into two outward-hooking arms. Serration hangs extra
       // spurs off the stem; the fork itself never changes.
       piece({ x: x0, y: 0 }, { x: x0 + len * 0.30, y: 0 }, { x: x0 + len * 0.62, y: 0 },
-            base * 2.30, base * 1.30, 7);
+            base * 2.80, base * 1.58, 7);
       for (const side of [-1, 1]) {
         piece({ x: x0 + len * 0.56, y: side * base * 0.30 },
               { x: x0 + len * 0.80, y: side * sp * 0.55 },
               { x: x0 + len * 1.00, y: side * sp * 0.95 },
-              base * 1.15, base * 0.10, 13 + side);
+              base * 1.40, base * 0.30, 13 + side);
         for (let i = 0; i < sr; i++) {
           const t = 0.28 + i * 0.20;
           piece({ x: x0 + len * t, y: side * base * 0.40 },
                 { x: x0 + len * (t + 0.06), y: side * sp * 0.50 },
                 { x: x0 + len * (t + 0.13), y: side * sp * 0.74 },
-                base * 0.60, base * 0.06, 61 + i * 9 + side);
+                base * 0.86, base * 0.36, 61 + i * 9 + side);
         }
       }
       break;
@@ -1131,13 +1153,13 @@ function drawHorn(ctx, L, col, pat) {
         const p0 = { x: x0, y: side * base * 0.40 };
         const p1 = { x: x0 + len * 0.88, y: side * sp * 1.70 };
         const p2 = { x: x0 + len * 1.05, y: side * sp * 0.35 };
-        piece(p0, p1, p2, base * 2.40, base * 0.12, 17 + side);
+        piece(p0, p1, p2, base * 2.90, base * 0.34, 17 + side);
         for (let i = 0; i < sr; i++) {
           const c = qpoint(p0, p1, p2, 0.46 + i * 0.24);
           piece(c,
                 { x: c.x + len * 0.06, y: c.y - side * sp * 0.26 },
                 { x: c.x + len * 0.16, y: c.y - side * sp * 0.62 },
-                base * 0.75, base * 0.07, 71 + i * 11 + side);
+                base * 1.06, base * 0.42, 71 + i * 11 + side);
         }
       }
       break;
@@ -1154,7 +1176,7 @@ function drawHorn(ctx, L, col, pat) {
           { x: x0, y: dy * h.ry * 0.38 },
           { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.78 },
           { x: x0 + len * sc, y: dy * h.ry * 1.00 },
-          base * 0.85, base * 0.10, 23 + dy);
+          base * 1.04, base * 0.30, 23 + dy);
       }
       break;
     }
@@ -1226,7 +1248,7 @@ function drawMandibles(ctx, L, col, state, lunge, pat) {
         piece(c,
           { x: c.x + m * reach * 0.42, y: c.y - side * m * reach * 0.44 },
           { x: c.x + m * reach * 0.94, y: c.y - side * m * reach * 1.00 },
-          w * size, w * 0.08, seed + i * 3);
+          w * size, w * size * 0.38, seed + i * 3);
       }
     };
 
@@ -1237,9 +1259,9 @@ function drawMandibles(ctx, L, col, state, lunge, pat) {
         const p0 = { x: 0, y: 0 };
         const p1 = { x: m * 0.54, y: side * m * 0.38 };
         const p2 = { x: m * 0.92, y: side * m * -0.12 };
-        piece(p0, p1, p2, w * 2.60, w * 0.26, 101 + side);
+        piece(p0, p1, p2, w * 3.15, w * 0.62, 101 + side);
         // Deep teeth bitten out of the MIDDLE of the inner edge.
-        teeth(p0, p1, p2, sr, 1.15, 0.30, 0.34, 0.26, 111 + side);
+        teeth(p0, p1, p2, sr, 1.58, 0.32, 0.34, 0.26, 111 + side);
         break;
       }
       case 'chelicerae_teeth': {
@@ -1258,9 +1280,9 @@ function drawMandibles(ctx, L, col, state, lunge, pat) {
         const p0 = { x: 0, y: 0 };
         const p1 = { x: m * 0.74, y: side * m * 0.26 };
         const p2 = { x: m * 1.32, y: side * m * 0.68 };
-        piece(p0, p1, p2, w * 0.85, w * 0.10, 131 + side);
+        piece(p0, p1, p2, w * 1.04, w * 0.26, 131 + side);
         // Barbs LOW on the inner edge, in the bottom third, not up by the tip.
-        teeth(p0, p1, p2, sr, 0.70, 0.22, 0.22, 0.21, 141 + side);
+        teeth(p0, p1, p2, sr, 0.98, 0.24, 0.22, 0.21, 141 + side);
         break;
       }
     }
@@ -1280,18 +1302,18 @@ function chelicera(ctx, piece, m, w, side, fill, withTeeth) {
   const p0 = { x: 0, y: 0 };
   const p1 = { x: m * 0.32, y: side * m * 0.02 };
   const p2 = { x: m * 0.62, y: side * m * 0.04 };
-  const cap = w * 1.55;
+  const cap = w * 1.88;
   // Stout: roughly twice as tall as it is wide, which is the sheet's proportion.
   // A slimmer column reads as a stick rather than a blunt fang.
-  piece(p0, p1, p2, w * 3.10, w * 2.95, 151 + side);
+  piece(p0, p1, p2, w * 3.75, w * 3.58, 151 + side);
   fillEllipse(ctx, p2.x, p2.y, cap, cap, fill);
   if (!withTeeth) return;
-  // one small sharp fang off the tip, on the inner side
+  // one small fang off the tip, on the inner side — rounded, not needled
   piece(
     { x: p2.x, y: p2.y - side * cap * 0.55 },
     { x: p2.x + m * 0.10, y: p2.y - side * cap * 0.95 },
     { x: p2.x + m * 0.24, y: p2.y - side * cap * 1.05 },
-    w * 0.62, w * 0.05, 161 + side);
+    w * 0.88, w * 0.30, 161 + side);
 }
 
 /* ------------------------------------------------------------- antennae -- */
@@ -1599,9 +1621,16 @@ export function drawBug(ctx, g, opts = {}) {
    * — the covers are drawn inside the abdomen group instead — but the bug still
    * has wings, so it takes the winged ordering and the thorax goes on top.
    *
-   * Face furniture (antennae, mandibles) is drawn immediately after the head so
-   * the head silhouette cannot swallow it. It projects FORWARD, away from the
-   * trunk, so the trunk drawing over it costs nothing visible.
+   * FACE FURNITURE IS SPLIT, and the split is deliberate:
+   *
+   *   MANDIBLES go UNDER the head, with the eyes. They hinge behind the face,
+   *   so the head edge cropping their roots is the thing that sells the hinge.
+   *   Both blades reach forward well past the silhouette, so the head covers
+   *   only the part that should be hidden anyway.
+   *
+   *   ANTENNAE go OVER the head. They sprout from the face plate itself, not
+   *   from behind it, and their bases sit inside the head ellipse — drawn
+   *   underneath they would simply disappear.
    *
    * THE HORN IS NOT FACE FURNITURE. It mounts on the thorax, so it is drawn dead
    * last, above everything, in both cases — anywhere earlier and its base is
@@ -1619,7 +1648,15 @@ export function drawBug(ctx, g, opts = {}) {
   //    signature of the reference, and the wedge shape is drawn to be cropped.
   drawEyes(ctx, L, col);
 
-  // 3. the head — FLAT. One solid fill, no gradient, no bloom, no rim darkening.
+  // 3. Mandibles go UNDER the head too, alongside the eyes. They are jaw parts
+  //    hinged BEHIND the face, so the head edge cropping their roots is what
+  //    makes them read as hinged rather than glued on. Their working ends reach
+  //    forward past the silhouette, so nothing that matters is covered.
+  //    Antennae stay ABOVE the head (step 5) — they sprout from the face plate
+  //    itself and would vanish into it from underneath.
+  drawMandibles(ctx, L, col, state, lunge, pat);
+
+  // 4. the head — FLAT. One solid fill, no gradient, no bloom, no rim darkening.
   //    The crown mark that follows is the only blend allowed to touch it.
   ctx.beginPath();
   ctx.ellipse(L.head.x, 0, L.head.rx, L.head.ry, 0, 0, TAU);
@@ -1627,11 +1664,10 @@ export function drawBug(ctx, g, opts = {}) {
   ctx.fill();
   drawCrownMark(ctx, L, col);
 
-  // 4. face furniture, in front of the head
+  // 5. antennae, in front of the head
   drawAntennae(ctx, L, col, phase);
-  drawMandibles(ctx, L, col, state, lunge, pat);
 
-  // 5/6/7. the trunk, ordered by whether the bug has wings
+  // 6/7. the trunk, ordered by whether the bug has wings
   const trunk = L.parts.filter((p) => p !== L.thorax);
 
   /** The abdomen group: segment masses, elytra, speckle, seam. Moves as one. */

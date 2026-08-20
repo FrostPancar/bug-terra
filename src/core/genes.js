@@ -45,7 +45,7 @@ export const GENE_SPECS = {
   body_length:        { min: 0, max: 1, default: 0.53 },
   body_width:         { min: 0, max: 1, default: 0.21 },
   body_mass:          { min: 0, max: 1, default: 0.75 },
-  head_size:          { min: 0, max: 1, default: 0.22 },
+  head_size:          { min: 0, max: 1, default: 0.10 },
   thorax_ratio:       { min: 0, max: 1, default: 0.22 },   // thorax vs abdomen
   abdomen_taper:      { min: 0, max: 1, default: 0.51 },   // 0 round, 1 pointed
   carapace_thickness: { min: 0, max: 1, default: 0.70 },
@@ -53,10 +53,14 @@ export const GENE_SPECS = {
   /* ---- limbs ---- */
   leg_count:          { min: 2, max: 12, integer: true, step: 2, default: 6 },
   leg_length:         { min: 0, max: 1, default: 0.47 },
-  leg_thickness:      { min: 0, max: 1, default: 0.92 },
+  leg_thickness:      { min: 0, max: 1, default: 1.00 },
   leg_spread:         { min: 0, max: 1, default: 0.75 },
   leg_joints:         { min: 1, max: 5, integer: true, default: 2 },
-  claw_size:          { min: 0, max: 1, default: 0.08 },
+  // RENAMED from `claw_size`. Tarsal claws are gone from the art entirely; the
+  // gene now sizes the round foot pad at the tip of every leg, from a small dot
+  // at 0 to a heavy bulb at 1. It keeps its grip/attack roles in stats.js —
+  // a broad foot is still traction, and still something to press with.
+  foot_size:          { min: 0, max: 1, default: 0.30 },
 
   /* ---- wings ---- */
   // 0 / 2 / 4 / 6. Unchanged: zero is still a legal, meaningful genome (every

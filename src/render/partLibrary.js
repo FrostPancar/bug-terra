@@ -129,7 +129,7 @@ export const PARTS = [
     core: true,
     drawnBy: 'buildHead()',
     genes: [
-      { gene: 'head_size', effect: 'capsule radius, 0.22–0.62 of body width (ignored on arachnids)' },
+      { gene: 'head_size', effect: 'capsule radius, 0.16–0.62 of body width (ignored on arachnids)' },
       { gene: 'body_width', effect: 'the width the head radius is a fraction of' },
     ],
   },
@@ -170,27 +170,14 @@ export const PARTS = [
     id: 'feet',
     group: 'limbs',
     name: 'Feet',
-    blurb: 'A small dark dot on the tip of every leg. Punctuation, not a part you can remove.',
+    blurb: 'A round pad on the tip of every leg, from a dot to a heavy bulb. '
+         + 'Always present — foot_size sets how much of it there is.',
     core: true,
     drawnBy: 'drawLegs() → the foot circle at leg.foot',
     genes: [
-      { gene: 'leg_thickness', effect: 'the dot is drawn at 0.42 of the leg width' },
+      { gene: 'foot_size', effect: 'pad radius, 0.30–0.95 of the leg width' },
+      { gene: 'leg_thickness', effect: 'the leg width the pad is measured against' },
       { gene: 'leg_count', effect: 'one foot per leg' },
-    ],
-  },
-  {
-    id: 'claws',
-    group: 'limbs',
-    name: 'Tarsal claws',
-    blurb: 'A short hooked capsule on the end of each leg.',
-    drawnBy: 'drawLegs() → the second capsule',
-    gate: 'claw_size > 0.30',
-    present: (g) => g.claw_size > 0.30,
-    on: { claw_size: 0.72 },
-    off: { claw_size: 0.15 },
-    genes: [
-      { gene: 'claw_size', effect: 'hook length, and the main grip input' },
-      { gene: 'leg_thickness', effect: 'claws are drawn at 0.55 of the leg width' },
     ],
   },
 
@@ -536,7 +523,6 @@ const FOCUS = {
   segments:  { zoom: 1.12, y: 0 },
   legs:      { zoom: 1.15, y: 0 },
   feet:      { zoom: 1.50, y: -0.14 },
-  claws:     { zoom: 1.50, y: -0.10 },
   wings:     { zoom: 1.12, y: -0.14 },
   horn:      { zoom: 3.00, y: 0.62 },
   hornserration: { zoom: 3.40, y: 0.66 },

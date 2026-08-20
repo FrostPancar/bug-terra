@@ -220,8 +220,8 @@ export const CLASS_TREE = {
   mantis: {
     taxon: 'Mantis', tier: 1, parent: 'larva', order: 'Mantodea',
     clade: 'hexapod', adjective: 'Hooked', status: 'coded',
-    window: { claw_size: [0.80, 1], body_length: [0.75, 1], leg_length: [0.60, 1] },
-    locks: [], unlocks: ['claw_size'], specialty: null,
+    window: { foot_size: [0.80, 1], body_length: [0.75, 1], leg_length: [0.60, 1] },
+    locks: [], unlocks: ['foot_size'], specialty: null,
     blurb: 'Reach as a weapon. Waits, then closes the distance once.',
   },
   moth: {
@@ -468,9 +468,9 @@ export const CLASS_TREE = {
     clade: 'arachnid', adjective: 'Barbed', status: 'drafted',
     window: {
       stinger_size: [0.7, 1], tail_length: [0.6, 1],
-      claw_size: [0.6, 1], carapace_thickness: [0.5, 1],
+      foot_size: [0.6, 1], carapace_thickness: [0.5, 1],
     },
-    locks: ['tail_length'], unlocks: ['stinger_size', 'claw_size'],
+    locks: ['tail_length'], unlocks: ['stinger_size', 'foot_size'],
     specialty: { key: 'pincer_and_tail', name: 'Pincer and Tail', mods: { venom: 1.12, defense: 1.08 } },
     blurb: 'Armoured and venomous at once, which is rare and unfair.',
   },

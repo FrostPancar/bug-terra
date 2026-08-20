@@ -745,7 +745,7 @@
     body_length: { min: 0, max: 1, default: 0.53 },
     body_width: { min: 0, max: 1, default: 0.21 },
     body_mass: { min: 0, max: 1, default: 0.75 },
-    head_size: { min: 0, max: 1, default: 0.22 },
+    head_size: { min: 0, max: 1, default: 0.1 },
     thorax_ratio: { min: 0, max: 1, default: 0.22 },
     // thorax vs abdomen
     abdomen_taper: { min: 0, max: 1, default: 0.51 },
@@ -754,10 +754,14 @@
     /* ---- limbs ---- */
     leg_count: { min: 2, max: 12, integer: true, step: 2, default: 6 },
     leg_length: { min: 0, max: 1, default: 0.47 },
-    leg_thickness: { min: 0, max: 1, default: 0.92 },
+    leg_thickness: { min: 0, max: 1, default: 1 },
     leg_spread: { min: 0, max: 1, default: 0.75 },
     leg_joints: { min: 1, max: 5, integer: true, default: 2 },
-    claw_size: { min: 0, max: 1, default: 0.08 },
+    // RENAMED from `claw_size`. Tarsal claws are gone from the art entirely; the
+    // gene now sizes the round foot pad at the tip of every leg, from a small dot
+    // at 0 to a heavy bulb at 1. It keeps its grip/attack roles in stats.js —
+    // a broad foot is still traction, and still something to press with.
+    foot_size: { min: 0, max: 1, default: 0.3 },
     /* ---- wings ---- */
     // 0 / 2 / 4 / 6. Unchanged: zero is still a legal, meaningful genome (every
     // arachnid archetype uses it) and six still fans three blades a side.
@@ -954,7 +958,7 @@
   }
   function computeStats(g) {
     const m = morphology(g);
-    const grip = clamp(100 * sig(0.55 * g.claw_size + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
+    const grip = clamp(100 * sig(0.55 * g.foot_size + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
     const stride = m.legLen * (0.55 + 0.45 * Math.log2(m.legs) / Math.log2(10));
     const cadence = 1 / (0.35 + m.strideLoad * 0.55);
     const speed = clamp(stride * cadence * 19 * (0.82 + grip / 100 * 0.3), 1, 100);
@@ -971,9 +975,9 @@
     );
     const bite = g.mandible_size * (0.6 + 0.6 * g.mandible_serration);
     const horn = g.horn_size * 0.55;
-    const claws = g.claw_size * 0.3;
+    const feet = g.foot_size * 0.15;
     const attack = clamp(
-      100 * sig(bite * 0.85 + horn + claws + Math.min(m.mass, 3) * 0.12, 5),
+      100 * sig(bite * 0.85 + horn + feet + Math.min(m.mass, 3) * 0.12, 5),
       1,
       100
     );
@@ -1191,9 +1195,9 @@
       clade: "hexapod",
       adjective: "Hooked",
       status: "coded",
-      window: { claw_size: [0.8, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
+      window: { foot_size: [0.8, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
       locks: [],
-      unlocks: ["claw_size"],
+      unlocks: ["foot_size"],
       specialty: null,
       blurb: "Reach as a weapon. Waits, then closes the distance once."
     },
@@ -1606,11 +1610,11 @@
       window: {
         stinger_size: [0.7, 1],
         tail_length: [0.6, 1],
-        claw_size: [0.6, 1],
+        foot_size: [0.6, 1],
         carapace_thickness: [0.5, 1]
       },
       locks: ["tail_length"],
-      unlocks: ["stinger_size", "claw_size"],
+      unlocks: ["stinger_size", "foot_size"],
       specialty: { key: "pincer_and_tail", name: "Pincer and Tail", mods: { venom: 1.12, defense: 1.08 } },
       blurb: "Armoured and venomous at once, which is rare and unfair."
     },
@@ -2356,10 +2360,12 @@
           side,
           pair: i,
           t,
+          // NOT `foot` — buildLeg() already returns a `foot` POINT, and spreading
+          // this object into it would collide. `footSize` is the gene scalar.
           len: len * lerp(1.05, 0.92, t),
           w,
           fan,
-          claw: g.claw_size
+          footSize: g.foot_size
         }));
       }
     }
@@ -2376,7 +2382,7 @@
   }
   function buildHead(L) {
     const { g, plan, bodyWid, unit } = L;
-    const headR = bodyWid * (plan === "arachnid" ? 0.28 : lerp(0.22, 0.62, g.head_size));
+    const headR = bodyWid * (plan === "arachnid" ? 0.28 : lerp(0.16, 0.62, g.head_size));
     const hx = L.trunkFrontX + headR * (plan === "arachnid" ? 0.06 : 0.54);
     L.head = { x: hx, y: 0, rx: headR * 1, ry: headR, kind: "head" };
     const er = headR * lerp(0.45, 1.05, g.eye_size);
@@ -2522,6 +2528,7 @@
   }
   function taperedPath(ctx, p0, p1, p2, w02, w1, steps = 16) {
     const left = [], right = [];
+    let tipAngle = 0;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps, u = 1 - t;
       const x = u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x;
@@ -2533,10 +2540,14 @@
       const w = lerp(w02, w1, t) * 0.5;
       left.push({ x: x + nx * w, y: y + ny * w });
       right.push({ x: x - nx * w, y: y - ny * w });
+      if (i === steps) tipAngle = Math.atan2(dy, dx);
     }
+    const tip = qpoint(p0, p1, p2, 1);
+    const r = Math.abs(w1) * 0.5;
     ctx.beginPath();
     ctx.moveTo(left[0].x, left[0].y);
     for (const p of left) ctx.lineTo(p.x, p.y);
+    if (r > 0.02) ctx.arc(tip.x, tip.y, r, tipAngle + Math.PI / 2, tipAngle - Math.PI / 2, true);
     for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
     ctx.closePath();
   }
@@ -2710,21 +2721,8 @@
         leg.w,
         col.limb
       );
-      fillEllipse(ctx, foot.x, foot.y, leg.w * 0.42, leg.w * 0.42, col.limbLo);
-      if (leg.claw > 0.3) {
-        const cl = leg.w * (0.5 + leg.claw * 1.1);
-        capsule(
-          ctx,
-          foot.x,
-          foot.y,
-          foot.x + cl * 0.7,
-          foot.y + leg.side * cl * 0.25,
-          foot.x + cl,
-          foot.y - leg.side * cl * 0.1,
-          leg.w * 0.55,
-          col.limbLo
-        );
-      }
+      const fr = leg.w * lerp(0.3, 0.95, clamp2(leg.footSize ?? 0, 0, 1));
+      fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limbLo);
       speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
     }
   }
@@ -2744,8 +2742,8 @@
           { x: x0, y: 0 },
           { x: x0 + len * 0.55, y: 0 },
           { x: x0 + len, y: 0 },
-          base * 2.2,
-          base * 0.1,
+          base * 2.65,
+          base * 0.3,
           3
         );
         for (let i = 0; i < sr; i++) {
@@ -2755,8 +2753,8 @@
               { x: x0 + len * t, y: side * base * 0.28 },
               { x: x0 + len * (t + 0.05), y: side * base * 0.95 },
               { x: x0 + len * (t + 0.17), y: side * base * 1.2 },
-              base * 0.55,
-              base * 0.05,
+              base * 0.8,
+              base * 0.34,
               11 + i * 5 + side
             );
           }
@@ -2768,15 +2766,15 @@
           const p0 = { x: x0, y: side * base * 0.3 };
           const p1 = { x: x0 + len * 0.8, y: side * sp * 1.25 };
           const p2 = { x: x0 + len * 1, y: side * sp * 0.3 };
-          piece(p0, p1, p2, base * 1.15, base * 0.1, 5 + side);
+          piece(p0, p1, p2, base * 1.4, base * 0.3, 5 + side);
           for (let i = 0; i < sr; i++) {
             const c = qpoint(p0, p1, p2, 0.52 + i * 0.2);
             piece(
               c,
               { x: c.x + len * 0.04, y: c.y - side * sp * 0.18 },
               { x: c.x + len * 0.1, y: c.y - side * sp * 0.44 },
-              base * 0.6,
-              base * 0.06,
+              base * 0.86,
+              base * 0.36,
               41 + i * 7 + side
             );
           }
@@ -2788,8 +2786,8 @@
           { x: x0, y: 0 },
           { x: x0 + len * 0.3, y: 0 },
           { x: x0 + len * 0.62, y: 0 },
-          base * 2.3,
-          base * 1.3,
+          base * 2.8,
+          base * 1.58,
           7
         );
         for (const side of [-1, 1]) {
@@ -2797,8 +2795,8 @@
             { x: x0 + len * 0.56, y: side * base * 0.3 },
             { x: x0 + len * 0.8, y: side * sp * 0.55 },
             { x: x0 + len * 1, y: side * sp * 0.95 },
-            base * 1.15,
-            base * 0.1,
+            base * 1.4,
+            base * 0.3,
             13 + side
           );
           for (let i = 0; i < sr; i++) {
@@ -2807,8 +2805,8 @@
               { x: x0 + len * t, y: side * base * 0.4 },
               { x: x0 + len * (t + 0.06), y: side * sp * 0.5 },
               { x: x0 + len * (t + 0.13), y: side * sp * 0.74 },
-              base * 0.6,
-              base * 0.06,
+              base * 0.86,
+              base * 0.36,
               61 + i * 9 + side
             );
           }
@@ -2820,15 +2818,15 @@
           const p0 = { x: x0, y: side * base * 0.4 };
           const p1 = { x: x0 + len * 0.88, y: side * sp * 1.7 };
           const p2 = { x: x0 + len * 1.05, y: side * sp * 0.35 };
-          piece(p0, p1, p2, base * 2.4, base * 0.12, 17 + side);
+          piece(p0, p1, p2, base * 2.9, base * 0.34, 17 + side);
           for (let i = 0; i < sr; i++) {
             const c = qpoint(p0, p1, p2, 0.46 + i * 0.24);
             piece(
               c,
               { x: c.x + len * 0.06, y: c.y - side * sp * 0.26 },
               { x: c.x + len * 0.16, y: c.y - side * sp * 0.62 },
-              base * 0.75,
-              base * 0.07,
+              base * 1.06,
+              base * 0.42,
               71 + i * 11 + side
             );
           }
@@ -2843,8 +2841,8 @@
             { x: x0, y: dy * h.ry * 0.38 },
             { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.78 },
             { x: x0 + len * sc, y: dy * h.ry * 1 },
-            base * 0.85,
-            base * 0.1,
+            base * 1.04,
+            base * 0.3,
             23 + dy
           );
         }
@@ -2874,7 +2872,7 @@
             { x: c.x + m * reach * 0.42, y: c.y - side * m * reach * 0.44 },
             { x: c.x + m * reach * 0.94, y: c.y - side * m * reach * 1 },
             w * size,
-            w * 0.08,
+            w * size * 0.38,
             seed + i * 3
           );
         }
@@ -2884,8 +2882,8 @@
           const p0 = { x: 0, y: 0 };
           const p1 = { x: m * 0.54, y: side * m * 0.38 };
           const p2 = { x: m * 0.92, y: side * m * -0.12 };
-          piece(p0, p1, p2, w * 2.6, w * 0.26, 101 + side);
-          teeth(p0, p1, p2, sr, 1.15, 0.3, 0.34, 0.26, 111 + side);
+          piece(p0, p1, p2, w * 3.15, w * 0.62, 101 + side);
+          teeth(p0, p1, p2, sr, 1.58, 0.32, 0.34, 0.26, 111 + side);
           break;
         }
         case "chelicerae_teeth": {
@@ -2900,8 +2898,8 @@
           const p0 = { x: 0, y: 0 };
           const p1 = { x: m * 0.74, y: side * m * 0.26 };
           const p2 = { x: m * 1.32, y: side * m * 0.68 };
-          piece(p0, p1, p2, w * 0.85, w * 0.1, 131 + side);
-          teeth(p0, p1, p2, sr, 0.7, 0.22, 0.22, 0.21, 141 + side);
+          piece(p0, p1, p2, w * 1.04, w * 0.26, 131 + side);
+          teeth(p0, p1, p2, sr, 0.98, 0.24, 0.22, 0.21, 141 + side);
           break;
         }
       }
@@ -2912,16 +2910,16 @@
     const p0 = { x: 0, y: 0 };
     const p1 = { x: m * 0.32, y: side * m * 0.02 };
     const p2 = { x: m * 0.62, y: side * m * 0.04 };
-    const cap = w * 1.55;
-    piece(p0, p1, p2, w * 3.1, w * 2.95, 151 + side);
+    const cap = w * 1.88;
+    piece(p0, p1, p2, w * 3.75, w * 3.58, 151 + side);
     fillEllipse(ctx, p2.x, p2.y, cap, cap, fill);
     if (!withTeeth) return;
     piece(
       { x: p2.x, y: p2.y - side * cap * 0.55 },
       { x: p2.x + m * 0.1, y: p2.y - side * cap * 0.95 },
       { x: p2.x + m * 0.24, y: p2.y - side * cap * 1.05 },
-      w * 0.62,
-      w * 0.05,
+      w * 0.88,
+      w * 0.3,
       161 + side
     );
   }
@@ -3105,13 +3103,13 @@
     drawLegs(ctx, L, col, phase);
     drawTail(ctx, L, col, state, lunge);
     drawEyes(ctx, L, col);
+    drawMandibles(ctx, L, col, state, lunge, pat);
     ctx.beginPath();
     ctx.ellipse(L.head.x, 0, L.head.rx, L.head.ry, 0, 0, TAU);
     ctx.fillStyle = col.shell;
     ctx.fill();
     drawCrownMark(ctx, L, col);
     drawAntennae(ctx, L, col, phase);
-    drawMandibles(ctx, L, col, state, lunge, pat);
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
       for (const p of trunk) segmentMass(ctx, p, col);
@@ -3788,7 +3786,7 @@
         leg_length: 0.28,
         leg_thickness: 0.72,
         leg_joints: 3,
-        claw_size: 0.5,
+        foot_size: 0.5,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.2,
@@ -3833,7 +3831,7 @@
         leg_length: 0.55,
         leg_thickness: 0.22,
         leg_joints: 3,
-        claw_size: 0.3,
+        foot_size: 0.3,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.8,
@@ -3886,7 +3884,7 @@
         leg_length: 0.92,
         leg_thickness: 0.28,
         leg_joints: 3,
-        claw_size: 0.65,
+        foot_size: 0.65,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -3931,7 +3929,7 @@
         leg_length: 0.62,
         leg_thickness: 0.35,
         leg_joints: 3,
-        claw_size: 0.55,
+        foot_size: 0.55,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.35,
@@ -3977,7 +3975,7 @@
         leg_length: 0.78,
         leg_thickness: 0.32,
         leg_joints: 3,
-        claw_size: 0.95,
+        foot_size: 0.95,
         wing_count: 2,
         wing_type: 0,
         wing_area: 0.45,
@@ -4027,7 +4025,7 @@
         leg_length: 0.38,
         leg_thickness: 0.2,
         leg_joints: 2,
-        claw_size: 0.25,
+        foot_size: 0.25,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.98,
@@ -4078,7 +4076,7 @@
         leg_length: 0.48,
         leg_thickness: 0.18,
         leg_joints: 2,
-        claw_size: 0.45,
+        foot_size: 0.45,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -4122,7 +4120,7 @@
         leg_length: 0.3,
         leg_thickness: 0.45,
         leg_joints: 2,
-        claw_size: 0.4,
+        foot_size: 0.4,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.15,

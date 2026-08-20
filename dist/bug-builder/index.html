@@ -43,6 +43,12 @@ h1,h2,h3{margin:0}
   .desk{grid-column:1;grid-row:1;max-height:calc(100vh - 36px);overflow:hidden;
         display:flex;flex-direction:column}
   .desk>.card,.desk>.tabs{flex:0 0 auto}
+  /* The opened part's editor and the tabbed browser share the column's fixed
+     height budget, and the bar between them is how you re-cut that share. */
+  .desk>.deskTop{flex:0 0 var(--topH,300px);min-height:0;overflow:auto;margin-bottom:0}
+  .desk>.deskSplit{display:block;flex:0 0 auto}
+  .desk>.deskBottom{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+  .deskBottom>.tabs,.deskBottom>.tabhint{flex:0 0 auto}
 }
 .card{background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--drop);
   padding:14px;margin-bottom:14px}
@@ -54,8 +60,7 @@ h1,h2,h3{margin:0}
 .bugbox{position:relative;background:var(--dirt-deep);border-radius:var(--r-md);
   overflow:hidden;aspect-ratio:1/.86;max-height:58vh;display:grid;place-items:center}
 .bugbox canvas{width:100%;height:100%;display:block;image-rendering:auto}
-.bugbox .badge{position:absolute;left:10px;top:10px;font:700 10px/1 var(--mono);
-  letter-spacing:.14em;text-transform:uppercase;color:var(--cream);opacity:.7}
+.bugbox canvas{cursor:pointer}
 .poses{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}
 .poses button{background:rgba(23,17,13,.55);color:var(--cream);border-radius:999px;
   padding:6px 11px;font:700 11px/1 var(--mono);letter-spacing:.06em}
@@ -85,6 +90,15 @@ h1,h2,h3{margin:0}
   box-shadow:var(--drop-sm);margin-bottom:12px;overflow:auto}
 .tabs button{flex:1 0 auto;padding:9px 14px;border-radius:999px;font-size:13px;white-space:nowrap}
 .tabs button[aria-pressed=true]{background:var(--ink);color:var(--cream)}
+/* Stacked layout: the part editor is just another card and the split bar has
+   nothing to split, since the page scrolls freely below 1000px. */
+.deskTop{margin-bottom:14px}
+.deskSplit{display:none;height:14px;margin:0;position:relative;cursor:row-resize;
+  touch-action:none;background:none;width:100%}
+.deskSplit::before{content:"";position:absolute;left:50%;top:50%;translate:-50% -50%;
+  width:56px;height:5px;border-radius:999px;background:var(--paper-2);opacity:.5}
+.deskSplit:hover::before,.deskSplit.drag::before{opacity:1;background:var(--yellow)}
+.emptypart{color:var(--muted);font-size:12.5px;margin:0}
 .tabhint{margin:-6px 4px 10px;color:var(--cream);opacity:.62;font-size:12px;line-height:1.4}
 .panel{background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--drop);
   padding:14px;overflow:auto;flex:1 1 auto;min-height:0}
@@ -207,8 +221,7 @@ pre b{color:var(--yellow);font-weight:600}
   <section class="stage">
     <div class="card">
       <div class="bugbox">
-        <span class="badge" id="planBadge">—</span>
-        <canvas id="preview"></canvas>
+        <canvas id="preview" title="click a part to edit it"></canvas>
         <div class="poses" id="poses">
           <button data-state="idle" aria-pressed="true">idle</button>
           <button data-state="walk" aria-pressed="false">walk</button>
@@ -221,8 +234,6 @@ pre b{color:var(--yellow);font-weight:600}
         <span class="tag hot" id="taxonTag">—</span>
         <span class="tag" id="cladeTag"></span>
       </div>
-      <p class="note" id="taxonNote"></p>
-      <p class="note" id="driftNote"></p>
     </div>
 
     <div class="card">
@@ -233,30 +244,22 @@ pre b{color:var(--yellow);font-weight:600}
 
   <!-- -------------------------------------------------------------- desk -->
   <section class="desk">
-    <div class="card" style="margin-bottom:12px">
-      <div class="eyebrow">Start from</div>
-      <div class="chips" id="archChips"></div>
-      <div class="row" style="margin-top:10px">
-        <select id="taxonSel" aria-label="taxon"></select>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button class="btn go" id="loadTaxon">Load taxon build</button>
-        <button class="btn" id="randomize">Random</button>
-        <button class="btn" id="jitter">Nudge</button>
-        <button class="btn" id="undo">Undo</button>
-        <button class="btn dark" id="reset">Reset</button>
-      </div>
-      <p class="note" id="baseNote"></p>
-    </div>
+    <!-- The opened part's editor, in the slot the base picker used to hold. -->
+    <div class="card deskTop" id="partPanel"></div>
+    <div class="deskSplit" id="deskSplit" role="separator" aria-orientation="horizontal"
+         aria-label="resize the part editor" tabindex="0"></div>
 
-    <div class="tabs" id="tabs">
-      <button data-tab="library" aria-pressed="true">Part library</button>
-      <button data-tab="genes" aria-pressed="false">All 41 genes</button>
-      <button data-tab="export" aria-pressed="false">Export</button>
-    </div>
-    <p class="tabhint" id="tabHint"></p>
+    <div class="deskBottom">
+      <div class="tabs" id="tabs">
+        <button data-tab="library" aria-pressed="true">Part library</button>
+        <button data-tab="genes" aria-pressed="false">All 41 genes</button>
+        <button data-tab="start" aria-pressed="false">Start from</button>
+        <button data-tab="export" aria-pressed="false">Export</button>
+      </div>
+      <p class="tabhint" id="tabHint"></p>
 
-    <div class="panel" id="panel"></div>
+      <div class="panel" id="panel"></div>
+    </div>
   </section>
 </div>
 
@@ -334,7 +337,7 @@ pre b{color:var(--yellow);font-weight:600}
     body_length: { min: 0, max: 1, default: 0.53 },
     body_width: { min: 0, max: 1, default: 0.21 },
     body_mass: { min: 0, max: 1, default: 0.75 },
-    head_size: { min: 0, max: 1, default: 0.22 },
+    head_size: { min: 0, max: 1, default: 0.1 },
     thorax_ratio: { min: 0, max: 1, default: 0.22 },
     // thorax vs abdomen
     abdomen_taper: { min: 0, max: 1, default: 0.51 },
@@ -343,10 +346,14 @@ pre b{color:var(--yellow);font-weight:600}
     /* ---- limbs ---- */
     leg_count: { min: 2, max: 12, integer: true, step: 2, default: 6 },
     leg_length: { min: 0, max: 1, default: 0.47 },
-    leg_thickness: { min: 0, max: 1, default: 0.92 },
+    leg_thickness: { min: 0, max: 1, default: 1 },
     leg_spread: { min: 0, max: 1, default: 0.75 },
     leg_joints: { min: 1, max: 5, integer: true, default: 2 },
-    claw_size: { min: 0, max: 1, default: 0.08 },
+    // RENAMED from `claw_size`. Tarsal claws are gone from the art entirely; the
+    // gene now sizes the round foot pad at the tip of every leg, from a small dot
+    // at 0 to a heavy bulb at 1. It keeps its grip/attack roles in stats.js —
+    // a broad foot is still traction, and still something to press with.
+    foot_size: { min: 0, max: 1, default: 0.3 },
     /* ---- wings ---- */
     // 0 / 2 / 4 / 6. Unchanged: zero is still a legal, meaningful genome (every
     // arachnid archetype uses it) and six still fans three blades a side.
@@ -544,7 +551,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.28,
         leg_thickness: 0.72,
         leg_joints: 3,
-        claw_size: 0.5,
+        foot_size: 0.5,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.2,
@@ -589,7 +596,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.55,
         leg_thickness: 0.22,
         leg_joints: 3,
-        claw_size: 0.3,
+        foot_size: 0.3,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.8,
@@ -642,7 +649,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.92,
         leg_thickness: 0.28,
         leg_joints: 3,
-        claw_size: 0.65,
+        foot_size: 0.65,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -687,7 +694,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.62,
         leg_thickness: 0.35,
         leg_joints: 3,
-        claw_size: 0.55,
+        foot_size: 0.55,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.35,
@@ -733,7 +740,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.78,
         leg_thickness: 0.32,
         leg_joints: 3,
-        claw_size: 0.95,
+        foot_size: 0.95,
         wing_count: 2,
         wing_type: 0,
         wing_area: 0.45,
@@ -783,7 +790,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.38,
         leg_thickness: 0.2,
         leg_joints: 2,
-        claw_size: 0.25,
+        foot_size: 0.25,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.98,
@@ -834,7 +841,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.48,
         leg_thickness: 0.18,
         leg_joints: 2,
-        claw_size: 0.45,
+        foot_size: 0.45,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -878,7 +885,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_length: 0.3,
         leg_thickness: 0.45,
         leg_joints: 2,
-        claw_size: 0.4,
+        foot_size: 0.4,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.15,
@@ -1023,7 +1030,7 @@ pre b{color:var(--yellow);font-weight:600}
   }
   function computeStats(g) {
     const m = morphology(g);
-    const grip = clamp(100 * sig(0.55 * g.claw_size + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
+    const grip = clamp(100 * sig(0.55 * g.foot_size + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
     const stride = m.legLen * (0.55 + 0.45 * Math.log2(m.legs) / Math.log2(10));
     const cadence = 1 / (0.35 + m.strideLoad * 0.55);
     const speed = clamp(stride * cadence * 19 * (0.82 + grip / 100 * 0.3), 1, 100);
@@ -1040,9 +1047,9 @@ pre b{color:var(--yellow);font-weight:600}
     );
     const bite = g.mandible_size * (0.6 + 0.6 * g.mandible_serration);
     const horn = g.horn_size * 0.55;
-    const claws = g.claw_size * 0.3;
+    const feet = g.foot_size * 0.15;
     const attack = clamp(
-      100 * sig(bite * 0.85 + horn + claws + Math.min(m.mass, 3) * 0.12, 5),
+      100 * sig(bite * 0.85 + horn + feet + Math.min(m.mass, 3) * 0.12, 5),
       1,
       100
     );
@@ -1321,9 +1328,9 @@ pre b{color:var(--yellow);font-weight:600}
       clade: "hexapod",
       adjective: "Hooked",
       status: "coded",
-      window: { claw_size: [0.8, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
+      window: { foot_size: [0.8, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
       locks: [],
-      unlocks: ["claw_size"],
+      unlocks: ["foot_size"],
       specialty: null,
       blurb: "Reach as a weapon. Waits, then closes the distance once."
     },
@@ -1736,11 +1743,11 @@ pre b{color:var(--yellow);font-weight:600}
       window: {
         stinger_size: [0.7, 1],
         tail_length: [0.6, 1],
-        claw_size: [0.6, 1],
+        foot_size: [0.6, 1],
         carapace_thickness: [0.5, 1]
       },
       locks: ["tail_length"],
-      unlocks: ["stinger_size", "claw_size"],
+      unlocks: ["stinger_size", "foot_size"],
       specialty: { key: "pincer_and_tail", name: "Pincer and Tail", mods: { venom: 1.12, defense: 1.08 } },
       blurb: "Armoured and venomous at once, which is rare and unfair."
     },
@@ -2478,10 +2485,12 @@ pre b{color:var(--yellow);font-weight:600}
           side,
           pair: i,
           t,
+          // NOT `foot` — buildLeg() already returns a `foot` POINT, and spreading
+          // this object into it would collide. `footSize` is the gene scalar.
           len: len * lerp(1.05, 0.92, t),
           w,
           fan,
-          claw: g.claw_size
+          footSize: g.foot_size
         }));
       }
     }
@@ -2498,7 +2507,7 @@ pre b{color:var(--yellow);font-weight:600}
   }
   function buildHead(L) {
     const { g, plan, bodyWid, unit } = L;
-    const headR = bodyWid * (plan === "arachnid" ? 0.28 : lerp(0.22, 0.62, g.head_size));
+    const headR = bodyWid * (plan === "arachnid" ? 0.28 : lerp(0.16, 0.62, g.head_size));
     const hx = L.trunkFrontX + headR * (plan === "arachnid" ? 0.06 : 0.54);
     L.head = { x: hx, y: 0, rx: headR * 1, ry: headR, kind: "head" };
     const er = headR * lerp(0.45, 1.05, g.eye_size);
@@ -2644,6 +2653,7 @@ pre b{color:var(--yellow);font-weight:600}
   }
   function taperedPath(ctx, p0, p1, p2, w0, w1, steps = 16) {
     const left = [], right = [];
+    let tipAngle = 0;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps, u = 1 - t;
       const x = u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x;
@@ -2655,10 +2665,14 @@ pre b{color:var(--yellow);font-weight:600}
       const w = lerp(w0, w1, t) * 0.5;
       left.push({ x: x + nx * w, y: y + ny * w });
       right.push({ x: x - nx * w, y: y - ny * w });
+      if (i === steps) tipAngle = Math.atan2(dy, dx);
     }
+    const tip = qpoint(p0, p1, p2, 1);
+    const r = Math.abs(w1) * 0.5;
     ctx.beginPath();
     ctx.moveTo(left[0].x, left[0].y);
     for (const p of left) ctx.lineTo(p.x, p.y);
+    if (r > 0.02) ctx.arc(tip.x, tip.y, r, tipAngle + Math.PI / 2, tipAngle - Math.PI / 2, true);
     for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
     ctx.closePath();
   }
@@ -2832,21 +2846,8 @@ pre b{color:var(--yellow);font-weight:600}
         leg.w,
         col.limb
       );
-      fillEllipse(ctx, foot.x, foot.y, leg.w * 0.42, leg.w * 0.42, col.limbLo);
-      if (leg.claw > 0.3) {
-        const cl = leg.w * (0.5 + leg.claw * 1.1);
-        capsule(
-          ctx,
-          foot.x,
-          foot.y,
-          foot.x + cl * 0.7,
-          foot.y + leg.side * cl * 0.25,
-          foot.x + cl,
-          foot.y - leg.side * cl * 0.1,
-          leg.w * 0.55,
-          col.limbLo
-        );
-      }
+      const fr = leg.w * lerp(0.3, 0.95, clamp2(leg.footSize ?? 0, 0, 1));
+      fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limbLo);
       speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
     }
   }
@@ -2866,8 +2867,8 @@ pre b{color:var(--yellow);font-weight:600}
           { x: x0, y: 0 },
           { x: x0 + len * 0.55, y: 0 },
           { x: x0 + len, y: 0 },
-          base * 2.2,
-          base * 0.1,
+          base * 2.65,
+          base * 0.3,
           3
         );
         for (let i = 0; i < sr; i++) {
@@ -2877,8 +2878,8 @@ pre b{color:var(--yellow);font-weight:600}
               { x: x0 + len * t, y: side * base * 0.28 },
               { x: x0 + len * (t + 0.05), y: side * base * 0.95 },
               { x: x0 + len * (t + 0.17), y: side * base * 1.2 },
-              base * 0.55,
-              base * 0.05,
+              base * 0.8,
+              base * 0.34,
               11 + i * 5 + side
             );
           }
@@ -2890,15 +2891,15 @@ pre b{color:var(--yellow);font-weight:600}
           const p0 = { x: x0, y: side * base * 0.3 };
           const p1 = { x: x0 + len * 0.8, y: side * sp * 1.25 };
           const p2 = { x: x0 + len * 1, y: side * sp * 0.3 };
-          piece(p0, p1, p2, base * 1.15, base * 0.1, 5 + side);
+          piece(p0, p1, p2, base * 1.4, base * 0.3, 5 + side);
           for (let i = 0; i < sr; i++) {
             const c = qpoint(p0, p1, p2, 0.52 + i * 0.2);
             piece(
               c,
               { x: c.x + len * 0.04, y: c.y - side * sp * 0.18 },
               { x: c.x + len * 0.1, y: c.y - side * sp * 0.44 },
-              base * 0.6,
-              base * 0.06,
+              base * 0.86,
+              base * 0.36,
               41 + i * 7 + side
             );
           }
@@ -2910,8 +2911,8 @@ pre b{color:var(--yellow);font-weight:600}
           { x: x0, y: 0 },
           { x: x0 + len * 0.3, y: 0 },
           { x: x0 + len * 0.62, y: 0 },
-          base * 2.3,
-          base * 1.3,
+          base * 2.8,
+          base * 1.58,
           7
         );
         for (const side of [-1, 1]) {
@@ -2919,8 +2920,8 @@ pre b{color:var(--yellow);font-weight:600}
             { x: x0 + len * 0.56, y: side * base * 0.3 },
             { x: x0 + len * 0.8, y: side * sp * 0.55 },
             { x: x0 + len * 1, y: side * sp * 0.95 },
-            base * 1.15,
-            base * 0.1,
+            base * 1.4,
+            base * 0.3,
             13 + side
           );
           for (let i = 0; i < sr; i++) {
@@ -2929,8 +2930,8 @@ pre b{color:var(--yellow);font-weight:600}
               { x: x0 + len * t, y: side * base * 0.4 },
               { x: x0 + len * (t + 0.06), y: side * sp * 0.5 },
               { x: x0 + len * (t + 0.13), y: side * sp * 0.74 },
-              base * 0.6,
-              base * 0.06,
+              base * 0.86,
+              base * 0.36,
               61 + i * 9 + side
             );
           }
@@ -2942,15 +2943,15 @@ pre b{color:var(--yellow);font-weight:600}
           const p0 = { x: x0, y: side * base * 0.4 };
           const p1 = { x: x0 + len * 0.88, y: side * sp * 1.7 };
           const p2 = { x: x0 + len * 1.05, y: side * sp * 0.35 };
-          piece(p0, p1, p2, base * 2.4, base * 0.12, 17 + side);
+          piece(p0, p1, p2, base * 2.9, base * 0.34, 17 + side);
           for (let i = 0; i < sr; i++) {
             const c = qpoint(p0, p1, p2, 0.46 + i * 0.24);
             piece(
               c,
               { x: c.x + len * 0.06, y: c.y - side * sp * 0.26 },
               { x: c.x + len * 0.16, y: c.y - side * sp * 0.62 },
-              base * 0.75,
-              base * 0.07,
+              base * 1.06,
+              base * 0.42,
               71 + i * 11 + side
             );
           }
@@ -2965,8 +2966,8 @@ pre b{color:var(--yellow);font-weight:600}
             { x: x0, y: dy * h.ry * 0.38 },
             { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.78 },
             { x: x0 + len * sc, y: dy * h.ry * 1 },
-            base * 0.85,
-            base * 0.1,
+            base * 1.04,
+            base * 0.3,
             23 + dy
           );
         }
@@ -2996,7 +2997,7 @@ pre b{color:var(--yellow);font-weight:600}
             { x: c.x + m * reach * 0.42, y: c.y - side * m * reach * 0.44 },
             { x: c.x + m * reach * 0.94, y: c.y - side * m * reach * 1 },
             w * size,
-            w * 0.08,
+            w * size * 0.38,
             seed + i * 3
           );
         }
@@ -3006,8 +3007,8 @@ pre b{color:var(--yellow);font-weight:600}
           const p0 = { x: 0, y: 0 };
           const p1 = { x: m * 0.54, y: side * m * 0.38 };
           const p2 = { x: m * 0.92, y: side * m * -0.12 };
-          piece(p0, p1, p2, w * 2.6, w * 0.26, 101 + side);
-          teeth(p0, p1, p2, sr, 1.15, 0.3, 0.34, 0.26, 111 + side);
+          piece(p0, p1, p2, w * 3.15, w * 0.62, 101 + side);
+          teeth(p0, p1, p2, sr, 1.58, 0.32, 0.34, 0.26, 111 + side);
           break;
         }
         case "chelicerae_teeth": {
@@ -3022,8 +3023,8 @@ pre b{color:var(--yellow);font-weight:600}
           const p0 = { x: 0, y: 0 };
           const p1 = { x: m * 0.74, y: side * m * 0.26 };
           const p2 = { x: m * 1.32, y: side * m * 0.68 };
-          piece(p0, p1, p2, w * 0.85, w * 0.1, 131 + side);
-          teeth(p0, p1, p2, sr, 0.7, 0.22, 0.22, 0.21, 141 + side);
+          piece(p0, p1, p2, w * 1.04, w * 0.26, 131 + side);
+          teeth(p0, p1, p2, sr, 0.98, 0.24, 0.22, 0.21, 141 + side);
           break;
         }
       }
@@ -3034,16 +3035,16 @@ pre b{color:var(--yellow);font-weight:600}
     const p0 = { x: 0, y: 0 };
     const p1 = { x: m * 0.32, y: side * m * 0.02 };
     const p2 = { x: m * 0.62, y: side * m * 0.04 };
-    const cap = w * 1.55;
-    piece(p0, p1, p2, w * 3.1, w * 2.95, 151 + side);
+    const cap = w * 1.88;
+    piece(p0, p1, p2, w * 3.75, w * 3.58, 151 + side);
     fillEllipse(ctx, p2.x, p2.y, cap, cap, fill);
     if (!withTeeth) return;
     piece(
       { x: p2.x, y: p2.y - side * cap * 0.55 },
       { x: p2.x + m * 0.1, y: p2.y - side * cap * 0.95 },
       { x: p2.x + m * 0.24, y: p2.y - side * cap * 1.05 },
-      w * 0.62,
-      w * 0.05,
+      w * 0.88,
+      w * 0.3,
       161 + side
     );
   }
@@ -3227,13 +3228,13 @@ pre b{color:var(--yellow);font-weight:600}
     drawLegs(ctx, L, col, phase);
     drawTail(ctx, L, col, state, lunge);
     drawEyes(ctx, L, col);
+    drawMandibles(ctx, L, col, state, lunge, pat);
     ctx.beginPath();
     ctx.ellipse(L.head.x, 0, L.head.rx, L.head.ry, 0, 0, TAU);
     ctx.fillStyle = col.shell;
     ctx.fill();
     drawCrownMark(ctx, L, col);
     drawAntennae(ctx, L, col, phase);
-    drawMandibles(ctx, L, col, state, lunge, pat);
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
       for (const p of trunk) segmentMass(ctx, p, col);
@@ -3403,7 +3404,7 @@ pre b{color:var(--yellow);font-weight:600}
       core: true,
       drawnBy: "buildHead()",
       genes: [
-        { gene: "head_size", effect: "capsule radius, 0.22\u20130.62 of body width (ignored on arachnids)" },
+        { gene: "head_size", effect: "capsule radius, 0.16\u20130.62 of body width (ignored on arachnids)" },
         { gene: "body_width", effect: "the width the head radius is a fraction of" }
       ]
     },
@@ -3443,27 +3444,13 @@ pre b{color:var(--yellow);font-weight:600}
       id: "feet",
       group: "limbs",
       name: "Feet",
-      blurb: "A small dark dot on the tip of every leg. Punctuation, not a part you can remove.",
+      blurb: "A round pad on the tip of every leg, from a dot to a heavy bulb. Always present \u2014 foot_size sets how much of it there is.",
       core: true,
       drawnBy: "drawLegs() \u2192 the foot circle at leg.foot",
       genes: [
-        { gene: "leg_thickness", effect: "the dot is drawn at 0.42 of the leg width" },
+        { gene: "foot_size", effect: "pad radius, 0.30\u20130.95 of the leg width" },
+        { gene: "leg_thickness", effect: "the leg width the pad is measured against" },
         { gene: "leg_count", effect: "one foot per leg" }
-      ]
-    },
-    {
-      id: "claws",
-      group: "limbs",
-      name: "Tarsal claws",
-      blurb: "A short hooked capsule on the end of each leg.",
-      drawnBy: "drawLegs() \u2192 the second capsule",
-      gate: "claw_size > 0.30",
-      present: (g) => g.claw_size > 0.3,
-      on: { claw_size: 0.72 },
-      off: { claw_size: 0.15 },
-      genes: [
-        { gene: "claw_size", effect: "hook length, and the main grip input" },
-        { gene: "leg_thickness", effect: "claws are drawn at 0.55 of the leg width" }
       ]
     },
     /* --------------------------------------------------------------- wings -- */
@@ -3798,7 +3785,6 @@ pre b{color:var(--yellow);font-weight:600}
     segments: { zoom: 1.12, y: 0 },
     legs: { zoom: 1.15, y: 0 },
     feet: { zoom: 1.5, y: -0.14 },
-    claws: { zoom: 1.5, y: -0.1 },
     wings: { zoom: 1.12, y: -0.14 },
     horn: { zoom: 3, y: 0.62 },
     hornserration: { zoom: 3.4, y: 0.66 },
@@ -3939,7 +3925,7 @@ if (!M) try {
 
 const {
   GENE_SPECS, GENE_ORDER, normalizeGenome, clampGene, randomGenome, genomeId, genomeName,
-  ARCHETYPES, genomeFromArchetype, computeStats, classify, nearestNodes, CLASS_TREE,
+  ARCHETYPES, genomeFromArchetype, computeStats, classify, CLASS_TREE,
   CLADE_LABEL, TRAITS, buildForTaxon, TAXON_MENU, drawBug, layout, bodyPlan,
   PARTS, PART_GROUPS, partById, partsInGroup, isPresent, addPart, removePart,
   setVariant, variantOf, applyPatch, GENE_INFO, isSimOnly, makeRng,
@@ -3954,6 +3940,8 @@ const state = {
   tab: 'library',
   open: new Set(['horn']),
   history: [],
+  baseNote: '',
+  taxonSel: 'beetle',
 };
 state.base.genome = state.genome;
 
@@ -4040,8 +4028,6 @@ mini.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-const UNREACHABLE = new Set(TAXON_MENU.filter((t) => t.unreachable).map((t) => t.id));
-
 const STAT_ROWS = [
   ['speed', 100], ['agility', 100], ['attack', 100], ['defense', 100],
   ['health', 100], ['stamina', 100], ['venom', 100], ['grip', 100],
@@ -4054,7 +4040,6 @@ function paintStage() {
   const c = classify(g);
   document.getElementById('bugName').textContent = genomeName(g);
   document.getElementById('bugId').textContent = '#' + genomeId(g);
-  document.getElementById('planBadge').textContent = bodyPlan(g) + ' plan';
 
   document.getElementById('miniTag').textContent = c.name;
   const tt = document.getElementById('taxonTag');
@@ -4062,25 +4047,6 @@ function paintStage() {
   tt.className = 'tag ' + (c.hybrid ? 'warn' : 'hot');
   document.getElementById('cladeTag').textContent =
     [CLADE_LABEL[c.clade.legPlan], c.clade.wingPlan, c.clade.massClass].join(' · ');
-
-  const traits = c.traits.map((t) => TRAITS[t].name);
-  document.getElementById('taxonNote').innerHTML =
-    `<b>${esc(c.taxon)}</b> · tier ${c.tier}${c.order ? ' · ' + esc(c.order) : ''}` +
-    (c.hybrid ? ' · <b>hybrid</b> — the chassis and the leg bracket disagree' : '') +
-    (traits.length ? ` · traits: <b>${esc(traits.join(', '))}</b>` : '') +
-    `<br>${esc(c.blurb)}`;
-
-  // A taxon whose window contradicts its parent's is unreachable, and pointing a
-  // lineage at one would be a lie — say so on the same line.
-  const near = nearestNodes(g, { limit: 2 });
-  document.getElementById('driftNote').innerHTML = near.length
-    ? 'Closest unreached: ' + near.map((n) => {
-        const need = n.missing.slice(0, 2)
-          .map((m) => `${m.gene} ${m.need === 'more' ? '↑' : '↓'}`).join(', ');
-        const dead = UNREACHABLE.has(n.id) ? ' <span class="tag warn">never</span>' : '';
-        return `<b>${esc(CLASS_TREE[n.id].taxon)}</b>${need ? ` (${esc(need)})` : ''}${dead}`;
-      }).join(' · ')
-    : '';
 
   const s = computeStats(g);
   document.getElementById('stats').innerHTML = STAT_ROWS.map(([k, max]) => {
@@ -4094,74 +4060,86 @@ function paintStage() {
 
 /* ------------------------------------------------------------ base picker */
 
-document.getElementById('archChips').innerHTML = ARCHETYPES.map((a) =>
-  `<button class="chip" data-arch="${a.key}" title="${esc(a.blurb)}">${esc(a.name)}</button>`).join('');
+/* The base picker is a tab like the others: it is the first thing you touch in a
+   session and then almost never again, so it does not earn permanent space. */
+const TAXON_OPTIONS = TAXON_MENU
+  .slice().sort((a, b) => a.tier - b.tier || a.taxon.localeCompare(b.taxon));
 
-document.getElementById('taxonSel').innerHTML = TAXON_MENU
-  .slice().sort((a, b) => a.tier - b.tier || a.taxon.localeCompare(b.taxon))
-  .map((t) => `<option value="${t.id}"${t.id === 'beetle' ? ' selected' : ''}>` +
-    `${'— '.repeat(t.tier)}${esc(t.taxon)}${t.unreachable ? '  ⚠ unreachable' : ''}</option>`).join('');
+function paintStart() {
+  document.getElementById('panel').innerHTML = `
+    <div class="eyebrow">Start from</div>
+    <div class="chips" id="archChips">${ARCHETYPES.map((a) =>
+      `<button class="chip" data-arch="${a.key}" title="${esc(a.blurb)}"
+        aria-pressed="${state.base.kind === 'archetype' && state.base.key === a.key}"
+        >${esc(a.name)}</button>`).join('')}</div>
+    <div class="row" style="margin-top:10px">
+      <select id="taxonSel" aria-label="taxon">${TAXON_OPTIONS.map((t) =>
+        `<option value="${t.id}"${t.id === state.taxonSel ? ' selected' : ''}>` +
+        `${'— '.repeat(t.tier)}${esc(t.taxon)}${t.unreachable ? '  ⚠ unreachable' : ''}</option>`).join('')}</select>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn go" data-start="loadTaxon">Load taxon build</button>
+      <button class="btn" data-start="randomize">Random</button>
+      <button class="btn" data-start="jitter">Nudge</button>
+      <button class="btn" data-start="undo">Undo</button>
+      <button class="btn dark" data-start="reset">Reset</button>
+    </div>
+    <p class="note" id="baseNote">${state.baseNote}</p>`;
+}
 
 function setBase(kind, key, label, genome, note) {
   state.base = { kind, key, label, genome };
+  state.baseNote = note ?? '';
   push(genome);
-  document.getElementById('baseNote').innerHTML = note ?? '';
-  document.querySelectorAll('[data-arch]').forEach((el) =>
-    el.setAttribute('aria-pressed', String(kind === 'archetype' && el.dataset.arch === key)));
 }
 
-document.getElementById('archChips').addEventListener('click', (e) => {
-  const el = e.target.closest('[data-arch]');
-  if (!el) return;
-  const a = ARCHETYPES.find((x) => x.key === el.dataset.arch);
-  const g = genomeFromArchetype(a, makeRng(Math.floor(Math.random() * 1e9)));
-  setBase('archetype', a.key, a.name, g,
-    `<b>${esc(a.name)}</b> — ${esc(a.blurb)} Drawn around the archetype's biases with jitter, so tap again for another one.`);
-});
-
-document.getElementById('loadTaxon').addEventListener('click', () => {
-  const id = document.getElementById('taxonSel').value;
-  const r = buildForTaxon(id);
-  const node = CLASS_TREE[id];
-  let note = `<b>${esc(node.taxon)}</b> built off the <b>${esc(r.baseName)}</b> plan, ` +
-    `then ${Object.keys(r.window).length} windowed gene(s) pushed into range.`;
-  if (r.conflicts.length) {
-    note += `<br><span class="tag warn">unreachable</span> ` + r.conflicts.map((c) =>
-      `<b>${esc(c.gene)}</b> is asked for ` + c.ranges.map((x) =>
-        `[${x.range[0]}, ${x.range[1]}] by ${esc(x.taxon)}`).join(' and ') +
-      ' — no genome satisfies both, so this taxon can never be reached.').join(' ');
-  }
-  if (r.achieved.id !== id) {
-    note += `<br>Classifies as <b>${esc(r.achieved.name)}</b> instead.`;
-  }
-  setBase('taxon', id, node.taxon, r.genome, note);
-});
-
-document.getElementById('randomize').addEventListener('click', () => {
-  setBase('random', 'random', 'Random', randomGenome(makeRng(Math.floor(Math.random() * 1e9))),
-    'Uniform over every gene — most of these classify as Larva, which is the point of a taxon.');
-});
-
-document.getElementById('jitter').addEventListener('click', () => {
-  const r = makeRng(Math.floor(Math.random() * 1e9));
-  const g = { ...state.genome };
-  for (const k of GENE_ORDER) {
-    if (k.endsWith('_type') || k === 'leg_count' || k === 'wing_count' || k === 'eye_count') continue;
-    const s = GENE_SPECS[k];
-    g[k] = clampGene(k, g[k] + r.normal() * (s.max - s.min) * 0.06);
-  }
-  push(g);
-});
-
-document.getElementById('undo').addEventListener('click', () => {
-  const prev = state.history.pop();
-  if (!prev) return toast('nothing to undo');
-  state.genome = prev; syncHash(); paintAll();
-});
-
-document.getElementById('reset').addEventListener('click', () => {
-  if (state.base.genome) push(state.base.genome);
-});
+const START_ACTIONS = {
+  arch(key) {
+    const a = ARCHETYPES.find((x) => x.key === key);
+    const g = genomeFromArchetype(a, makeRng(Math.floor(Math.random() * 1e9)));
+    setBase('archetype', a.key, a.name, g,
+      `<b>${esc(a.name)}</b> — ${esc(a.blurb)} Drawn around the archetype's biases with jitter, so tap again for another one.`);
+  },
+  loadTaxon() {
+    const id = state.taxonSel;
+    const r = buildForTaxon(id);
+    const node = CLASS_TREE[id];
+    let note = `<b>${esc(node.taxon)}</b> built off the <b>${esc(r.baseName)}</b> plan, ` +
+      `then ${Object.keys(r.window).length} windowed gene(s) pushed into range.`;
+    if (r.conflicts.length) {
+      note += `<br><span class="tag warn">unreachable</span> ` + r.conflicts.map((c) =>
+        `<b>${esc(c.gene)}</b> is asked for ` + c.ranges.map((x) =>
+          `[${x.range[0]}, ${x.range[1]}] by ${esc(x.taxon)}`).join(' and ') +
+        ' — no genome satisfies both, so this taxon can never be reached.').join(' ');
+    }
+    if (r.achieved.id !== id) {
+      note += `<br>Classifies as <b>${esc(r.achieved.name)}</b> instead.`;
+    }
+    setBase('taxon', id, node.taxon, r.genome, note);
+  },
+  randomize() {
+    setBase('random', 'random', 'Random', randomGenome(makeRng(Math.floor(Math.random() * 1e9))),
+      'Uniform over every gene — most of these classify as Larva, which is the point of a taxon.');
+  },
+  jitter() {
+    const r = makeRng(Math.floor(Math.random() * 1e9));
+    const g = { ...state.genome };
+    for (const k of GENE_ORDER) {
+      if (k.endsWith('_type') || k === 'leg_count' || k === 'wing_count' || k === 'eye_count') continue;
+      const s = GENE_SPECS[k];
+      g[k] = clampGene(k, g[k] + r.normal() * (s.max - s.min) * 0.06);
+    }
+    push(g);
+  },
+  undo() {
+    const prev = state.history.pop();
+    if (!prev) return toast('nothing to undo');
+    state.genome = prev; syncHash(); paintAll();
+  },
+  reset() {
+    if (state.base.genome) push(state.base.genome);
+  },
+};
 
 /* ------------------------------------------------------------------- tabs */
 
@@ -4207,7 +4185,7 @@ function partTile(part) {
   </button>`;
 }
 
-/** The expanded section, dropped into the grid directly under its tile. */
+/** The expanded section. It lives in the desk's top pane, never in the grid. */
 function partDetail(part) {
   const g = state.genome;
   const on = isPresent(part, g);
@@ -4242,9 +4220,17 @@ function partDetail(part) {
 function paintLibrary() {
   document.getElementById('panel').innerHTML = PART_GROUPS.map((grp) => `
     <div class="grouphead"><h3>${esc(grp.label)}</h3><span>${esc(grp.blurb)}</span></div>
-    <div class="tiles">${partsInGroup(grp.key).map((p) =>
-      partTile(p) + (state.open.has(p.id) ? partDetail(p) : '')).join('')}</div>`).join('');
-  paintThumbs();
+    <div class="tiles">${partsInGroup(grp.key).map(partTile).join('')}</div>`).join('');
+}
+
+/** The desk's top pane: whichever part is open, wherever it was opened from. */
+function paintPartPanel() {
+  const id = [...state.open][0];
+  const part = id ? partById(id) : null;
+  document.getElementById('partPanel').innerHTML = part
+    ? partDetail(part)
+    : `<div class="eyebrow">Part editor</div>
+       <p class="emptypart">Click a part on the bug, or a tile in the library, to edit it here.</p>`;
 }
 
 /**
@@ -4383,8 +4369,6 @@ function paintExport() {
  */
 /** The two browsing tabs cut the same 41 genes two ways — say which is which. */
 const TAB_HINT = {
-  library: 'The 20 things the renderer can draw, each tile framed on your bug. ' +
-           'Tap a tile to open it up; the corner pill adds or removes.',
   genes: 'All 41 genes in GENE_ORDER, including the ten that move stats but ' +
          'draw nothing. Every slider says which parts it feeds.',
   export: 'The build you have made, as code you can paste back into the project.',
@@ -4393,18 +4377,30 @@ const TAB_HINT = {
 function paintPanel({ toTop = false } = {}) {
   const el = document.getElementById('panel');
   const keep = el.scrollTop;
-  document.getElementById('tabHint').textContent = TAB_HINT[state.tab] ?? '';
+  const hint = document.getElementById('tabHint');
+  hint.textContent = TAB_HINT[state.tab] ?? '';
+  hint.hidden = !hint.textContent;
   document.querySelectorAll('[data-tab]').forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.tab === state.tab)));
   if (state.tab === 'library') paintLibrary();
   else if (state.tab === 'genes') paintGenes();
+  else if (state.tab === 'start') paintStart();
   else paintExport();
+  paintPartPanel();
+  paintThumbs();               // both panes hold thumbnails; one pass covers them
   el.scrollTop = toTop ? 0 : keep;
 }
 
 const panel = document.getElementById('panel');
+const partPanel = document.getElementById('partPanel');
 
-panel.addEventListener('click', (e) => {
+function deskClick(e) {
+  const startBtn = e.target.closest('[data-start]');
+  if (startBtn) { START_ACTIONS[startBtn.dataset.start](); return; }
+
+  const archBtn = e.target.closest('[data-arch]');
+  if (archBtn) { START_ACTIONS.arch(archBtn.dataset.arch); return; }
+
   const expBtn = e.target.closest('[data-exp]');
   if (expBtn) { exportKind = expBtn.dataset.exp; paintExport(); return; }
 
@@ -4444,15 +4440,25 @@ panel.addEventListener('click', (e) => {
     return;
   }
 
-  // One section open at a time: an expanded part is full grid width, and two of
-  // them push the rest of the catalogue off the screen.
+  // One part open at a time — the top pane holds exactly one editor. Clicking
+  // inside the editor itself must not close it, so only tiles toggle.
+  if (!host.classList.contains('tile')) return;
   state.open = state.open.has(id) ? new Set() : new Set([id]);
   paintPanel();
+}
+
+panel.addEventListener('click', deskClick);
+partPanel.addEventListener('click', deskClick);
+
+// The select is rebuilt on every repaint, so its choice lives in state.
+panel.addEventListener('change', (e) => {
+  const sel = e.target.closest('#taxonSel');
+  if (sel) state.taxonSel = sel.value;
 });
 
 // Sliders: live-draw while dragging, one history entry when the drag ends.
 let dragging = false;
-panel.addEventListener('input', (e) => {
+function deskInput(e) {
   const s = e.target.closest('[data-slider]');
   if (!s) return;
   const name = s.dataset.slider;
@@ -4464,12 +4470,185 @@ panel.addEventListener('input', (e) => {
     el.textContent = spec.integer ? v : v.toFixed(2);
   });
   paintStage();
-});
-panel.addEventListener('change', (e) => {
+}
+function deskChange(e) {
   if (!e.target.closest('[data-slider]')) return;
   dragging = false;
   syncHash();
   paintPanel();          // gates may have flipped: a part can appear or vanish
+}
+panel.addEventListener('input', deskInput);
+partPanel.addEventListener('input', deskInput);
+panel.addEventListener('change', deskChange);
+partPanel.addEventListener('change', deskChange);
+
+/* --------------------------------------------------- clicking the bug --- */
+
+/**
+ * The preview is the catalogue too: click a horn and the horn's editor opens.
+ *
+ * paintBug() places the bug with translate(w/2,h/2) → scale(s), and drawBug()
+ * then rotates -90° so the head points up. Inverting exactly that puts the
+ * click back into layout()'s own +x-forward, +y-lateral space:
+ *
+ *   dx = (px - w/2) / s ,  dy = (py - h/2) / s
+ *   local.x = -dy ,  local.y = dx
+ *
+ * The breathe scale and the attack lunge are both under 2% of the body and are
+ * deliberately ignored — they would move the answer by less than the tolerance.
+ *
+ * Each candidate reports a SIGNED distance in local pixels (negative inside its
+ * own silhouette), and the nearest one within tolerance wins. Appendages are
+ * listed first and carry a small bonus, so a click on the horn over the thorax
+ * resolves to the horn rather than to the mass behind it.
+ */
+const dist2 = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+
+/** Distance from p to the segment ab, minus the segment's half-width. */
+function segDist(px, py, ax, ay, bx, by, halfW) {
+  const vx = bx - ax, vy = by - ay;
+  const len2 = vx * vx + vy * vy;
+  const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2)) : 0;
+  return dist2(px, py, ax + vx * t, ay + vy * t) - halfW;
+}
+
+/** Rough signed distance to an axis-aligned ellipse — exact enough at this size. */
+function ellDist(px, py, e) {
+  const nx = (px - e.x) / e.rx, ny = (py - e.y) / e.ry;
+  const n = Math.hypot(nx, ny);
+  return (n - 1) * Math.min(e.rx, e.ry);
+}
+
+function hitCandidates(L, px, py) {
+  const g = L.g;
+  const u = L.unit;
+  const out = [];
+  const add = (id, d, bonus = 0) => {
+    if (!partById(id)) return;
+    out.push({ id, d: d - bonus });
+  };
+  const APP = u * 0.18;                 // appendages win ties against the trunk
+
+  // --- appendages, listed first ---
+  if (L.hornLen) {
+    const x0 = L.thorax.x + L.thorax.rx * 0.52;
+    add('horn', segDist(px, py, x0, 0, x0 + L.hornLen, 0, Math.max(3, u * 0.16)), APP);
+  }
+  if (L.mandible) {
+    for (const side of [-1, 1]) {
+      const ax = L.head.x + L.head.rx * 0.60;
+      add('mandibles', segDist(px, py, ax, side * L.head.ry * 0.52,
+        ax + L.mandible * 0.9, side * L.head.ry * 0.9, Math.max(3, u * 0.10)), APP);
+    }
+  }
+  for (const a of L.antennae) {
+    const h = L.head;
+    add('antennae', segDist(px, py, h.x + h.rx * 0.40, a.side * h.ry * 0.50,
+      h.x + a.len, a.side * (h.ry * 0.50 + a.len * 0.40), Math.max(3, u * 0.10)), APP);
+  }
+  // Elytra are drawn ON the abdomen rather than out to the side, so there is no
+  // blade to click — that whole area is the abdomen, and elytra stay a tile.
+  if (L.wingPairs > 0 && L.wing && L.wingType !== 'elytra') {
+    const an = L.thorax;
+    for (const side of [-1, 1]) {
+      const rx = an.x - u * 0.04, ry = side * an.ry * 0.22;
+      const ang = side * L.wing.sweep;
+      add('wings', segDist(px, py, rx, ry,
+        rx + Math.cos(ang) * L.wing.len, ry + Math.sin(ang) * L.wing.len,
+        L.wing.wid), APP);
+    }
+  }
+  if (L.tail) {
+    const t = L.tail;
+    const tipX = t.x0 - t.len;
+    add('tail', segDist(px, py, t.x0, 0, tipX, 0, Math.max(3, u * 0.10)), APP);
+    if (t.sting > 0.18) add('stinger', dist2(px, py, tipX, 0) - u * 0.16, APP);
+  }
+  for (const leg of L.legs) {
+    const hw = Math.max(2.5, (leg.w ?? u * 0.09) * 0.5);
+    const d = Math.min(
+      segDist(px, py, leg.attach.x, leg.attach.y, leg.knee.x, leg.knee.y, hw),
+      segDist(px, py, leg.knee.x, leg.knee.y, leg.foot.x, leg.foot.y, hw));
+    add('legs', d, APP);
+    // The tip of a leg is its foot — a tighter radius than the shaft, so a
+    // mid-leg click still says "legs". foot_size sets how big the pad is.
+    const pad = hw * (1.2 + (g.foot_size ?? 0.3) * 1.4);
+    add('feet', dist2(px, py, leg.foot.x, leg.foot.y) - pad, APP);
+  }
+
+  // --- eyes and face furniture, over the head ---
+  for (const e of L.eyes) add(e.minor ? 'ocelli' : 'eyes', ellDist(px, py, e), u * 0.10);
+  if (L.head) add('crownmark', ellDist(px, py, { x: L.head.x - L.head.rx * 0.2, y: 0,
+    rx: L.head.rx * 0.35, ry: L.head.ry * 0.35 }));
+
+  // --- the trunk masses ---
+  if (L.head) add('head', ellDist(px, py, L.head));
+  for (const p of L.parts) {
+    const d = ellDist(px, py, p);
+    if (p.kind === 'thorax') add('thorax', d);
+    else add('abdomen', d);
+  }
+  return out;
+}
+
+/** The part under a click on the preview, or null. */
+function partAtPoint(canvas, px, py) {
+  const w = canvas.clientWidth || 1, h = canvas.clientHeight || 1;
+  const L = layout(state.genome, 26);
+  const scale = (Math.min(w, h) * 0.94) / (L.half * 2);
+  const dx = (px - w / 2) / scale, dy = (py - h / 2) / scale;
+  const lx = -dy, ly = dx;
+
+  // A click has to land somewhere near the animal to mean anything; beyond a
+  // fifth of the body unit outside every part it is just background.
+  const tol = L.unit * 0.22;
+  let best = null;
+  for (const c of hitCandidates(L, lx, ly)) {
+    if (best === null || c.d < best.d) best = c;
+  }
+  return best && best.d <= tol ? best.id : null;
+}
+
+preview.addEventListener('click', (e) => {
+  const r = preview.getBoundingClientRect();
+  const id = partAtPoint(preview, e.clientX - r.left, e.clientY - r.top);
+  if (!id) return;
+  state.open = new Set([id]);
+  paintPanel();
+});
+
+/* ------------------------------------------------------------- resizer --- */
+
+let topH = 300;
+const deskSplit = document.getElementById('deskSplit');
+const desk = document.querySelector('.desk');
+const MIN_TOP = 130, MIN_BOTTOM = 220;
+
+function applyTopH() {
+  desk.style.setProperty('--topH', topH + 'px');
+}
+applyTopH();
+
+deskSplit.addEventListener('pointerdown', (e) => {
+  if (!matchMedia('(min-width:1000px)').matches) return;
+  e.preventDefault();
+  const startY = e.clientY, startH = partPanel.getBoundingClientRect().height;
+  const budget = desk.getBoundingClientRect().height - deskSplit.offsetHeight;
+  deskSplit.setPointerCapture(e.pointerId);
+  deskSplit.classList.add('drag');
+  const move = (ev) => {
+    topH = Math.max(MIN_TOP, Math.min(budget - MIN_BOTTOM, startH + (ev.clientY - startY)));
+    applyTopH();
+  };
+  const up = () => {
+    deskSplit.classList.remove('drag');
+    deskSplit.removeEventListener('pointermove', move);
+    deskSplit.removeEventListener('pointerup', up);
+    deskSplit.removeEventListener('pointercancel', up);
+  };
+  deskSplit.addEventListener('pointermove', move);
+  deskSplit.addEventListener('pointerup', up);
+  deskSplit.addEventListener('pointercancel', up);
 });
 
 /* ----------------------------------------------------------------- toast  */

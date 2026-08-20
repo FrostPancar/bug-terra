@@ -141,7 +141,7 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | Part | Appears when | Genes |
 |---|---|---|
 | **Legs** | _always on_ | `leg_count`, `leg_length`, `leg_thickness`, `leg_spread`, `leg_joints` |
-| **Tarsal claws** | `claw_size > 0.30` | `claw_size`, `leg_thickness` |
+| **Feet** | always drawn (core) | `foot_size`, `leg_thickness`, `leg_count` |
 
 ### Wings — four kinds fan, one kind covers
 

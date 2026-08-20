@@ -2,3 +2,4 @@ node_modules/
 dist/bundle.js
 digest/
 .DS_Store
+.netlify/

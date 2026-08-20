@@ -118,7 +118,7 @@ Tier 0 · **Larva** — everything starts here and most things stay here.
 | Beetle | Coleoptera | `carapace ≥.55`, `horn ≥.50`, `leg_length ≤.45`, **`wing_area ≤.35`** |
 | Wasp | Hymenoptera | `wing_count = 4`, `stinger ≥.60`, `carapace ≤.30` |
 | Roach | Blattodea | `antenna ≥.75`, `pattern ≥.7`, `aggression ≤.4` |
-| Mantis | Mantodea | `claw ≥.80`, `body_length ≥.75`, `leg_length ≥.60` |
+| Mantis | Mantodea | `foot_size ≥.80`, `body_length ≥.75`, `leg_length ≥.60` |
 | Moth | Lepidoptera | `wing_area ≥.85`, `setae ≥.75`, `mandible ≤.20` |
 | Dragonfly | Odonata | `wing_area ≥.7`, `eye_count ≥6`, `eye_size ≥.6`, `aggression ≥.5` |
 | Fly | Diptera | `wing_count = 2`, `wing_beat ≥.72`, `body_mass ≤.30`, `mandible ≤.25` |

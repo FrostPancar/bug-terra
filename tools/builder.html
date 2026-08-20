@@ -43,6 +43,12 @@ h1,h2,h3{margin:0}
   .desk{grid-column:1;grid-row:1;max-height:calc(100vh - 36px);overflow:hidden;
         display:flex;flex-direction:column}
   .desk>.card,.desk>.tabs{flex:0 0 auto}
+  /* The opened part's editor and the tabbed browser share the column's fixed
+     height budget, and the bar between them is how you re-cut that share. */
+  .desk>.deskTop{flex:0 0 var(--topH,300px);min-height:0;overflow:auto;margin-bottom:0}
+  .desk>.deskSplit{display:block;flex:0 0 auto}
+  .desk>.deskBottom{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+  .deskBottom>.tabs,.deskBottom>.tabhint{flex:0 0 auto}
 }
 .card{background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--drop);
   padding:14px;margin-bottom:14px}
@@ -54,8 +60,7 @@ h1,h2,h3{margin:0}
 .bugbox{position:relative;background:var(--dirt-deep);border-radius:var(--r-md);
   overflow:hidden;aspect-ratio:1/.86;max-height:58vh;display:grid;place-items:center}
 .bugbox canvas{width:100%;height:100%;display:block;image-rendering:auto}
-.bugbox .badge{position:absolute;left:10px;top:10px;font:700 10px/1 var(--mono);
-  letter-spacing:.14em;text-transform:uppercase;color:var(--cream);opacity:.7}
+.bugbox canvas{cursor:pointer}
 .poses{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}
 .poses button{background:rgba(23,17,13,.55);color:var(--cream);border-radius:999px;
   padding:6px 11px;font:700 11px/1 var(--mono);letter-spacing:.06em}
@@ -85,6 +90,15 @@ h1,h2,h3{margin:0}
   box-shadow:var(--drop-sm);margin-bottom:12px;overflow:auto}
 .tabs button{flex:1 0 auto;padding:9px 14px;border-radius:999px;font-size:13px;white-space:nowrap}
 .tabs button[aria-pressed=true]{background:var(--ink);color:var(--cream)}
+/* Stacked layout: the part editor is just another card and the split bar has
+   nothing to split, since the page scrolls freely below 1000px. */
+.deskTop{margin-bottom:14px}
+.deskSplit{display:none;height:14px;margin:0;position:relative;cursor:row-resize;
+  touch-action:none;background:none;width:100%}
+.deskSplit::before{content:"";position:absolute;left:50%;top:50%;translate:-50% -50%;
+  width:56px;height:5px;border-radius:999px;background:var(--paper-2);opacity:.5}
+.deskSplit:hover::before,.deskSplit.drag::before{opacity:1;background:var(--yellow)}
+.emptypart{color:var(--muted);font-size:12.5px;margin:0}
 .tabhint{margin:-6px 4px 10px;color:var(--cream);opacity:.62;font-size:12px;line-height:1.4}
 .panel{background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--drop);
   padding:14px;overflow:auto;flex:1 1 auto;min-height:0}
@@ -207,8 +221,7 @@ pre b{color:var(--yellow);font-weight:600}
   <section class="stage">
     <div class="card">
       <div class="bugbox">
-        <span class="badge" id="planBadge">—</span>
-        <canvas id="preview"></canvas>
+        <canvas id="preview" title="click a part to edit it"></canvas>
         <div class="poses" id="poses">
           <button data-state="idle" aria-pressed="true">idle</button>
           <button data-state="walk" aria-pressed="false">walk</button>
@@ -221,8 +234,6 @@ pre b{color:var(--yellow);font-weight:600}
         <span class="tag hot" id="taxonTag">—</span>
         <span class="tag" id="cladeTag"></span>
       </div>
-      <p class="note" id="taxonNote"></p>
-      <p class="note" id="driftNote"></p>
     </div>
 
     <div class="card">
@@ -233,30 +244,22 @@ pre b{color:var(--yellow);font-weight:600}
 
   <!-- -------------------------------------------------------------- desk -->
   <section class="desk">
-    <div class="card" style="margin-bottom:12px">
-      <div class="eyebrow">Start from</div>
-      <div class="chips" id="archChips"></div>
-      <div class="row" style="margin-top:10px">
-        <select id="taxonSel" aria-label="taxon"></select>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button class="btn go" id="loadTaxon">Load taxon build</button>
-        <button class="btn" id="randomize">Random</button>
-        <button class="btn" id="jitter">Nudge</button>
-        <button class="btn" id="undo">Undo</button>
-        <button class="btn dark" id="reset">Reset</button>
-      </div>
-      <p class="note" id="baseNote"></p>
-    </div>
+    <!-- The opened part's editor, in the slot the base picker used to hold. -->
+    <div class="card deskTop" id="partPanel"></div>
+    <div class="deskSplit" id="deskSplit" role="separator" aria-orientation="horizontal"
+         aria-label="resize the part editor" tabindex="0"></div>
 
-    <div class="tabs" id="tabs">
-      <button data-tab="library" aria-pressed="true">Part library</button>
-      <button data-tab="genes" aria-pressed="false">All 41 genes</button>
-      <button data-tab="export" aria-pressed="false">Export</button>
-    </div>
-    <p class="tabhint" id="tabHint"></p>
+    <div class="deskBottom">
+      <div class="tabs" id="tabs">
+        <button data-tab="library" aria-pressed="true">Part library</button>
+        <button data-tab="genes" aria-pressed="false">All 41 genes</button>
+        <button data-tab="start" aria-pressed="false">Start from</button>
+        <button data-tab="export" aria-pressed="false">Export</button>
+      </div>
+      <p class="tabhint" id="tabHint"></p>
 
-    <div class="panel" id="panel"></div>
+      <div class="panel" id="panel"></div>
+    </div>
   </section>
 </div>
 
@@ -303,7 +306,7 @@ if (!M) try {
 
 const {
   GENE_SPECS, GENE_ORDER, normalizeGenome, clampGene, randomGenome, genomeId, genomeName,
-  ARCHETYPES, genomeFromArchetype, computeStats, classify, nearestNodes, CLASS_TREE,
+  ARCHETYPES, genomeFromArchetype, computeStats, classify, CLASS_TREE,
   CLADE_LABEL, TRAITS, buildForTaxon, TAXON_MENU, drawBug, layout, bodyPlan,
   PARTS, PART_GROUPS, partById, partsInGroup, isPresent, addPart, removePart,
   setVariant, variantOf, applyPatch, GENE_INFO, isSimOnly, makeRng,
@@ -318,6 +321,8 @@ const state = {
   tab: 'library',
   open: new Set(['horn']),
   history: [],
+  baseNote: '',
+  taxonSel: 'beetle',
 };
 state.base.genome = state.genome;
 
@@ -404,8 +409,6 @@ mini.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-const UNREACHABLE = new Set(TAXON_MENU.filter((t) => t.unreachable).map((t) => t.id));
-
 const STAT_ROWS = [
   ['speed', 100], ['agility', 100], ['attack', 100], ['defense', 100],
   ['health', 100], ['stamina', 100], ['venom', 100], ['grip', 100],
@@ -418,7 +421,6 @@ function paintStage() {
   const c = classify(g);
   document.getElementById('bugName').textContent = genomeName(g);
   document.getElementById('bugId').textContent = '#' + genomeId(g);
-  document.getElementById('planBadge').textContent = bodyPlan(g) + ' plan';
 
   document.getElementById('miniTag').textContent = c.name;
   const tt = document.getElementById('taxonTag');
@@ -426,25 +428,6 @@ function paintStage() {
   tt.className = 'tag ' + (c.hybrid ? 'warn' : 'hot');
   document.getElementById('cladeTag').textContent =
     [CLADE_LABEL[c.clade.legPlan], c.clade.wingPlan, c.clade.massClass].join(' · ');
-
-  const traits = c.traits.map((t) => TRAITS[t].name);
-  document.getElementById('taxonNote').innerHTML =
-    `<b>${esc(c.taxon)}</b> · tier ${c.tier}${c.order ? ' · ' + esc(c.order) : ''}` +
-    (c.hybrid ? ' · <b>hybrid</b> — the chassis and the leg bracket disagree' : '') +
-    (traits.length ? ` · traits: <b>${esc(traits.join(', '))}</b>` : '') +
-    `<br>${esc(c.blurb)}`;
-
-  // A taxon whose window contradicts its parent's is unreachable, and pointing a
-  // lineage at one would be a lie — say so on the same line.
-  const near = nearestNodes(g, { limit: 2 });
-  document.getElementById('driftNote').innerHTML = near.length
-    ? 'Closest unreached: ' + near.map((n) => {
-        const need = n.missing.slice(0, 2)
-          .map((m) => `${m.gene} ${m.need === 'more' ? '↑' : '↓'}`).join(', ');
-        const dead = UNREACHABLE.has(n.id) ? ' <span class="tag warn">never</span>' : '';
-        return `<b>${esc(CLASS_TREE[n.id].taxon)}</b>${need ? ` (${esc(need)})` : ''}${dead}`;
-      }).join(' · ')
-    : '';
 
   const s = computeStats(g);
   document.getElementById('stats').innerHTML = STAT_ROWS.map(([k, max]) => {
@@ -458,74 +441,86 @@ function paintStage() {
 
 /* ------------------------------------------------------------ base picker */
 
-document.getElementById('archChips').innerHTML = ARCHETYPES.map((a) =>
-  `<button class="chip" data-arch="${a.key}" title="${esc(a.blurb)}">${esc(a.name)}</button>`).join('');
+/* The base picker is a tab like the others: it is the first thing you touch in a
+   session and then almost never again, so it does not earn permanent space. */
+const TAXON_OPTIONS = TAXON_MENU
+  .slice().sort((a, b) => a.tier - b.tier || a.taxon.localeCompare(b.taxon));
 
-document.getElementById('taxonSel').innerHTML = TAXON_MENU
-  .slice().sort((a, b) => a.tier - b.tier || a.taxon.localeCompare(b.taxon))
-  .map((t) => `<option value="${t.id}"${t.id === 'beetle' ? ' selected' : ''}>` +
-    `${'— '.repeat(t.tier)}${esc(t.taxon)}${t.unreachable ? '  ⚠ unreachable' : ''}</option>`).join('');
+function paintStart() {
+  document.getElementById('panel').innerHTML = `
+    <div class="eyebrow">Start from</div>
+    <div class="chips" id="archChips">${ARCHETYPES.map((a) =>
+      `<button class="chip" data-arch="${a.key}" title="${esc(a.blurb)}"
+        aria-pressed="${state.base.kind === 'archetype' && state.base.key === a.key}"
+        >${esc(a.name)}</button>`).join('')}</div>
+    <div class="row" style="margin-top:10px">
+      <select id="taxonSel" aria-label="taxon">${TAXON_OPTIONS.map((t) =>
+        `<option value="${t.id}"${t.id === state.taxonSel ? ' selected' : ''}>` +
+        `${'— '.repeat(t.tier)}${esc(t.taxon)}${t.unreachable ? '  ⚠ unreachable' : ''}</option>`).join('')}</select>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn go" data-start="loadTaxon">Load taxon build</button>
+      <button class="btn" data-start="randomize">Random</button>
+      <button class="btn" data-start="jitter">Nudge</button>
+      <button class="btn" data-start="undo">Undo</button>
+      <button class="btn dark" data-start="reset">Reset</button>
+    </div>
+    <p class="note" id="baseNote">${state.baseNote}</p>`;
+}
 
 function setBase(kind, key, label, genome, note) {
   state.base = { kind, key, label, genome };
+  state.baseNote = note ?? '';
   push(genome);
-  document.getElementById('baseNote').innerHTML = note ?? '';
-  document.querySelectorAll('[data-arch]').forEach((el) =>
-    el.setAttribute('aria-pressed', String(kind === 'archetype' && el.dataset.arch === key)));
 }
 
-document.getElementById('archChips').addEventListener('click', (e) => {
-  const el = e.target.closest('[data-arch]');
-  if (!el) return;
-  const a = ARCHETYPES.find((x) => x.key === el.dataset.arch);
-  const g = genomeFromArchetype(a, makeRng(Math.floor(Math.random() * 1e9)));
-  setBase('archetype', a.key, a.name, g,
-    `<b>${esc(a.name)}</b> — ${esc(a.blurb)} Drawn around the archetype's biases with jitter, so tap again for another one.`);
-});
-
-document.getElementById('loadTaxon').addEventListener('click', () => {
-  const id = document.getElementById('taxonSel').value;
-  const r = buildForTaxon(id);
-  const node = CLASS_TREE[id];
-  let note = `<b>${esc(node.taxon)}</b> built off the <b>${esc(r.baseName)}</b> plan, ` +
-    `then ${Object.keys(r.window).length} windowed gene(s) pushed into range.`;
-  if (r.conflicts.length) {
-    note += `<br><span class="tag warn">unreachable</span> ` + r.conflicts.map((c) =>
-      `<b>${esc(c.gene)}</b> is asked for ` + c.ranges.map((x) =>
-        `[${x.range[0]}, ${x.range[1]}] by ${esc(x.taxon)}`).join(' and ') +
-      ' — no genome satisfies both, so this taxon can never be reached.').join(' ');
-  }
-  if (r.achieved.id !== id) {
-    note += `<br>Classifies as <b>${esc(r.achieved.name)}</b> instead.`;
-  }
-  setBase('taxon', id, node.taxon, r.genome, note);
-});
-
-document.getElementById('randomize').addEventListener('click', () => {
-  setBase('random', 'random', 'Random', randomGenome(makeRng(Math.floor(Math.random() * 1e9))),
-    'Uniform over every gene — most of these classify as Larva, which is the point of a taxon.');
-});
-
-document.getElementById('jitter').addEventListener('click', () => {
-  const r = makeRng(Math.floor(Math.random() * 1e9));
-  const g = { ...state.genome };
-  for (const k of GENE_ORDER) {
-    if (k.endsWith('_type') || k === 'leg_count' || k === 'wing_count' || k === 'eye_count') continue;
-    const s = GENE_SPECS[k];
-    g[k] = clampGene(k, g[k] + r.normal() * (s.max - s.min) * 0.06);
-  }
-  push(g);
-});
-
-document.getElementById('undo').addEventListener('click', () => {
-  const prev = state.history.pop();
-  if (!prev) return toast('nothing to undo');
-  state.genome = prev; syncHash(); paintAll();
-});
-
-document.getElementById('reset').addEventListener('click', () => {
-  if (state.base.genome) push(state.base.genome);
-});
+const START_ACTIONS = {
+  arch(key) {
+    const a = ARCHETYPES.find((x) => x.key === key);
+    const g = genomeFromArchetype(a, makeRng(Math.floor(Math.random() * 1e9)));
+    setBase('archetype', a.key, a.name, g,
+      `<b>${esc(a.name)}</b> — ${esc(a.blurb)} Drawn around the archetype's biases with jitter, so tap again for another one.`);
+  },
+  loadTaxon() {
+    const id = state.taxonSel;
+    const r = buildForTaxon(id);
+    const node = CLASS_TREE[id];
+    let note = `<b>${esc(node.taxon)}</b> built off the <b>${esc(r.baseName)}</b> plan, ` +
+      `then ${Object.keys(r.window).length} windowed gene(s) pushed into range.`;
+    if (r.conflicts.length) {
+      note += `<br><span class="tag warn">unreachable</span> ` + r.conflicts.map((c) =>
+        `<b>${esc(c.gene)}</b> is asked for ` + c.ranges.map((x) =>
+          `[${x.range[0]}, ${x.range[1]}] by ${esc(x.taxon)}`).join(' and ') +
+        ' — no genome satisfies both, so this taxon can never be reached.').join(' ');
+    }
+    if (r.achieved.id !== id) {
+      note += `<br>Classifies as <b>${esc(r.achieved.name)}</b> instead.`;
+    }
+    setBase('taxon', id, node.taxon, r.genome, note);
+  },
+  randomize() {
+    setBase('random', 'random', 'Random', randomGenome(makeRng(Math.floor(Math.random() * 1e9))),
+      'Uniform over every gene — most of these classify as Larva, which is the point of a taxon.');
+  },
+  jitter() {
+    const r = makeRng(Math.floor(Math.random() * 1e9));
+    const g = { ...state.genome };
+    for (const k of GENE_ORDER) {
+      if (k.endsWith('_type') || k === 'leg_count' || k === 'wing_count' || k === 'eye_count') continue;
+      const s = GENE_SPECS[k];
+      g[k] = clampGene(k, g[k] + r.normal() * (s.max - s.min) * 0.06);
+    }
+    push(g);
+  },
+  undo() {
+    const prev = state.history.pop();
+    if (!prev) return toast('nothing to undo');
+    state.genome = prev; syncHash(); paintAll();
+  },
+  reset() {
+    if (state.base.genome) push(state.base.genome);
+  },
+};
 
 /* ------------------------------------------------------------------- tabs */
 
@@ -571,7 +566,7 @@ function partTile(part) {
   </button>`;
 }
 
-/** The expanded section, dropped into the grid directly under its tile. */
+/** The expanded section. It lives in the desk's top pane, never in the grid. */
 function partDetail(part) {
   const g = state.genome;
   const on = isPresent(part, g);
@@ -606,9 +601,17 @@ function partDetail(part) {
 function paintLibrary() {
   document.getElementById('panel').innerHTML = PART_GROUPS.map((grp) => `
     <div class="grouphead"><h3>${esc(grp.label)}</h3><span>${esc(grp.blurb)}</span></div>
-    <div class="tiles">${partsInGroup(grp.key).map((p) =>
-      partTile(p) + (state.open.has(p.id) ? partDetail(p) : '')).join('')}</div>`).join('');
-  paintThumbs();
+    <div class="tiles">${partsInGroup(grp.key).map(partTile).join('')}</div>`).join('');
+}
+
+/** The desk's top pane: whichever part is open, wherever it was opened from. */
+function paintPartPanel() {
+  const id = [...state.open][0];
+  const part = id ? partById(id) : null;
+  document.getElementById('partPanel').innerHTML = part
+    ? partDetail(part)
+    : `<div class="eyebrow">Part editor</div>
+       <p class="emptypart">Click a part on the bug, or a tile in the library, to edit it here.</p>`;
 }
 
 /**
@@ -747,8 +750,6 @@ function paintExport() {
  */
 /** The two browsing tabs cut the same 41 genes two ways — say which is which. */
 const TAB_HINT = {
-  library: 'The 20 things the renderer can draw, each tile framed on your bug. ' +
-           'Tap a tile to open it up; the corner pill adds or removes.',
   genes: 'All 41 genes in GENE_ORDER, including the ten that move stats but ' +
          'draw nothing. Every slider says which parts it feeds.',
   export: 'The build you have made, as code you can paste back into the project.',
@@ -757,18 +758,30 @@ const TAB_HINT = {
 function paintPanel({ toTop = false } = {}) {
   const el = document.getElementById('panel');
   const keep = el.scrollTop;
-  document.getElementById('tabHint').textContent = TAB_HINT[state.tab] ?? '';
+  const hint = document.getElementById('tabHint');
+  hint.textContent = TAB_HINT[state.tab] ?? '';
+  hint.hidden = !hint.textContent;
   document.querySelectorAll('[data-tab]').forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.tab === state.tab)));
   if (state.tab === 'library') paintLibrary();
   else if (state.tab === 'genes') paintGenes();
+  else if (state.tab === 'start') paintStart();
   else paintExport();
+  paintPartPanel();
+  paintThumbs();               // both panes hold thumbnails; one pass covers them
   el.scrollTop = toTop ? 0 : keep;
 }
 
 const panel = document.getElementById('panel');
+const partPanel = document.getElementById('partPanel');
 
-panel.addEventListener('click', (e) => {
+function deskClick(e) {
+  const startBtn = e.target.closest('[data-start]');
+  if (startBtn) { START_ACTIONS[startBtn.dataset.start](); return; }
+
+  const archBtn = e.target.closest('[data-arch]');
+  if (archBtn) { START_ACTIONS.arch(archBtn.dataset.arch); return; }
+
   const expBtn = e.target.closest('[data-exp]');
   if (expBtn) { exportKind = expBtn.dataset.exp; paintExport(); return; }
 
@@ -808,15 +821,25 @@ panel.addEventListener('click', (e) => {
     return;
   }
 
-  // One section open at a time: an expanded part is full grid width, and two of
-  // them push the rest of the catalogue off the screen.
+  // One part open at a time — the top pane holds exactly one editor. Clicking
+  // inside the editor itself must not close it, so only tiles toggle.
+  if (!host.classList.contains('tile')) return;
   state.open = state.open.has(id) ? new Set() : new Set([id]);
   paintPanel();
+}
+
+panel.addEventListener('click', deskClick);
+partPanel.addEventListener('click', deskClick);
+
+// The select is rebuilt on every repaint, so its choice lives in state.
+panel.addEventListener('change', (e) => {
+  const sel = e.target.closest('#taxonSel');
+  if (sel) state.taxonSel = sel.value;
 });
 
 // Sliders: live-draw while dragging, one history entry when the drag ends.
 let dragging = false;
-panel.addEventListener('input', (e) => {
+function deskInput(e) {
   const s = e.target.closest('[data-slider]');
   if (!s) return;
   const name = s.dataset.slider;
@@ -828,12 +851,185 @@ panel.addEventListener('input', (e) => {
     el.textContent = spec.integer ? v : v.toFixed(2);
   });
   paintStage();
-});
-panel.addEventListener('change', (e) => {
+}
+function deskChange(e) {
   if (!e.target.closest('[data-slider]')) return;
   dragging = false;
   syncHash();
   paintPanel();          // gates may have flipped: a part can appear or vanish
+}
+panel.addEventListener('input', deskInput);
+partPanel.addEventListener('input', deskInput);
+panel.addEventListener('change', deskChange);
+partPanel.addEventListener('change', deskChange);
+
+/* --------------------------------------------------- clicking the bug --- */
+
+/**
+ * The preview is the catalogue too: click a horn and the horn's editor opens.
+ *
+ * paintBug() places the bug with translate(w/2,h/2) → scale(s), and drawBug()
+ * then rotates -90° so the head points up. Inverting exactly that puts the
+ * click back into layout()'s own +x-forward, +y-lateral space:
+ *
+ *   dx = (px - w/2) / s ,  dy = (py - h/2) / s
+ *   local.x = -dy ,  local.y = dx
+ *
+ * The breathe scale and the attack lunge are both under 2% of the body and are
+ * deliberately ignored — they would move the answer by less than the tolerance.
+ *
+ * Each candidate reports a SIGNED distance in local pixels (negative inside its
+ * own silhouette), and the nearest one within tolerance wins. Appendages are
+ * listed first and carry a small bonus, so a click on the horn over the thorax
+ * resolves to the horn rather than to the mass behind it.
+ */
+const dist2 = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+
+/** Distance from p to the segment ab, minus the segment's half-width. */
+function segDist(px, py, ax, ay, bx, by, halfW) {
+  const vx = bx - ax, vy = by - ay;
+  const len2 = vx * vx + vy * vy;
+  const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2)) : 0;
+  return dist2(px, py, ax + vx * t, ay + vy * t) - halfW;
+}
+
+/** Rough signed distance to an axis-aligned ellipse — exact enough at this size. */
+function ellDist(px, py, e) {
+  const nx = (px - e.x) / e.rx, ny = (py - e.y) / e.ry;
+  const n = Math.hypot(nx, ny);
+  return (n - 1) * Math.min(e.rx, e.ry);
+}
+
+function hitCandidates(L, px, py) {
+  const g = L.g;
+  const u = L.unit;
+  const out = [];
+  const add = (id, d, bonus = 0) => {
+    if (!partById(id)) return;
+    out.push({ id, d: d - bonus });
+  };
+  const APP = u * 0.18;                 // appendages win ties against the trunk
+
+  // --- appendages, listed first ---
+  if (L.hornLen) {
+    const x0 = L.thorax.x + L.thorax.rx * 0.52;
+    add('horn', segDist(px, py, x0, 0, x0 + L.hornLen, 0, Math.max(3, u * 0.16)), APP);
+  }
+  if (L.mandible) {
+    for (const side of [-1, 1]) {
+      const ax = L.head.x + L.head.rx * 0.60;
+      add('mandibles', segDist(px, py, ax, side * L.head.ry * 0.52,
+        ax + L.mandible * 0.9, side * L.head.ry * 0.9, Math.max(3, u * 0.10)), APP);
+    }
+  }
+  for (const a of L.antennae) {
+    const h = L.head;
+    add('antennae', segDist(px, py, h.x + h.rx * 0.40, a.side * h.ry * 0.50,
+      h.x + a.len, a.side * (h.ry * 0.50 + a.len * 0.40), Math.max(3, u * 0.10)), APP);
+  }
+  // Elytra are drawn ON the abdomen rather than out to the side, so there is no
+  // blade to click — that whole area is the abdomen, and elytra stay a tile.
+  if (L.wingPairs > 0 && L.wing && L.wingType !== 'elytra') {
+    const an = L.thorax;
+    for (const side of [-1, 1]) {
+      const rx = an.x - u * 0.04, ry = side * an.ry * 0.22;
+      const ang = side * L.wing.sweep;
+      add('wings', segDist(px, py, rx, ry,
+        rx + Math.cos(ang) * L.wing.len, ry + Math.sin(ang) * L.wing.len,
+        L.wing.wid), APP);
+    }
+  }
+  if (L.tail) {
+    const t = L.tail;
+    const tipX = t.x0 - t.len;
+    add('tail', segDist(px, py, t.x0, 0, tipX, 0, Math.max(3, u * 0.10)), APP);
+    if (t.sting > 0.18) add('stinger', dist2(px, py, tipX, 0) - u * 0.16, APP);
+  }
+  for (const leg of L.legs) {
+    const hw = Math.max(2.5, (leg.w ?? u * 0.09) * 0.5);
+    const d = Math.min(
+      segDist(px, py, leg.attach.x, leg.attach.y, leg.knee.x, leg.knee.y, hw),
+      segDist(px, py, leg.knee.x, leg.knee.y, leg.foot.x, leg.foot.y, hw));
+    add('legs', d, APP);
+    // The tip of a leg is its foot — a tighter radius than the shaft, so a
+    // mid-leg click still says "legs". foot_size sets how big the pad is.
+    const pad = hw * (1.2 + (g.foot_size ?? 0.3) * 1.4);
+    add('feet', dist2(px, py, leg.foot.x, leg.foot.y) - pad, APP);
+  }
+
+  // --- eyes and face furniture, over the head ---
+  for (const e of L.eyes) add(e.minor ? 'ocelli' : 'eyes', ellDist(px, py, e), u * 0.10);
+  if (L.head) add('crownmark', ellDist(px, py, { x: L.head.x - L.head.rx * 0.2, y: 0,
+    rx: L.head.rx * 0.35, ry: L.head.ry * 0.35 }));
+
+  // --- the trunk masses ---
+  if (L.head) add('head', ellDist(px, py, L.head));
+  for (const p of L.parts) {
+    const d = ellDist(px, py, p);
+    if (p.kind === 'thorax') add('thorax', d);
+    else add('abdomen', d);
+  }
+  return out;
+}
+
+/** The part under a click on the preview, or null. */
+function partAtPoint(canvas, px, py) {
+  const w = canvas.clientWidth || 1, h = canvas.clientHeight || 1;
+  const L = layout(state.genome, 26);
+  const scale = (Math.min(w, h) * 0.94) / (L.half * 2);
+  const dx = (px - w / 2) / scale, dy = (py - h / 2) / scale;
+  const lx = -dy, ly = dx;
+
+  // A click has to land somewhere near the animal to mean anything; beyond a
+  // fifth of the body unit outside every part it is just background.
+  const tol = L.unit * 0.22;
+  let best = null;
+  for (const c of hitCandidates(L, lx, ly)) {
+    if (best === null || c.d < best.d) best = c;
+  }
+  return best && best.d <= tol ? best.id : null;
+}
+
+preview.addEventListener('click', (e) => {
+  const r = preview.getBoundingClientRect();
+  const id = partAtPoint(preview, e.clientX - r.left, e.clientY - r.top);
+  if (!id) return;
+  state.open = new Set([id]);
+  paintPanel();
+});
+
+/* ------------------------------------------------------------- resizer --- */
+
+let topH = 300;
+const deskSplit = document.getElementById('deskSplit');
+const desk = document.querySelector('.desk');
+const MIN_TOP = 130, MIN_BOTTOM = 220;
+
+function applyTopH() {
+  desk.style.setProperty('--topH', topH + 'px');
+}
+applyTopH();
+
+deskSplit.addEventListener('pointerdown', (e) => {
+  if (!matchMedia('(min-width:1000px)').matches) return;
+  e.preventDefault();
+  const startY = e.clientY, startH = partPanel.getBoundingClientRect().height;
+  const budget = desk.getBoundingClientRect().height - deskSplit.offsetHeight;
+  deskSplit.setPointerCapture(e.pointerId);
+  deskSplit.classList.add('drag');
+  const move = (ev) => {
+    topH = Math.max(MIN_TOP, Math.min(budget - MIN_BOTTOM, startH + (ev.clientY - startY)));
+    applyTopH();
+  };
+  const up = () => {
+    deskSplit.classList.remove('drag');
+    deskSplit.removeEventListener('pointermove', move);
+    deskSplit.removeEventListener('pointerup', up);
+    deskSplit.removeEventListener('pointercancel', up);
+  };
+  deskSplit.addEventListener('pointermove', move);
+  deskSplit.addEventListener('pointerup', up);
+  deskSplit.addEventListener('pointercancel', up);
 });
 
 /* ----------------------------------------------------------------- toast  */

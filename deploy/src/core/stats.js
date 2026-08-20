@@ -57,8 +57,12 @@ export function morphology(g) {
 export function computeStats(g) {
   const m = morphology(g);
 
-  // GRIP — traction. Claws and an extra leg joint let a bug push off harder.
-  const grip = clamp(100 * sig(0.55 * g.claw_size + 0.25 * (m.joints - 2)
+  // GRIP — traction. A broad foot pad and an extra leg joint let a bug push
+  // off harder. This used to read `claw_size`; the gene was renamed to
+  // `foot_size` when tarsal claws left the art, and the coefficient is
+  // UNCHANGED — contact area with the ground is what grip was always modelling,
+  // and a wide pad supplies it as well as a hook did.
+  const grip = clamp(100 * sig(0.55 * g.foot_size + 0.25 * (m.joints - 2)
                              + 0.20 * g.leg_thickness, 5), 1, 100);
 
   // SPEED — long legs and more of them move you faster; mass per leg drags,
@@ -83,12 +87,15 @@ export function computeStats(g) {
     1, 100
   );
 
-  // ATTACK — mandibles, plus horn and claws, plus the body behind the blow.
+  // ATTACK — mandibles, plus horn and feet, plus the body behind the blow.
   const bite = g.mandible_size * (0.6 + 0.6 * g.mandible_serration);
   const horn = g.horn_size * 0.55;
-  const claws = g.claw_size * 0.30;
+  // HALVED, 0.30 → 0.15. The old term paid for a hooked claw that could rake;
+  // a foot pad is a blunt thing to strike with, so it keeps a contribution but
+  // no longer the same one. Feet still raise attack, just less than claws did.
+  const feet = g.foot_size * 0.15;
   const attack = clamp(
-    100 * sig(bite * 0.85 + horn + claws + Math.min(m.mass, 3) * 0.12, 5), 1, 100
+    100 * sig(bite * 0.85 + horn + feet + Math.min(m.mass, 3) * 0.12, 5), 1, 100
   );
 
   // VENOM — damage over time, independent of raw attack. A long metasoma gives

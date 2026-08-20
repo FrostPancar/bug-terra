@@ -53,7 +53,7 @@ function trace(genome, opts = {}) {
 
 const BASE = normalizeGenome({
   body_length: 0.42, body_width: 0.60, head_size: 0.62, leg_count: 6,
-  leg_length: 0.55, leg_thickness: 0.55, claw_size: 0.2, wing_count: 0,
+  leg_length: 0.55, leg_thickness: 0.55, foot_size: 0.2, wing_count: 0,
   wing_area: 0, horn_size: 0, mandible_size: 0.4, tail_length: 0, stinger_size: 0,
   eye_count: 2, eye_size: 0.8, antenna_length: 0, setae: 0, iridescence: 0,
   hue: 0.015, saturation: 0.55, lightness: 0.55, pattern: 0.2, spine_density: 0,
