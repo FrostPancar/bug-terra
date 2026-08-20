@@ -105,7 +105,9 @@ export const PARTS = [
     off: { body_segments: 1 },
     genes: [
       { gene: 'body_segments', effect: 'how many abdominal segments: count − 1. At 1 there is no abdomen at all' },
-      { gene: 'body_width', effect: 'width of every trunk mass at once' },
+      { gene: 'abdomen_width', effect: 'lateral half-axis of every abdominal segment, 0.22–1.00 of body width. Touches no other mass' },
+      { gene: 'abdomen_length', effect: 'along-the-body half-axis, 0.22–1.00 of body width — the chain gets longer, not wider' },
+      { gene: 'body_width', effect: 'the overall scale the abdomen\'s two axes are fractions of' },
       { gene: 'abdomen_taper', effect: 'squeezes the abdomen narrower, 0 round → 1 pointed, and tapers the chain to its tip' },
     ],
   },
@@ -117,8 +119,9 @@ export const PARTS = [
     core: true,
     drawnBy: 'buildTrunk() → the thorax ellipse',
     genes: [
-      { gene: 'thorax_ratio', effect: 'thorax radius, 0.24–0.58 of body width (insect plan only)' },
-      { gene: 'body_width', effect: 'sets the base radius' },
+      { gene: 'thorax_width', effect: 'lateral half-axis, 0.16–0.70 of body width (× 1.334 on the arachnid plan)' },
+      { gene: 'thorax_length', effect: 'along-the-body half-axis, same range — and it moves where the head mounts, since the head sits off the thorax\'s front edge' },
+      { gene: 'body_width', effect: 'the overall scale both thorax axes are fractions of' },
     ],
   },
   {
@@ -129,8 +132,9 @@ export const PARTS = [
     core: true,
     drawnBy: 'buildHead()',
     genes: [
-      { gene: 'head_size', effect: 'capsule radius, 0.16–0.62 of body width (ignored on arachnids)' },
-      { gene: 'body_width', effect: 'the width the head radius is a fraction of' },
+      { gene: 'head_width', effect: 'lateral half-axis, 0.12–0.80 of body width (× 1.36 on the arachnid plan). Also where the eyes sit laterally' },
+      { gene: 'head_length', effect: 'along-the-body half-axis, same range. Also how far the head stands off the thorax' },
+      { gene: 'body_width', effect: 'the overall scale both head axes are fractions of' },
     ],
   },
   {
@@ -245,7 +249,7 @@ export const PARTS = [
     genes: [
       { gene: 'horn_size', effect: 'length, 0.18–1.55 of the body unit depending on kind' },
       { gene: 'horn_type', effect: 'which of the five shapes gets drawn' },
-      { gene: 'head_size', effect: 'the horn is anchored to the head\'s rear edge, so a bigger head moves its base' },
+      { gene: 'head_length', effect: 'the horn is anchored to the head\'s rear edge, so a longer head moves its base' },
       { gene: 'pattern_horn', effect: 'flat / gradient / dots / oval surface treatment on the horn fill — its own gene, independent of the jaws' },
       { gene: 'pattern_contrast', effect: 'how far the light tone departs from the horn colour' },
     ],
@@ -346,12 +350,12 @@ export const PARTS = [
     blurb: 'One shape only: a wedge, wide and rounded at the outer-top corner and drawn to a point at the inner-lower side. Big, set wide, and drawn UNDER the head so its edge crops the inner half. `eye_type` picks how it is FILLED, not what shape it is.',
     core: true,
     drawnBy: 'drawEyes() → eyeWedgePath()',
-    gate: 'the iris appears on both light fills and never on the dark one. It no longer consults saturation at all',
+    gate: 'no gate — there is nothing optional inside an eye any more. The iris is GONE on every fill treatment (it was a bright complementary disc that read as a coloured dot in the eye)',
     variantGene: 'eye_type',
     variants: variants(EYE_FILLS, [
-      'near-black, with a scatter of small white dots. No iris — a coloured disc is lost on it',
-      'white, with a dark notch cut into the outer-top corner, plus the iris disc',
-      'white, with a small dark hook curling in from the outer-top corner, plus the iris disc',
+      'near-black, with a scatter of small white dots',
+      'white, with a dark notch cut into the outer-top corner. Nothing else',
+      'white, with a small dark hook curling in from the outer-top corner. Nothing else',
     ]),
     genes: [
       { gene: 'eye_size', effect: 'radius, 0.45–1.05 of head radius' },
@@ -381,7 +385,7 @@ export const PARTS = [
     setVariant: (_g, i) => ({ crown_mark_style: i + 1 }),
     genes: [
       { gene: 'crown_mark_style', effect: '0 none, 1 solid gold cap, 2 the cap blended into the head' },
-      { gene: 'head_size', effect: 'the cap is the top 18% of the head silhouette, so it scales with it' },
+      { gene: 'head_length', effect: 'the cap is the front 18% of the head silhouette along its long axis, so it scales with it' },
     ],
   },
   {
@@ -411,7 +415,7 @@ export const PARTS = [
     off: { antenna_length: 0 },
     genes: [
       { gene: 'antenna_length', effect: 'reach, 0.06–0.95 of the body unit' },
-      { gene: 'head_size', effect: 'antennae anchor to the head edge' },
+      { gene: 'head_width', effect: 'antennae anchor to the head edge' },
     ],
   },
 
@@ -430,7 +434,7 @@ export const PARTS = [
     setVariant: (_g, i) => ({ hue: (i + 0.5) / SWATCH_NAMES.length }),
     genes: [
       { gene: 'hue', effect: 'picks one of the twelve swatches' },
-      { gene: 'saturation', effect: 'scales the swatch 0.80–1.15×, and gates the iris at 0.35' },
+      { gene: 'saturation', effect: 'scales the swatch 0.80–1.15×' },
       { gene: 'lightness', effect: 'scales the swatch 0.86–1.16×' },
     ],
   },
@@ -482,14 +486,15 @@ export const PARTS = [
     id: 'seglight',
     group: 'surface',
     name: 'Segment lighting',
-    blurb: 'The soft warm bloom on every trunk segment. Its core colour is a reference-palette swatch of its own — heritable, and not tied to the body colour — while its outer fade is built from the body\'s own lightness and saturation so the edge never goes muddy.',
+    blurb: 'The soft warm bloom on every trunk segment. Only its HUE comes off the reference palette; how bright and how saturated it is are two genes of its own, independent of the body colour — floor-clamped so the light can never render darker than the shell it sits on.',
     core: true,
     drawnBy: 'palette() → segmentMass()',
     gate: 'always, on every trunk mass. Never on the head, which carries no lighting at all',
     genes: [
       { gene: 'light_hue', effect: 'which of the ten reference-palette swatches the bloom\'s core is. 7 is cream, which is what every bug used to get' },
-      { gene: 'lightness', effect: 'the outer stops fade toward a lightened version of the body, so a lighter body has a lighter blob edge' },
-      { gene: 'saturation', effect: 'that same outer tone keeps roughly half the body\'s saturation, which is what stops the edge reading as dirt' },
+      { gene: 'lighting_lightness', effect: 'the bloom\'s own lightness, core and fade alike. Clamped up to the body\'s own lightness, so the light is never darker than the shell' },
+      { gene: 'lighting_saturation', effect: 'the bloom\'s own saturation; the outer stops keep 60% of it so the edge stays soft' },
+      { gene: 'lightness', effect: 'only as the FLOOR the lighting\'s lightness is clamped to — a lighter body raises the light with it, never the other way round' },
       { gene: 'body_segments', effect: 'one bloom per trunk segment' },
     ],
   },
@@ -505,7 +510,7 @@ export const PARTS = [
     off: { setae: 0 },
     genes: [
       { gene: 'setae', effect: 'count (10–26) and length of the fringe; also helps camouflage' },
-      { gene: 'body_width', effect: 'setae are drawn off the abdomen rim (the thorax, if there is no abdomen), so they scale with it' },
+      { gene: 'abdomen_width', effect: 'setae are drawn off the abdomen rim (the thorax, if there is no abdomen), so they scale with it' },
     ],
   },
   {
@@ -644,7 +649,7 @@ export const SIM_ONLY = {
 
 /**
  * gene → every part it touches. Built once, so the parameter panel can answer
- * "what does this slider move" for all 50 genes without a search.
+ * "what does this slider move" for all 56 genes without a search.
  */
 export const GENE_INFO = (() => {
   const map = {};

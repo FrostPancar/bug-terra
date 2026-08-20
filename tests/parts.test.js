@@ -52,7 +52,7 @@ function trace(genome, opts = {}) {
 }
 
 const BASE = normalizeGenome({
-  body_length: 0.42, body_width: 0.60, head_size: 0.62, leg_count: 6,
+  body_length: 0.42, body_width: 0.60, head_width: 0.48, head_length: 0.48, leg_count: 6,
   leg_length: 0.55, leg_thickness: 0.55, wing_count: 0,
   wing_area: 0, horn_size: 0, mandible_size: 0.4, tail_length: 0, stinger_size: 0,
   eye_count: 2, eye_size: 0.8, antenna_length: 0, setae: 0, iridescence: 0,
@@ -71,7 +71,7 @@ test('every gene a part names actually exists', () => {
   }
 });
 
-test('all 50 genes are accounted for — a part, a sim note, or both', () => {
+test('all 56 genes are accounted for — a part, a sim note, or both', () => {
   for (const gene of GENE_ORDER) {
     const row = GENE_INFO[gene];
     assert.ok(row, `${gene} is missing from GENE_INFO`);
@@ -102,7 +102,7 @@ test('the head carries no lighting at all — one flat fill, no gradient', () =>
   // body_segments 1 leaves exactly one trunk mass (the thorax), so the blob it
   // paints is the ONLY radial gradient the whole sprite is allowed to contain.
   // The head used to add a second one; that is the thing this pins down.
-  const g = normalizeGenome({ ...BASE, body_segments: 1, head_size: 0.9, crown_mark_style: 0 });
+  const g = normalizeGenome({ ...BASE, body_segments: 1, head_width: 0.9, head_length: 0.9, crown_mark_style: 0 });
   // `grad(` only — `lgrad(` is a different primitive and the mandibles use it.
   const radials = trace(g).split('\n').filter((l) => l.startsWith('grad(')).length;
   assert.equal(radials, 1,
@@ -110,8 +110,8 @@ test('the head carries no lighting at all — one flat fill, no gradient', () =>
 });
 
 test('the crown mark is the only blend allowed on the head', () => {
-  const flat = normalizeGenome({ ...BASE, head_size: 0.9, crown_mark_style: 1 });
-  const blend = normalizeGenome({ ...BASE, head_size: 0.9, crown_mark_style: 2 });
+  const flat = normalizeGenome({ ...BASE, head_width: 0.9, head_length: 0.9, crown_mark_style: 1 });
+  const blend = normalizeGenome({ ...BASE, head_width: 0.9, head_length: 0.9, crown_mark_style: 2 });
   const lgrads = (g) => trace(g).split('\n').filter((l) => l.startsWith('lgrad(')).length;
   const solidGrads = lgrads(flat);
   const blendGrads = lgrads(blend);

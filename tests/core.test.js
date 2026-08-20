@@ -80,12 +80,28 @@ test('archetypes are actually distinguishable from each other', () => {
     assert.ok(Math.max(...vs) - Math.min(...vs) > 25,
       `${k} only spans ${Math.max(...vs) - Math.min(...vs)} across archetypes`);
   }
-  // and no two archetypes should collapse onto the same profile
-  for (let i = 0; i < profiles.length; i++) {
-    for (let j = i + 1; j < profiles.length; j++) {
-      const d = ['speed','defense','attack','flight','venom','camouflage']
-        .reduce((acc, k) => acc + (profiles[i][k] - profiles[j][k]) ** 2, 0) ** 0.5;
-      assert.ok(d > 20, `${ARCHETYPES[i].key} and ${ARCHETYPES[j].key} are near-identical (d=${d.toFixed(1)})`);
+
+  // And no two archetypes may collapse onto the same profile.
+  //
+  // MEASURED OVER SEVERAL DRAWS, not one. genomeFromArchetype() jitters the bias
+  // vector, so a single seed compares two SAMPLES and answers a question about
+  // luck as much as about design — the closest pair (beetle/weevil, which really
+  // are neighbours: both heavy, armoured and horned) landed anywhere between 8
+  // and 45 apart depending only on the seed, and any gene added to or removed
+  // from GENE_ORDER reshuffles which draw each archetype gets. Averaging the
+  // per-seed distance measures the distance between the archetypes THEMSELVES,
+  // which is the actual claim. The 20 threshold is unchanged.
+  const SEEDS = [23, 24, 25, 26, 27, 101];
+  const draws = SEEDS.map((s) => {
+    const r = makeRng(s);
+    return ARCHETYPES.map((a) => computeStats(genomeFromArchetype(a, r)));
+  });
+  for (let i = 0; i < ARCHETYPES.length; i++) {
+    for (let j = i + 1; j < ARCHETYPES.length; j++) {
+      const mean = draws.reduce((acc, p) => acc + (['speed','defense','attack','flight','venom','camouflage']
+        .reduce((a, k) => a + (p[i][k] - p[j][k]) ** 2, 0) ** 0.5), 0) / draws.length;
+      assert.ok(mean > 20,
+        `${ARCHETYPES[i].key} and ${ARCHETYPES[j].key} are near-identical (mean d=${mean.toFixed(1)})`);
     }
   }
 });

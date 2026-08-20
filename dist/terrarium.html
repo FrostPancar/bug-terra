@@ -745,9 +745,34 @@
     body_length: { min: 0, max: 1, default: 0.53 },
     body_width: { min: 0, max: 1, default: 0.21 },
     body_mass: { min: 0, max: 1, default: 0.75 },
-    head_size: { min: 0, max: 1, default: 0.1 },
-    thorax_ratio: { min: 0, max: 1, default: 0.22 },
-    // thorax vs abdomen
+    /**
+     * PER-PART SIZE, TWO AXES EACH. `head_size` and `thorax_ratio` ARE GONE.
+     *
+     * Every trunk mass used to be a fraction of the single `body_width` gene —
+     * one knob that resized the head, the thorax and the abdomen together, with
+     * `head_size`/`thorax_ratio` only able to shift a part's share of that one
+     * width, and no way at all to say "long abdomen, narrow thorax". The three
+     * masses now size themselves: `*_width` is the lateral half-axis (the part's
+     * `ry`), `*_length` the along-the-body half-axis (its `rx`), and neither
+     * touches any other part.
+     *
+     * `body_width` SURVIVES and still legitimately does work — it is the scale
+     * every one of these six is a fraction of (so the whole bug still has one
+     * overall size), plus the myriapod ring radius, the length/width ratio clamp
+     * and, through `unit`, leg and antenna scaling. What it no longer does is
+     * decide the head/thorax/abdomen PROPORTIONS on its own.
+     *
+     * DEFAULTS ARE CALIBRATED TO THE OLD SPRITE, not to the middle of the range:
+     * each one reproduces the radius the pre-split formula produced at the old
+     * defaults (abdomen 0.54 · thorax 0.315 · head 0.206 of body width), so an
+     * untouched genome renders the proportions it always did.
+     */
+    head_width: { min: 0, max: 1, default: 0.13 },
+    head_length: { min: 0, max: 1, default: 0.13 },
+    thorax_width: { min: 0, max: 1, default: 0.287 },
+    thorax_length: { min: 0, max: 1, default: 0.287 },
+    abdomen_width: { min: 0, max: 1, default: 0.41 },
+    abdomen_length: { min: 0, max: 1, default: 0.41 },
     abdomen_taper: { min: 0, max: 1, default: 0.51 },
     // 0 round, 1 pointed
     carapace_thickness: { min: 0, max: 1, default: 0.7 },
@@ -900,6 +925,26 @@
     // swatch is now a gene: 0–9 index REF_PALETTE_ORDER. 7 is cream, which is
     // what every bug used to get, so the default is the old fixed behaviour.
     light_hue: { min: 0, max: 9, integer: true, default: 7 },
+    /**
+     * THE LIGHTING'S OWN SATURATION AND LIGHTNESS.
+     *
+     * `light_hue` only ever picked a swatch, and everything else about the bloom
+     * rode on values that were not its own: the core stops used the swatch's
+     * baked-in hex s/l, and the outer fade was built from the BODY's `saturation`
+     * and `lightness`. So "how bright is the light on this bug" was not a
+     * question a genome could answer — it was a side effect of the body colour.
+     * These two own it. Only the HUE now comes off REF_PALETTE; the rendered
+     * bloom colour is hsl(that hue, lighting_saturation, lighting_lightness).
+     *
+     * Defaults reproduce cream (#e5dbcf ≈ 33% saturation, 85% lightness), which
+     * is the light every bug used to get.
+     *
+     * FLOOR: the effective lightness is clamped to the body's own lightness in
+     * palette(), so the bloom can never render DARKER than the shell it sits on,
+     * whatever this gene says. See palette()'s lighting section.
+     */
+    lighting_saturation: { min: 0, max: 1, default: 0.33 },
+    lighting_lightness: { min: 0, max: 1, default: 0.85 },
     // A flat colour patch capping the top of the head: none / solid gold with a
     // hard edge / the same cap blended down into the head colour. Its colours come
     // straight off bugArt's fixed REF_PALETTE, never from the body hue.
@@ -2183,6 +2228,18 @@
     const n = parseInt(hex.slice(1), 16);
     return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
   }
+  function hexHue(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    if (d === 0) return 0;
+    let h;
+    if (max === r) h = (g - b) / d % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+    return (h % 1 + 1) % 1;
+  }
   var BLOB_ALPHA = 0.52;
   var REF_PALETTE_ORDER = [
     "tan",
@@ -2210,21 +2267,26 @@
     const accentH = h + 0.5;
     const inkLimbs = (g.pattern_leg ?? 0) > 0.5;
     const lightHex = REF_PALETTE[REF_PALETTE_ORDER[clamp2(Math.round(g.light_hue ?? 7), 0, REF_PALETTE_ORDER.length - 1)]];
-    const lift = (a) => hsl(h, clamp2(s * 0.52, 0, 1), clamp2(l + 0.3, 0, 0.94), a);
+    const lightH = hexHue(lightHex);
+    const lightS = clamp2(g.lighting_saturation ?? 0.33, 0, 1);
+    const lightL = clamp2(Math.max(g.lighting_lightness ?? 0.85, l), 0, 0.98);
+    const core = (a) => hsl(lightH, lightS, lightL, a);
+    const lift = (a) => hsl(lightH, clamp2(lightS * 0.6, 0, 1), lightL, a);
     return {
       shell: hsl(h, s, l),
       // The one surviving tone of the old airbrush gradient. It is NOT a head
       // treatment any more (the head is flat `shell`, see drawBug); the elytra
       // pass is its only consumer, where it separates the two wing covers.
       deep: hsl(h, s * 1.02, Math.max(0.2, l - 0.14)),
-      // Body-segment bloom. The CORE three stops are the `light_hue` swatch off
-      // the fixed reference palette; the OUTER three fade into a light tone of the
-      // bug's own colour (see `lift`) rather than into a fixed tan, then out to
-      // nothing well short of the rim so the edge stays flat undarkened `shell`.
+      // Body-segment bloom. All six stops are now the SAME authored colour —
+      // `light_hue`'s hue at `lighting_saturation`/`lighting_lightness` — the core
+      // three at full strength and the outer three with the saturation pulled back
+      // (see `lift`), fading out to nothing well short of the rim so the edge
+      // stays flat undarkened `shell`.
       // Six stops, all faint: see BLOB_ALPHA for why the numbers are this low.
-      segBloom: refA(lightHex, BLOB_ALPHA),
-      segBloomMid: refA(lightHex, BLOB_ALPHA * 0.68),
-      segBloomMid2: refA(lightHex, BLOB_ALPHA * 0.44),
+      segBloom: core(BLOB_ALPHA),
+      segBloomMid: core(BLOB_ALPHA * 0.68),
+      segBloomMid2: core(BLOB_ALPHA * 0.44),
       segBloomFar: lift(BLOB_ALPHA * 0.24),
       segBloomFar2: lift(BLOB_ALPHA * 0.1),
       segBloomOut: lift(0),
@@ -2234,16 +2296,25 @@
       crownBlendTop: refA(REF_PALETTE.gold, 0.95),
       crownBlendMid: refA(REF_PALETTE.orange, 0.62),
       crownBlendOut: refA(REF_PALETTE.orange, 0),
-      // The soft centreline is the segment's own shell colour, faded.
-      shellSoft: hsl(h, s, l, 0.3),
+      // The soft centreline. It is the segment's own shell colour and it is drawn
+      // ON TOP OF the bloom, so its job is to bring that patch of segment back to
+      // `shell`. RAISED 0.30 → 0.72: at 0.30 the result was 70% bloom, i.e. a
+      // stripe of light cream-tinted body rather than of body colour, which is why
+      // it read as "some other colour" instead of "the shell, faded". At 0.72 the
+      // shell dominates the blend unambiguously and the line reads as the body's
+      // own colour softened by whatever light is left over it.
+      shellSoft: hsl(h, s, l, 0.72),
       shellClear: hsl(h, s, l, 0),
       seam: hsl(h, s * 1.05, Math.max(0.16, l - 0.2)),
+      seamClear: hsl(h, s * 1.05, Math.max(0.16, l - 0.2), 0),
       limb: inkLimbs ? "#17161c" : hsl(h, s * 0.92, Math.max(0.24, l - 0.16)),
       limbLo: inkLimbs ? "#0e0d11" : hsl(h, s * 0.95, Math.max(0.18, l - 0.24)),
       accent: hsl(accentH, 0.72, 0.6),
       horn: hsl(h, s * 0.9, Math.max(0.26, l - 0.1)),
       sclera: "#ffffff",
-      iris: hsl(accentH, 0.7, 0.56),
+      // NO `iris`. The eye carries no coloured disc of any kind on any fill
+      // treatment now — see drawEyes. `accentH` survives because `accent` below
+      // still uses it.
       pupil: "#14131a",
       // WINGS ARE NEVER TINTED BY THE GENOME. Every other surface here derives
       // from the body hue; the wing membrane deliberately does not. The reference
@@ -2352,7 +2423,8 @@
     bump2(hornOriginX(L) + L.hornLen * 1.1, L.hornLen * 0.7);
     bump2(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
     if (L.wingPairs > 0) bump2(L.wingSpan.x, L.wingSpan.y);
-    L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + 3);
+    const shadowPad = unit * (SHADOW_OFFSET_K + SHADOW_BLUR_K * 1.5);
+    L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + shadowPad + 3);
     return L;
   }
   function buildTrunk(L) {
@@ -2379,18 +2451,20 @@
       return;
     }
     const arach = plan === "arachnid";
-    const abR = bodyWid * (arach ? 0.56 : 0.54);
-    const thR = arach ? bodyWid * 0.42 : bodyWid * lerp(0.24, 0.58, g.thorax_ratio);
-    const thorax = { x: 0, y: 0, rx: thR * (arach ? 1 : 1.04), ry: thR, kind: "thorax" };
+    const abW = bodyWid * lerp(0.22, 1, g.abdomen_width ?? 0.41) * (arach ? 1.037 : 1);
+    const abL = bodyWid * lerp(0.22, 1, g.abdomen_length ?? 0.41) * (arach ? 1.037 : 1);
+    const thW = bodyWid * lerp(0.16, 0.7, g.thorax_width ?? 0.287) * (arach ? 1.334 : 1);
+    const thL = bodyWid * lerp(0.16, 0.7, g.thorax_length ?? 0.287) * (arach ? 1.334 : 1);
+    const thorax = { x: 0, y: 0, rx: thL * (arach ? 1 : 1.04), ry: thW, kind: "thorax" };
     const n = L.abdomenSegs;
     const abParts = [];
     if (n > 0) {
-      const segLen = abR * (1.16 / Math.sqrt(n));
+      const segLen = abL * (1.16 / Math.sqrt(n));
       const tipNarrow = lerp(1, 0.55, g.abdomen_taper);
-      let x = -(thR * 0.74) - segLen * 0.6;
+      let x = -(thL * 0.74) - segLen * 0.6;
       for (let i = 0; i < n; i++) {
         const t = n === 1 ? 0 : i / (n - 1);
-        const ry = abR * (1 - g.abdomen_taper * (arach ? 0.18 : 0.22)) * lerp(1, tipNarrow, t);
+        const ry = abW * (1 - g.abdomen_taper * (arach ? 0.18 : 0.22)) * lerp(1, tipNarrow, t);
         abParts.push({ x, y: 0, rx: segLen, ry, kind: "abdomen", seg: i });
         x -= segLen * 1.15;
       }
@@ -2399,7 +2473,7 @@
     L.parts.push(thorax);
     L.thorax = thorax;
     L.abdomen = abParts[0] ?? null;
-    L.trunkFrontX = thorax.x + thR;
+    L.trunkFrontX = thorax.x + thorax.rx;
   }
   function buildLegs(L) {
     const { g, plan, unit } = L;
@@ -2451,14 +2525,17 @@
   }
   function buildHead(L) {
     const { g, plan, bodyWid, unit } = L;
-    const headR = bodyWid * (plan === "arachnid" ? 0.28 : lerp(0.16, 0.62, g.head_size));
-    const hx = L.trunkFrontX + headR * (plan === "arachnid" ? 0.06 : 0.54);
-    L.head = { x: hx, y: 0, rx: headR * 1, ry: headR, kind: "head" };
+    const arach = plan === "arachnid";
+    const headW = bodyWid * lerp(0.12, 0.8, g.head_width ?? 0.13) * (arach ? 1.36 : 1);
+    const headL = bodyWid * lerp(0.12, 0.8, g.head_length ?? 0.13) * (arach ? 1.36 : 1);
+    const headR = (headW + headL) * 0.5;
+    const hx = L.trunkFrontX + headL * (arach ? 0.06 : 0.54);
+    L.head = { x: hx, y: 0, rx: headL, ry: headW, kind: "head" };
     const er = headR * lerp(0.45, 1.05, g.eye_size);
     for (const side of [-1, 1]) {
       L.eyes.push({
-        x: hx + headR * 0.04,
-        y: side * headR * 0.98,
+        x: hx + headL * 0.04,
+        y: side * headW * 0.98,
         rx: er * 0.55,
         ry: er,
         side
@@ -2468,8 +2545,8 @@
     for (let i = 0; i < extra; i++) {
       const t = extra === 1 ? 0.5 : i / (extra - 1);
       L.eyes.push({
-        x: hx + headR * lerp(0.5, 0.14, t),
-        y: (i % 2 === 0 ? -1 : 1) * headR * lerp(0.14, 0.38, t),
+        x: hx + headL * lerp(0.5, 0.14, t),
+        y: (i % 2 === 0 ? -1 : 1) * headW * lerp(0.14, 0.38, t),
         rx: er * 0.17,
         ry: er * 0.17,
         side: 0,
@@ -2816,18 +2893,20 @@
     ctx.globalAlpha = 1;
   }
   var FOOT_PAD_R = 0.95;
+  function poseLeg(leg, phase) {
+    const off = (leg.pair * 0.34 + (leg.side > 0 ? 0.5 : 0)) % 1;
+    const ph = (phase + off) % 1;
+    const swing = Math.sin(ph * TAU) * 0.11;
+    const cos = Math.cos(swing * leg.side * -1), sin = Math.sin(swing * leg.side * -1);
+    const rel = (p) => ({
+      x: leg.attach.x + (p.x - leg.attach.x) * cos - (p.y - leg.attach.y) * sin,
+      y: leg.attach.y + (p.x - leg.attach.x) * sin + (p.y - leg.attach.y) * cos
+    });
+    return { knee: rel(leg.knee), foot: rel(leg.foot) };
+  }
   function drawLegs(ctx, L, col, phase) {
     for (const leg of L.legs) {
-      const off = (leg.pair * 0.34 + (leg.side > 0 ? 0.5 : 0)) % 1;
-      const ph = (phase + off) % 1;
-      const swing = Math.sin(ph * TAU) * 0.11;
-      const cos = Math.cos(swing * leg.side * -1), sin = Math.sin(swing * leg.side * -1);
-      const rel = (p) => ({
-        x: leg.attach.x + (p.x - leg.attach.x) * cos - (p.y - leg.attach.y) * sin,
-        y: leg.attach.y + (p.x - leg.attach.x) * sin + (p.y - leg.attach.y) * cos
-      });
-      const knee = rel(leg.knee);
-      const foot = rel(leg.foot);
+      const { knee, foot } = poseLeg(leg, phase);
       capsule(
         ctx,
         leg.attach.x,
@@ -3092,7 +3171,6 @@
     ctx.closePath();
   }
   function drawEyes(ctx, L, col) {
-    const hasIris = L.eyeFill !== "dark";
     for (const e of L.eyes) {
       if (e.minor) {
         fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil);
@@ -3130,10 +3208,6 @@
         );
       }
       ctx.restore();
-      if (hasIris) {
-        const ir = Math.min(R, r) * 0.56;
-        fillEllipse(ctx, -R * 0.06, v(r * 0.1), ir, ir, col.iris);
-      }
       ctx.restore();
     }
   }
@@ -3195,17 +3269,78 @@
     const short = Math.min(rx, ry);
     if (long / short < CENTRELINE_RATIO) return;
     if (!ctx.createLinearGradient) return;
-    const halfW = ry * 0.085;
-    const gr = ctx.createLinearGradient(0, p.y - halfW, 0, p.y + halfW);
-    gr.addColorStop(0, col.shellClear);
-    gr.addColorStop(0.5, col.shellSoft);
-    gr.addColorStop(1, col.shellClear);
+    softStreak(ctx, p, rx, ry, rx * 0.74, ry * 0.085, col.shellSoft, col.shellClear, 1);
+  }
+  function softStreak(ctx, p, rx, ry, halfL, halfW, fill, clear, alpha) {
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
     ctx.clip();
-    ctx.fillStyle = gr;
-    ctx.fillRect(p.x - rx * 0.92, p.y - halfW, rx * 1.84, halfW * 2);
+    ctx.globalAlpha = alpha;
+    if ("filter" in ctx) {
+      const blur = Math.max(0.6, halfW);
+      ctx.filter = `blur(${blur.toFixed(2)}px)`;
+      ctx.fillStyle = fill;
+      ctx.fillRect(p.x - halfL + blur, p.y - halfW * 0.5, Math.max(0.5, (halfL - blur) * 2), halfW);
+      ctx.filter = "none";
+    } else {
+      const gr = ctx.createLinearGradient(0, p.y - halfW, 0, p.y + halfW);
+      gr.addColorStop(0, clear);
+      gr.addColorStop(0.5, fill);
+      gr.addColorStop(1, clear);
+      ctx.fillStyle = gr;
+      ctx.fillRect(p.x - halfL, p.y - halfW, halfL * 2, halfW * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+  var SHADOW_RGB = "78,68,66";
+  var SHADOW_ALPHA = 0.44;
+  var SHADOW_LINE_K = 0.5;
+  var SHADOW_SPREAD = 1.42;
+  var SHADOW_BLUR_K = 0.13;
+  var SHADOW_OFFSET_K = 0.2;
+  function trunkCentre(L) {
+    let wx = 0, wy = 0, wsum = 0;
+    for (const p of L.parts) {
+      const a = Math.max(0.01, p.rx * p.ry);
+      wx += p.x * a;
+      wy += p.y * a;
+      wsum += a;
+    }
+    return wsum > 0 ? { x: wx / wsum, y: wy / wsum } : { x: L.thorax?.x ?? 0, y: 0 };
+  }
+  function drawGroundShadow(ctx, L, phase) {
+    const off = L.unit * SHADOW_OFFSET_K;
+    const dx = -off * 0.72;
+    const dy = off;
+    const blur = clamp2(L.unit * SHADOW_BLUR_K, 1.5, 14);
+    const centre = trunkCentre(L);
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    if ("filter" in ctx) ctx.filter = `blur(${blur.toFixed(2)}px)`;
+    ctx.strokeStyle = `rgba(${SHADOW_RGB},${(SHADOW_ALPHA * SHADOW_LINE_K).toFixed(3)})`;
+    ctx.lineCap = "round";
+    for (const leg of L.legs) {
+      const { foot } = poseLeg(leg, phase);
+      ctx.lineWidth = Math.max(1, leg.w * 0.55);
+      ctx.beginPath();
+      ctx.moveTo(foot.x + dx, foot.y + dy);
+      ctx.lineTo(centre.x + dx, centre.y + dy);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    const masses = L.head ? [...L.parts, L.head] : L.parts;
+    for (const p of masses) {
+      const rx = Math.max(0.5, p.rx * SHADOW_SPREAD);
+      const ry = Math.max(0.5, p.ry * SHADOW_SPREAD);
+      ctx.moveTo(p.x + dx + rx, p.y + dy);
+      ctx.ellipse(p.x + dx, p.y + dy, rx, ry, 0, 0, TAU);
+      ctx.closePath();
+    }
+    ctx.fillStyle = `rgba(${SHADOW_RGB},${SHADOW_ALPHA})`;
+    ctx.fill();
+    if ("filter" in ctx) ctx.filter = "none";
     ctx.restore();
   }
   function drawBug(ctx, g, opts = {}) {
@@ -3220,6 +3355,7 @@
     ctx.rotate(-Math.PI / 2);
     ctx.translate(lunge * L.unit * 0.12, 0);
     ctx.scale(breathe, breathe);
+    drawGroundShadow(ctx, L, phase);
     drawSetae(ctx, L, col);
     drawLegs(ctx, L, col, phase);
     drawTail(ctx, L, col, state, lunge);
@@ -3239,10 +3375,17 @@
       for (let i = 0; i < trunk.length; i++) speckle(ctx, trunk[i], col, L.shimmer, i * 17 + 3);
       const ab = L.abdomen;
       if (ab && L.wingType !== "elytra") {
-        ctx.fillStyle = col.seam;
-        ctx.globalAlpha = 0.55;
-        ctx.fillRect(ab.x - ab.rx * 0.88, -Math.max(0.5, L.unit * 0.01), ab.rx * 1.76, Math.max(1, L.unit * 0.02));
-        ctx.globalAlpha = 1;
+        softStreak(
+          ctx,
+          ab,
+          ab.rx,
+          ab.ry,
+          ab.rx * 0.88,
+          Math.max(0.5, L.unit * 0.012),
+          col.seam,
+          col.seamClear,
+          0.42
+        );
       }
     };
     const drawTrunkThorax = () => {
@@ -3900,8 +4043,12 @@
         body_width: 0.72,
         body_mass: 0.8,
         carapace_thickness: 0.88,
-        head_size: 0.42,
-        thorax_ratio: 0.55,
+        head_width: 0.343,
+        head_length: 0.343,
+        thorax_width: 0.494,
+        thorax_length: 0.494,
+        abdomen_width: 0.41,
+        abdomen_length: 0.41,
         abdomen_taper: 0.25,
         leg_count: 6,
         leg_length: 0.28,
@@ -3944,8 +4091,12 @@
         body_width: 0.24,
         body_mass: 0.18,
         carapace_thickness: 0.18,
-        head_size: 0.45,
-        thorax_ratio: 0.45,
+        head_width: 0.363,
+        head_length: 0.363,
+        thorax_width: 0.431,
+        thorax_length: 0.431,
+        abdomen_width: 0.41,
+        abdomen_length: 0.41,
         abdomen_taper: 0.85,
         leg_count: 6,
         leg_length: 0.55,
@@ -4001,8 +4152,12 @@
         body_width: 0.62,
         body_mass: 0.35,
         carapace_thickness: 0.32,
-        head_size: 0.3,
-        thorax_ratio: 0.35,
+        head_width: 0.262,
+        head_length: 0.262,
+        thorax_width: 0.369,
+        thorax_length: 0.369,
+        abdomen_width: 0.41,
+        abdomen_length: 0.41,
         abdomen_taper: 0.2,
         leg_count: 8,
         leg_length: 0.92,
@@ -4045,8 +4200,12 @@
         body_width: 0.5,
         body_mass: 0.3,
         carapace_thickness: 0.4,
-        head_size: 0.25,
-        thorax_ratio: 0.4,
+        head_width: 0.228,
+        head_length: 0.228,
+        thorax_width: 0.4,
+        thorax_length: 0.4,
+        abdomen_width: 0.41,
+        abdomen_length: 0.41,
         abdomen_taper: 0.35,
         leg_count: 6,
         leg_length: 0.62,
@@ -4090,8 +4249,12 @@
         body_width: 0.26,
         body_mass: 0.32,
         carapace_thickness: 0.28,
-        head_size: 0.38,
-        thorax_ratio: 0.75,
+        head_width: 0.316,
+        head_length: 0.316,
+        thorax_width: 0.62,
+        thorax_length: 0.62,
+        abdomen_width: 0.41,
+        abdomen_length: 0.41,
         abdomen_taper: 0.6,
         // leg_spread is pinned rather than left to the random draw: the Mantis
         // window asks for a wide stance now that `foot_size` is gone, and "reach
@@ -4143,8 +4306,12 @@
         body_width: 0.45,
         body_mass: 0.15,
         carapace_thickness: 0.1,
-        head_size: 0.32,
-        thorax_ratio: 0.5,
+        head_width: 0.275,
+        head_length: 0.275,
+        thorax_width: 0.463,
+        thorax_length: 0.463,
+        abdomen_width: 0.41,
+        abdomen_length: 0.41,
         abdomen_taper: 0.45,
         leg_count: 6,
         leg_length: 0.38,
@@ -4193,8 +4360,12 @@
         body_width: 0.2,
         body_mass: 0.28,
         carapace_thickness: 0.22,
-        head_size: 0.22,
-        thorax_ratio: 0.3,
+        head_width: 0.208,
+        head_length: 0.208,
+        thorax_width: 0.337,
+        thorax_length: 0.337,
+        abdomen_width: 0.41,
+        abdomen_length: 0.41,
         abdomen_taper: 0.7,
         leg_count: 10,
         leg_length: 0.48,
@@ -4236,8 +4407,12 @@
         body_width: 0.58,
         body_mass: 0.55,
         carapace_thickness: 0.7,
-        head_size: 0.3,
-        thorax_ratio: 0.4,
+        head_width: 0.262,
+        head_length: 0.262,
+        thorax_width: 0.4,
+        thorax_length: 0.4,
+        abdomen_width: 0.41,
+        abdomen_length: 0.41,
         abdomen_taper: 0.15,
         leg_count: 6,
         leg_length: 0.3,

@@ -98,13 +98,13 @@ the build button, and a **never** badge beside that taxon in the drift line.
 
 ### 2. The part library — `src/render/partLibrary.js`
 
-The **Part library** and **All 50 genes** tabs cut the same data two ways. The
+The **Part library** and **All 56 genes** tabs cut the same data two ways. The
 library is organised by *what you see on the bug* — 20 things the renderer can
 draw, each owning the two to five genes that shape it, with the threshold where
 it appears, a thumbnail per kind, and a grid tile framed on the part itself
 (`FOCUS` in `partLibrary.js` says how each one is framed: the pose is head-up,
 so a positive `y` brings the head into the tile and a negative one the tail). The gene tab is organised by *the vector* —
-all 50 in `GENE_ORDER`, including the eight that reach no part of the sprite, each
+all 56 in `GENE_ORDER`, including the eight that reach no part of the sprite, each
 saying which parts it feeds. Start in the library when you are building a bug;
 go to the genes when you need one specific dial, or the ones no part exposes.
 
@@ -131,9 +131,9 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | Part | Appears when | Genes |
 |---|---|---|
 | **Body plan** | _always on_ | `leg_count`, `body_segments` |
-| **Abdomen** | `body_segments ≥ 2` | `body_segments`, `body_width`, `abdomen_taper` |
-| **Thorax** | _always on_ | `thorax_ratio`, `body_width` |
-| **Head** | _always on_ | `head_size`, `body_width` |
+| **Abdomen** | `body_segments ≥ 2` | `body_segments`, `abdomen_width`, `abdomen_length`, `body_width`, `abdomen_taper` |
+| **Thorax** | _always on_ | `thorax_width`, `thorax_length`, `body_width` |
+| **Head** | _always on_ | `head_width`, `head_length`, `body_width` |
 | **Trunk segments** | `body plan is myriapod; count = clamp(body_segments, 6, 10)` | `body_segments`, `leg_count` |
 
 ### Limbs — legs and what is on the end of them
@@ -153,7 +153,7 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 
 | Part | Appears when | Genes |
 |---|---|---|
-| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `head_size`, `pattern_horn`, `pattern_contrast` |
+| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `head_length`, `pattern_horn`, `pattern_contrast` |
 | **Horn serration** | `horn_serration ≥ 1, and the horn must be drawn at all (horn_size ≥ 0.12). NEVER on crown (horn_type 4)` | `horn_serration`, `horn_type`, `horn_size` |
 | **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration`, `pattern_mandible`, `pattern_contrast` |
 | **Tail** | `tail_length × 0.44 > 0.08  →  tail_length > 0.182` | `tail_length`, `stinger_size` |
@@ -165,9 +165,9 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | Part | Appears when | Genes |
 |---|---|---|
 | **Eyes** | _always on_ | `eye_size`, `eye_type`, `eye_count`, `saturation` |
-| **Crown mark** | `crown_mark_style` ≥ 1 | `crown_mark_style`, `head_size` |
+| **Crown mark** | `crown_mark_style` ≥ 1 | `crown_mark_style`, `head_length` |
 | **Extra eyes** | `eye_count ≥ 4  (extra pairs = clamp(round(eye_count / 2) − 1, 0, 3))` | `eye_count`, `eye_size` |
-| **Antennae** | `antenna_length > 0.104  (the length has to clear 0.15 of the body unit)` | `antenna_length`, `head_size` |
+| **Antennae** | `antenna_length > 0.104  (the length has to clear 0.15 of the body unit)` | `antenna_length`, `head_width` |
 
 ### Surface — colour, speckle, fur
 
@@ -176,8 +176,8 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | **Shell colour** | _always on_ | `hue`, `saturation`, `lightness` |
 | **Ink limbs** | `pattern_leg > 0.5` | `pattern_leg` |
 | **Horn & jaw pattern** | `a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(3, floor(pattern_horn × 4)) for the horn, the same over pattern_mandible for the jaws` | `pattern_horn`, `pattern_mandible`, `pattern_scale`, `pattern_contrast`, `hue` |
-| **Segment lighting** | always drawn (core) | `light_hue`, `lightness`, `saturation`, `body_segments` |
-| **Setae** | `setae ≥ 0.35` | `setae`, `body_width` |
+| **Segment lighting** | always drawn (core) | `light_hue`, `lighting_lightness`, `lighting_saturation`, `lightness` (as the floor only), `body_segments` |
+| **Setae** | `setae ≥ 0.35` | `setae`, `abdomen_width` |
 | **Iridescent speckle** | `iridescence ≥ 0.28 on the shell, ≥ 0.34 on the limbs` | `iridescence`, `hue` |
 
 #### Genes that move numbers, not pixels
@@ -199,7 +199,7 @@ the Centipede and Millipede windows while being invisible on the bug.
 
 | Format | What it is |
 |---|---|
-| **JS genome** | the full 50 genes as a `normalizeGenome({...})` literal, grouped and commented |
+| **JS genome** | the full 56 genes as a `normalizeGenome({...})` literal, grouped and commented |
 | **JSON** | the raw genome object |
 | **Patch vs base** | only the genes you changed since loading the build — the parameter combination on its own |
 | **Archetype entry** | a `{ key, name, blurb, spread, bias }` block ready to paste into `ARCHETYPES` |

@@ -10,18 +10,22 @@ GLB mapping all read it.
 
 ---
 
-## The 50 genes
+## The 56 genes
 
-### Body plan — 8
+### Body plan — 12
 
 | Gene | Range | What it does |
 |---|---|---|
 | `body_segments` | int 1–10 (default 2) | Trunk segments, head excluded. Segment 1 is the thorax; the rest are abdominal. 1 = no abdomen. Drives trunk length and health. |
 | `body_length` | 0–1 | Stats only — agility. It no longer shapes the bug; `body_segments` does. |
-| `body_width` | 0–1 | Overall width. |
+| `body_width` | 0–1 | Overall scale of the trunk — every per-part width/length gene below is a fraction of it. It no longer decides the proportions BETWEEN the masses. |
 | `body_mass` | 0–1 | Density, independent of volume. Heavy bugs hit harder and turn worse. |
-| `head_size` | 0–1 | Head capsule. Sets where the eyes and mandibles mount. |
-| `thorax_ratio` | 0–1 | Trades thorax length against abdomen length. |
+| `head_width` | 0–1 (default 0.13) | Head's lateral half-axis, 0.12–0.80 of `body_width` (× 1.36 on arachnids). Sets where the eyes and antennae mount. |
+| `head_length` | 0–1 (default 0.13) | Head's along-the-body half-axis, same range. Also how far the head stands off the thorax, and where the horn's base and the crown mark sit. |
+| `thorax_width` | 0–1 (default 0.287) | Thorax's lateral half-axis, 0.16–0.70 of `body_width` (× 1.334 on arachnids). Legs and wings anchor to it. |
+| `thorax_length` | 0–1 (default 0.287) | Thorax's along-the-body half-axis, same range. |
+| `abdomen_width` | 0–1 (default 0.41) | Abdominal segments' lateral half-axis, 0.22–1.00 of `body_width`. |
+| `abdomen_length` | 0–1 (default 0.41) | Abdominal segments' along-the-body half-axis, same range — a longer chain, not a wider one. |
 | `abdomen_taper` | 0–1 | 0 = round, 1 = pointed. A tapered abdomen carries less volume. |
 | `carapace_thickness` | 0–1 | Shell. The single biggest defense input. |
 
@@ -79,7 +83,7 @@ GLB mapping all read it.
 | `metabolism` | 0–1 | Burn rate. High = fast recovery, fast exhaustion. |
 | `aggression` | 0–1 | **Behavioural only.** Biases the AI state machine; it is not a combat stat. |
 
-### Surface and colour — 9
+### Surface and colour — 11
 
 | Gene | Range | What it does |
 |---|---|---|
@@ -89,7 +93,9 @@ GLB mapping all read it.
 | `pattern_horn` | 0–1 | The HORN's surface treatment: `min(3, floor(v × 4))` → flat / gradient / dots / oval. The 0.08 default is flat — a default bug's horn carries nothing. |
 | `pattern_mandible` | 0–1 | The MANDIBLES' treatment. Same four buckets, chosen independently of the horn's. |
 | `pattern_leg` | 0–1 | Above 0.5 the limbs go near-black. (These three were one `pattern` gene; it answered three unrelated questions at once.) |
-| `light_hue` | int 0–9 | Which reference-palette swatch the body-segment lighting bloom is. 7 = cream, the colour every bug used to get. Heritable and independent of `hue`. |
+| `light_hue` | int 0–9 | Which reference-palette swatch the body-segment lighting bloom takes its HUE from. 7 = cream, the colour every bug used to get. Heritable and independent of `hue`. Only the hue is used — the swatch's baked-in saturation/lightness are discarded. |
+| `lighting_saturation` | 0–1 (default 0.33) | The bloom's own saturation, independent of the body's. |
+| `lighting_lightness` | 0–1 (default 0.85) | The bloom's own lightness, independent of the body's — but clamped UP to the body's own lightness, so the light can never render darker than the shell it sits on. |
 | `pattern_scale` | 0–1 | Dot size and count for the `dots` treatment: 34 small dots at 0, 9 large ones at 1. Shared by the horn and the jaws. |
 | `pattern_contrast` | 0–1 | How loud a treatment reads — gradient depth, dot opacity, oval tone gap. Shared by the horn and the jaws. Firefly, Ladybird and Butterfly all window on it. |
 | `setae` | 0–1 | Hairiness. Breaks up the outline, helps camouflage. |
@@ -222,8 +228,10 @@ Every eye is the same wedge: a broad rounded corner at the outer-top, tapering t
 a point at the inner-lower side, drawn under the head so its edge crops the inner
 half. The three fills are `dark` near-black with a scatter of white dots ·
 `notched` white with a dark notch cut into the outer-top corner · `hooked` white
-with a small dark hook curling in from that corner. Saturated bugs get a coloured
-iris — but never on `dark`, where a mid-tone disc is lost against the black.
+with a small dark hook curling in from that corner. There is NO iris on any of
+them: the coloured disc that used to sit in the light fills was drawn at the
+bright complementary accent hue and read as a pink dot in the middle of the eye.
+Nothing coloured is drawn inside an eye.
 
 **Crown mark** (3) — a flat colour patch capping the top ~18% of the head, in
 reference-palette gold, clipped to the head so it never overruns the silhouette:

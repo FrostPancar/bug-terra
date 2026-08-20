@@ -105,6 +105,27 @@ function refA(hex, a) {
 }
 
 /**
+ * '#rrggbb' → its HUE only, as a 0..1 turn.
+ *
+ * REF_PALETTE stores flat hexes, so a swatch's saturation and lightness are
+ * baked into it and cannot be addressed separately. The segment bloom needs the
+ * swatch's IDENTITY (its hue) while taking its s/l from genes — see palette()'s
+ * lighting section — so this throws the baked s/l away on purpose.
+ */
+function hexHue(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (d === 0) return 0;
+  let h;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h /= 6;
+  return ((h % 1) + 1) % 1;
+}
+
+/**
  * Peak alpha of the body-segment bloom, at its dead centre.
  *
  * It was 0.90 and read as an opaque cream disc with a hard shoulder stamped on
@@ -163,18 +184,35 @@ export function palette(g) {
     clamp(Math.round(g.light_hue ?? 7), 0, REF_PALETTE_ORDER.length - 1)]];
 
   /**
-   * THE BLOOM'S OUTER STOPS, derived from the BODY rather than from the palette.
+   * THE LIGHTING'S SATURATION AND LIGHTNESS ARE THEIR OWN GENES NOW.
    *
-   * This is the one place the mandate bends, and on purpose. The far stops used
-   * to fade REF_PALETTE.tan out to nothing, and a fixed tan crossing a cool or
-   * a dark shell read as dirt — the blob's edge went muddy on every body that
-   * was not warm. The colour the fade APPROACHES is now built from the bug's own
-   * h/s/l: same hue, saturation pulled back, lightness pushed well up. It is a
-   * lighter version of the body meeting the body, which cannot go muddy on any
-   * hue. The alpha behaviour is untouched — it still reaches zero before the
-   * rim, so the flat undarkened edge the last pass fought for is still there.
+   * SUPERSEDED RATIONALE, written down because it stood here for several passes
+   * and is being deliberately overridden: the bloom's OUTER stops used to be
+   * derived from the BODY (`hsl(h, s*0.52, l+0.30)`) on the argument that a
+   * lighter version of the body meeting the body can never go muddy, and the
+   * CORE stops used the `light_hue` swatch's baked-in hex saturation/lightness.
+   * Between them, nothing about how bright or how saturated a bug's light was
+   * could be authored — it fell out of the body's own colour and of a hardcoded
+   * hex.
+   *
+   * NEW RATIONALE: only the HUE comes off REF_PALETTE now. Saturation and
+   * lightness are `lighting_saturation` / `lighting_lightness`, independent of
+   * the body's `saturation`/`lightness` and heritable on their own. The
+   * anti-muddiness the old derivation bought is bought instead by the FLOOR
+   * below: the effective lightness is clamped to be at least the body's own, so
+   * the bloom is always a LIGHTENING of the shell and can never render darker
+   * than the surface it sits on — the user's explicit constraint, and it holds
+   * at `lighting_lightness = 0` on a light body just as on a dark one.
+   *
+   * The outer stops keep their old SHAPE (saturation pulled back, alpha to zero
+   * before the rim, so the flat undarkened edge survives) — they just take their
+   * s/l from the lighting genes rather than from the body.
    */
-  const lift = (a) => hsl(h, clamp(s * 0.52, 0, 1), clamp(l + 0.30, 0, 0.94), a);
+  const lightH = hexHue(lightHex);
+  const lightS = clamp(g.lighting_saturation ?? 0.33, 0, 1);
+  const lightL = clamp(Math.max(g.lighting_lightness ?? 0.85, l), 0, 0.98);
+  const core = (a) => hsl(lightH, lightS, lightL, a);
+  const lift = (a) => hsl(lightH, clamp(lightS * 0.60, 0, 1), lightL, a);
 
   return {
     shell:   hsl(h, s, l),
@@ -182,14 +220,15 @@ export function palette(g) {
     // treatment any more (the head is flat `shell`, see drawBug); the elytra
     // pass is its only consumer, where it separates the two wing covers.
     deep:    hsl(h, s * 1.02, Math.max(0.20, l - 0.14)),
-    // Body-segment bloom. The CORE three stops are the `light_hue` swatch off
-    // the fixed reference palette; the OUTER three fade into a light tone of the
-    // bug's own colour (see `lift`) rather than into a fixed tan, then out to
-    // nothing well short of the rim so the edge stays flat undarkened `shell`.
+    // Body-segment bloom. All six stops are now the SAME authored colour —
+    // `light_hue`'s hue at `lighting_saturation`/`lighting_lightness` — the core
+    // three at full strength and the outer three with the saturation pulled back
+    // (see `lift`), fading out to nothing well short of the rim so the edge
+    // stays flat undarkened `shell`.
     // Six stops, all faint: see BLOB_ALPHA for why the numbers are this low.
-    segBloom:     refA(lightHex, BLOB_ALPHA),
-    segBloomMid:  refA(lightHex, BLOB_ALPHA * 0.68),
-    segBloomMid2: refA(lightHex, BLOB_ALPHA * 0.44),
+    segBloom:     core(BLOB_ALPHA),
+    segBloomMid:  core(BLOB_ALPHA * 0.68),
+    segBloomMid2: core(BLOB_ALPHA * 0.44),
     segBloomFar:  lift(BLOB_ALPHA * 0.24),
     segBloomFar2: lift(BLOB_ALPHA * 0.10),
     segBloomOut:  lift(0),
@@ -199,16 +238,25 @@ export function palette(g) {
     crownBlendTop: refA(REF_PALETTE.gold, 0.95),
     crownBlendMid: refA(REF_PALETTE.orange, 0.62),
     crownBlendOut: refA(REF_PALETTE.orange, 0),
-    // The soft centreline is the segment's own shell colour, faded.
-    shellSoft:   hsl(h, s, l, 0.30),
+    // The soft centreline. It is the segment's own shell colour and it is drawn
+    // ON TOP OF the bloom, so its job is to bring that patch of segment back to
+    // `shell`. RAISED 0.30 → 0.72: at 0.30 the result was 70% bloom, i.e. a
+    // stripe of light cream-tinted body rather than of body colour, which is why
+    // it read as "some other colour" instead of "the shell, faded". At 0.72 the
+    // shell dominates the blend unambiguously and the line reads as the body's
+    // own colour softened by whatever light is left over it.
+    shellSoft:   hsl(h, s, l, 0.72),
     shellClear:  hsl(h, s, l, 0),
-    seam:    hsl(h, s * 1.05, Math.max(0.16, l - 0.20)),
+    seam:      hsl(h, s * 1.05, Math.max(0.16, l - 0.20)),
+    seamClear: hsl(h, s * 1.05, Math.max(0.16, l - 0.20), 0),
     limb:    inkLimbs ? '#17161c' : hsl(h, s * 0.92, Math.max(0.24, l - 0.16)),
     limbLo:  inkLimbs ? '#0e0d11' : hsl(h, s * 0.95, Math.max(0.18, l - 0.24)),
     accent:  hsl(accentH, 0.72, 0.60),
     horn:    hsl(h, s * 0.90, Math.max(0.26, l - 0.10)),
     sclera:  '#ffffff',
-    iris:    hsl(accentH, 0.70, 0.56),
+    // NO `iris`. The eye carries no coloured disc of any kind on any fill
+    // treatment now — see drawEyes. `accentH` survives because `accent` below
+    // still uses it.
     pupil:   '#14131a',
     // WINGS ARE NEVER TINTED BY THE GENOME. Every other surface here derives
     // from the body hue; the wing membrane deliberately does not. The reference
@@ -471,7 +519,13 @@ export function layout(g, ppu = 26) {
   bump(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
   if (L.wingPairs > 0) bump(L.wingSpan.x, L.wingSpan.y);
 
-  L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + 3);
+  // The ground shadow is offset and blurred outward from the trunk, so the frame
+  // has to leave room for its falloff or the baked sprite crops it into a
+  // straight edge. Trunk masses sit well inside the leg reach that sets the
+  // bound, but the head-plus-offset case can reach it, so the pad covers both
+  // terms — see SHADOW_OFFSET_K / SHADOW_BLUR_K.
+  const shadowPad = unit * (SHADOW_OFFSET_K + SHADOW_BLUR_K * 1.5);
+  L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + shadowPad + 3);
   return L;
 }
 
@@ -528,25 +582,46 @@ function buildTrunk(L) {
   // Insect and arachnid share the same construction; only the proportions and
   // the name of the front mass differ.
   const arach = plan === 'arachnid';
-  const abR = bodyWid * (arach ? 0.56 : 0.54);
+
+  /**
+   * WIDTH AND LENGTH ARE SEPARATE GENES PER MASS.
+   *
+   * `thorax_ratio` is gone and no trunk mass reads a single shared radius any
+   * more. `ry` is the LATERAL half-axis (width), `rx` the along-the-body one
+   * (length) — the chain is laid out along +x, so that is the axis a longer
+   * abdomen grows on. `body_width` is still the scale all four are a fraction
+   * of, so it remains the one overall-size knob; what it no longer decides is
+   * the proportion BETWEEN the masses.
+   *
+   * The ARACHNID factors below replace what used to be hardcoded constants
+   * (abR 0.56, thR 0.42 with no gene input at all). They are now multipliers on
+   * the gene-driven radius rather than replacements for it, so an arachnid's
+   * head, thorax and abdomen answer to the same six genes as everyone else's
+   * while keeping the plan's chunkier proportions.
+   */
+  const abW = bodyWid * lerp(0.22, 1.00, g.abdomen_width ?? 0.41) * (arach ? 1.037 : 1);
+  const abL = bodyWid * lerp(0.22, 1.00, g.abdomen_length ?? 0.41) * (arach ? 1.037 : 1);
   // widened both ends: the thorax can go much slimmer and much heavier than the
   // old 0.34–0.44 window allowed.
-  const thR = arach ? bodyWid * 0.42 : bodyWid * lerp(0.24, 0.58, g.thorax_ratio);
+  const thW = bodyWid * lerp(0.16, 0.70, g.thorax_width ?? 0.287) * (arach ? 1.334 : 1);
+  const thL = bodyWid * lerp(0.16, 0.70, g.thorax_length ?? 0.287) * (arach ? 1.334 : 1);
 
   // Thorax sits at the origin; the abdominal chain grows backwards from it.
-  const thorax = { x: 0, y: 0, rx: thR * (arach ? 1 : 1.04), ry: thR, kind: 'thorax' };
+  const thorax = { x: 0, y: 0, rx: thL * (arach ? 1 : 1.04), ry: thW, kind: 'thorax' };
 
   const n = L.abdomenSegs;
   const abParts = [];
   if (n > 0) {
     // One segment keeps the old proportion; more segments each get shorter so a
     // ten-segment bug is long without being ten bodies long.
-    const segLen = abR * (1.16 / Math.sqrt(n));
+    const segLen = abL * (1.16 / Math.sqrt(n));
     const tipNarrow = lerp(1.0, 0.55, g.abdomen_taper);
-    let x = -(thR * 0.74) - segLen * 0.60;
+    let x = -(thL * 0.74) - segLen * 0.60;
     for (let i = 0; i < n; i++) {
       const t = n === 1 ? 0 : i / (n - 1);
-      const ry = abR * (1 - g.abdomen_taper * (arach ? 0.18 : 0.22)) * lerp(1.0, tipNarrow, t);
+      // `abdomen_taper` STAYS: it is a roundness/shape modifier layered on top
+      // of the size genes, not a size control of its own.
+      const ry = abW * (1 - g.abdomen_taper * (arach ? 0.18 : 0.22)) * lerp(1.0, tipNarrow, t);
       abParts.push({ x, y: 0, rx: segLen, ry, kind: 'abdomen', seg: i });
       x -= segLen * 1.15;
     }
@@ -558,7 +633,7 @@ function buildTrunk(L) {
   L.parts.push(thorax);
   L.thorax = thorax;
   L.abdomen = abParts[0] ?? null;        // frontmost/largest abdominal segment
-  L.trunkFrontX = thorax.x + thR;
+  L.trunkFrontX = thorax.x + thorax.rx;
 }
 
 /* ----------------------------------------------------------------- legs -- */
@@ -615,15 +690,26 @@ function buildLeg(o) {
 
 function buildHead(L) {
   const { g, plan, bodyWid, unit } = L;
-  // Heads read smaller by default now: the window was 0.36–0.48 of body width,
-  // which made even head_size=0 a boulder. Widened at both ends AND shifted
-  // down. The floor then went 0.22 → 0.16 when the median dropped to 0.10:
-  // at a 0.22 floor a 0.10 gene was only 6% off the old default and did not
-  // read as a smaller head at all. At 0.16 the new default lands at 0.206 of
-  // body width, a third under the old 0.308, which is visible.
-  const headR = bodyWid * (plan === 'arachnid' ? 0.28 : lerp(0.16, 0.62, g.head_size));
-  const hx = L.trunkFrontX + headR * (plan === 'arachnid' ? 0.06 : 0.54);
-  L.head = { x: hx, y: 0, rx: headR * 1.0, ry: headR, kind: 'head' };
+  /**
+   * TWO AXES, TWO GENES. `head_size` is gone; `head_width` sets the lateral
+   * half-axis and `head_length` the along-the-body one, on the same
+   * fraction-of-`body_width` scale the thorax and abdomen use.
+   *
+   * The old single window (0.16–0.62 of body width, arachnids pinned at a
+   * hardcoded 0.28) is preserved in spirit: the range is widened at both ends
+   * again, the default lands on the old 0.206-of-body-width head so an
+   * untouched genome is unchanged, and the arachnid's chunkier head is now a
+   * multiplier on the gene rather than a constant that ignored it.
+   *
+   * `headR` survives as the MEAN of the two axes, for the handful of things
+   * that want one number for "how big is this head" (mandible reach, eye size).
+   */
+  const arach = plan === 'arachnid';
+  const headW = bodyWid * lerp(0.12, 0.80, g.head_width ?? 0.13) * (arach ? 1.36 : 1);
+  const headL = bodyWid * lerp(0.12, 0.80, g.head_length ?? 0.13) * (arach ? 1.36 : 1);
+  const headR = (headW + headL) * 0.5;
+  const hx = L.trunkFrontX + headL * (arach ? 0.06 : 0.54);
+  L.head = { x: hx, y: 0, rx: headL, ry: headW, kind: 'head' };
 
   // The wedge eyes, set wide and tucked under the head edge so it crops the
   // inner half. `ry` is the long axis, `rx` the short one — the sketch's eye is
@@ -632,9 +718,11 @@ function buildHead(L) {
   // clears the head silhouette instead of hiding behind it.
   const er = headR * lerp(0.45, 1.05, g.eye_size);   // widened both ends
   for (const side of [-1, 1]) {
+    // Placed per-axis — along the head's length in x, across its width in y —
+    // so an eye still sits on the head edge when the two differ.
     L.eyes.push({
-      x: hx + headR * 0.04,
-      y: side * headR * 0.98,
+      x: hx + headL * 0.04,
+      y: side * headW * 0.98,
       rx: er * 0.55, ry: er, side,
     });
   }
@@ -642,8 +730,8 @@ function buildHead(L) {
   for (let i = 0; i < extra; i++) {
     const t = extra === 1 ? 0.5 : i / (extra - 1);
     L.eyes.push({
-      x: hx + headR * lerp(0.50, 0.14, t),
-      y: (i % 2 === 0 ? -1 : 1) * headR * lerp(0.14, 0.38, t),
+      x: hx + headL * lerp(0.50, 0.14, t),
+      y: (i % 2 === 0 ? -1 : 1) * headW * lerp(0.14, 0.38, t),
       rx: er * 0.17, ry: er * 0.17, side: 0, minor: true,
     });
   }
@@ -1226,18 +1314,30 @@ function drawElytra(ctx, L, col) {
 /** Foot pad radius as a fraction of the leg width. Was `foot_size`'s maximum. */
 const FOOT_PAD_R = 0.95;
 
+/**
+ * One leg's knee and foot AT A GIVEN PHASE — the walk swing applied to the
+ * skeleton's resting points.
+ *
+ * Extracted from drawLegs() because the ground shadow needs the SAME animated
+ * foot positions (see drawGroundShadow): a shadow line drawn to the resting
+ * foot would visibly detach from the leg on every frame but the first. The maths
+ * is byte-for-byte what drawLegs did inline.
+ */
+function poseLeg(leg, phase) {
+  const off = (leg.pair * 0.34 + (leg.side > 0 ? 0.5 : 0)) % 1;
+  const ph = (phase + off) % 1;
+  const swing = Math.sin(ph * TAU) * 0.11;
+  const cos = Math.cos(swing * leg.side * -1), sin = Math.sin(swing * leg.side * -1);
+  const rel = (p) => ({
+    x: leg.attach.x + (p.x - leg.attach.x) * cos - (p.y - leg.attach.y) * sin,
+    y: leg.attach.y + (p.x - leg.attach.x) * sin + (p.y - leg.attach.y) * cos,
+  });
+  return { knee: rel(leg.knee), foot: rel(leg.foot) };
+}
+
 function drawLegs(ctx, L, col, phase) {
   for (const leg of L.legs) {
-    const off = (leg.pair * 0.34 + (leg.side > 0 ? 0.5 : 0)) % 1;
-    const ph = (phase + off) % 1;
-    const swing = Math.sin(ph * TAU) * 0.11;
-    const cos = Math.cos(swing * leg.side * -1), sin = Math.sin(swing * leg.side * -1);
-    const rel = (p) => ({
-      x: leg.attach.x + (p.x - leg.attach.x) * cos - (p.y - leg.attach.y) * sin,
-      y: leg.attach.y + (p.x - leg.attach.x) * sin + (p.y - leg.attach.y) * cos,
-    });
-    const knee = rel(leg.knee);
-    const foot = rel(leg.foot);
+    const { knee, foot } = poseLeg(leg, phase);
 
     capsule(ctx, leg.attach.x, leg.attach.y,
             lerp(leg.attach.x, foot.x, 0.30), lerp(knee.y, foot.y, 0.18),
@@ -1618,20 +1718,15 @@ function eyeWedgePath(ctx, R, r, side) {
 }
 
 function drawEyes(ctx, L, col) {
-  // A flat white eye reads as graphic; an iris reads as a face.
+  // THERE IS NO IRIS. Not on any fill treatment, not at any saturation.
   //
-  // THE SATURATION GATE IS GONE. It used to also require `saturation > 0.35`,
-  // which made the iris an accident of the body's colour — a drab bug lost its
-  // eyes entirely, for no reason anybody could see on the sprite. The fill
-  // treatment is the only thing that decides now: both light treatments carry an
-  // iris, always.
-  //
-  // NOT on the `dark` treatment, which is the one real reason there ever was.
-  // That fill is near-black with white speckle, and a mid-tone coloured disc
-  // dropped on it either vanishes or fights the dots; the sketch's own dark-eyed
-  // head shows speckle and nothing else.
-  const hasIris = L.eyeFill !== 'dark';
-
+  // The eye used to carry an iris disc in the body of the wedge, drawn at the
+  // bright COMPLEMENTARY accent hue — so on a red bug it was a pink/magenta dot
+  // sitting in the middle of a white eye, which is exactly what it looked like.
+  // A pupil circle on top of it went first; the disc underneath goes now. The
+  // three treatments below are the whole of the eye: dark speckle, a notch, or a
+  // hook. Nothing coloured is drawn inside an eye any more, and `col.iris` is
+  // gone from palette() with it.
   for (const e of L.eyes) {
     if (e.minor) { fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil); continue; }
 
@@ -1673,16 +1768,6 @@ function drawEyes(ctx, L, col) {
         r * 0.62, r * 0.18, col.pupil);
     }
     ctx.restore();
-
-    if (hasIris) {
-      // Sit the iris in the light body of the wedge, clear of the corner mark.
-      // ONE disc. A second, smaller `col.pupil` circle used to sit on top of it
-      // — a leftover from the iris+pupil eye that predates the fill-treatment
-      // redesign. The treatments carry the dark mark now (the notch, the hook),
-      // so a pupil on top of them was a third mark nobody asked for.
-      const ir = Math.min(R, r) * 0.56;
-      fillEllipse(ctx, -R * 0.06, v(r * 0.10), ir, ir, col.iris);
-    }
     ctx.restore();
   }
 }
@@ -1788,12 +1873,26 @@ function segmentMass(ctx, p, col) {
  * segment's own shell, just faded, so it only shows where it crosses the bloom —
  * which is where the reference shows it.
  *
- * Soft edges come from a linear gradient across the line's short axis, the way
- * the horn's gradient treatment already does it in this file; no ctx.filter,
- * which nothing here uses and the offscreen canvases would not honour anyway.
+ * SOFT ON ALL FOUR SIDES, with a real blur.
  *
- * This is NOT the abdominal seam drawn in drawBug(). That is a thin, hard,
- * DARK `col.seam` sliver marking a joint; this is a wide, soft, shell-coloured
+ * SUPERSEDED REASONING, kept so it is not re-derived: this used to argue against
+ * ctx.filter on the grounds that "a real blur would bleed past the segment's
+ * edge". That was wrong twice over. First, the streak's softness came from a
+ * linear gradient across its SHORT axis only, so while its long sides faded, its
+ * two ENDS were hard cuts sitting inside the segment — a visible bar with square
+ * ends. Second, the bleed argument assumed a clip that is not in force here:
+ * segmentMass() releases its ellipse clip (ctx.restore) BEFORE calling this, so
+ * there was never a clip to bleed past, and establishing one is one save/clip
+ * away. So: own ellipse clip, then ctx.filter — softness in both directions, and
+ * the clip contains it exactly as drawGroundShadow's own pass is contained by
+ * its geometry. The ctx.filter use is feature-detected the same way
+ * drawGroundShadow's is (the test recorder and non-browser contexts lack it),
+ * and where it is missing the old lateral-gradient path is the fallback.
+ *
+ * This is NOT the abdominal seam drawn in drawBug(). That is a thin, DARK
+ * `col.seam` sliver marking a joint (soft-edged too now — it shares
+ * softStreak() with this — but still narrow and still darker than the shell);
+ * this is a wide, soft, shell-coloured
  * fade. On an abdomen carrying both, the seam reads as a crisp core inside this
  * softer streak rather than competing with it — hence the low alpha here.
  */
@@ -1803,18 +1902,172 @@ function segmentCentreline(ctx, p, col, rx, ry) {
   if (long / short < CENTRELINE_RATIO) return;
   if (!ctx.createLinearGradient) return;
 
-  const halfW = ry * 0.085;                 // lateral half-width of the streak
-  const gr = ctx.createLinearGradient(0, p.y - halfW, 0, p.y + halfW);
-  gr.addColorStop(0, col.shellClear);
-  gr.addColorStop(0.5, col.shellSoft);
-  gr.addColorStop(1, col.shellClear);
+  softStreak(ctx, p, rx, ry, rx * 0.74, ry * 0.085, col.shellSoft, col.shellClear, 1);
+}
 
+/**
+ * A soft-edged bar down a part's long axis, clipped to that part's ellipse.
+ *
+ * Shared by the centreline and the abdominal seam, which are the file's two
+ * along-the-body streaks and used to soften — or not soften — by two different
+ * rules. The clip is what makes ctx.filter safe here: the blur cannot leave the
+ * silhouette because the silhouette is the clip. Where ctx.filter is missing
+ * (the test recorder, non-browser contexts) it degrades to the old lateral
+ * linear-gradient, which is soft on the long sides and hard at the ends — worse,
+ * but never wrong-coloured.
+ */
+function softStreak(ctx, p, rx, ry, halfL, halfW, fill, clear, alpha) {
   ctx.save();
   ctx.beginPath();
   ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
   ctx.clip();
-  ctx.fillStyle = gr;
-  ctx.fillRect(p.x - rx * 0.92, p.y - halfW, rx * 1.84, halfW * 2);
+  ctx.globalAlpha = alpha;
+
+  if ('filter' in ctx) {
+    // A blur radius of the streak's own half-width: the core stays solid and
+    // every edge — sides AND ends — falls off over roughly its own width. The
+    // rect is shrunk by that radius on both axes so the blurred extent lands
+    // where the hard rect used to.
+    const blur = Math.max(0.6, halfW);
+    ctx.filter = `blur(${blur.toFixed(2)}px)`;
+    ctx.fillStyle = fill;
+    ctx.fillRect(p.x - halfL + blur, p.y - halfW * 0.5, Math.max(0.5, (halfL - blur) * 2), halfW);
+    ctx.filter = 'none';
+  } else {
+    const gr = ctx.createLinearGradient(0, p.y - halfW, 0, p.y + halfW);
+    gr.addColorStop(0, clear);
+    gr.addColorStop(0.5, fill);
+    gr.addColorStop(1, clear);
+    ctx.fillStyle = gr;
+    ctx.fillRect(p.x - halfL, p.y - halfW, halfL * 2, halfW * 2);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+/* ======================================================= ground shadow === */
+
+/**
+ * THE GROUND SHADOW — traced from `Image References/Shadow.jpg`.
+ *
+ * The reference is one bug on flat dirt with a soft, edgeless, cool brown-grey
+ * darkening sitting under the trunk mass and pushed slightly DOWN AND RIGHT of
+ * it, i.e. a light from the upper left. It is faint: the dirt's own value still
+ * reads straight through it, so it is a shadow rather than a silhouette. The
+ * only other detail in the image is a very faint smudge below the tail end —
+ * the same blob's outer falloff running past the abdomen, not a second shape.
+ *
+ * THREE decisions worth writing down:
+ *
+ * MULTIPLY, drawn HERE, in drawBug()'s local space. The sprite is baked into a
+ * transparent frame (see bakeSpritesheet) and Phaser then draws that frame over
+ * the terrain with ordinary alpha, so a `multiply` set here composites against
+ * the frame's transparency, not against the dirt. Against a transparent
+ * destination `multiply` degrades exactly to source-over, which is the correct
+ * fallback: a faint desaturated brown at ~0.3 alpha laid over dirt reads as a
+ * shadow either way. Where the shadow IS composited in-canvas over something —
+ * the vet portrait in terrarium.js, and the shadow's own overlapping pieces —
+ * the multiply does real work and keeps the overlaps from stacking into a flat
+ * opaque patch. Doing it "properly" would mean drawing the shadow at
+ * ground-composite time in the sim, which is a sim change for a difference no
+ * one can see at this alpha; it stays here, where the geometry lives.
+ *
+ * THE OFFSET IS IN BODY SPACE, not screen space. The sheet is baked once,
+ * head-up, and the sim rotates the sprite by the bug's facing — so there is no
+ * frame in which a fixed screen-space light direction could survive. The offset
+ * is therefore a constant lean toward the bug's rear-right, which reads as the
+ * reference's light-from-upper-left whenever the bug faces up and as a plain
+ * soft contact shadow at every other heading.
+ *
+ * FOOT LINES. Faint strokes from each animated foot back to the trunk centroid,
+ * at well under half the blob's alpha, thin relative to the leg capsules drawn
+ * over them. They are the "the bug is standing on something" cue; they must
+ * never read as a second set of legs.
+ */
+
+/** Cool brown-grey, sampled off the reference's shadow — NOT black, NOT warm. */
+const SHADOW_RGB = '78,68,66';
+/** Peak alpha of the body blob. Everything else is a fraction of this. */
+const SHADOW_ALPHA = 0.44;
+/** Foot lines, relative to the blob. Deliberately a supporting detail. */
+const SHADOW_LINE_K = 0.50;
+/**
+ * How much bigger than the body the blob is. At 1.0 the sprite covers its own
+ * shadow completely and only the offset crescent survives, which reads as a
+ * smear rather than a shadow — the reference's shadow clearly spreads past the
+ * silhouette on every side.
+ */
+const SHADOW_SPREAD = 1.42;
+/** Blur radius and offset, both as a fraction of the body unit. */
+const SHADOW_BLUR_K = 0.13;
+const SHADOW_OFFSET_K = 0.20;
+
+/**
+ * Trunk centroid, area-weighted. The thorax alone sits too far forward on a
+ * long-abdomened bug — the foot lines then all converge ahead of the mass they
+ * are supposed to sit under — so every trunk part votes, by area.
+ */
+function trunkCentre(L) {
+  let wx = 0, wy = 0, wsum = 0;
+  for (const p of L.parts) {
+    const a = Math.max(0.01, p.rx * p.ry);
+    wx += p.x * a; wy += p.y * a; wsum += a;
+  }
+  return wsum > 0 ? { x: wx / wsum, y: wy / wsum } : { x: L.thorax?.x ?? 0, y: 0 };
+}
+
+/**
+ * Step 0 of drawBug's z-order: the ground plane, under literally everything.
+ * Local coordinates, so it rotates and scales with the bug like the rest.
+ */
+function drawGroundShadow(ctx, L, phase) {
+  const off = L.unit * SHADOW_OFFSET_K;
+  // Local +x is the bug's front (screen up after the head-up rotate) and local
+  // +y is its right, so "down and right on screen" is (-x, +y) here.
+  const dx = -off * 0.72;
+  const dy = off;
+  const blur = clamp(L.unit * SHADOW_BLUR_K, 1.5, 14);
+  const centre = trunkCentre(L);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  // ONE OF TWO ctx.filter blurs in this file (segmentCentreline is the other,
+  // and it clips to its segment so its blur cannot leave the silhouette). A
+  // ground shadow needs no clip at all — it is nothing
+  // but edge falloff, and a genuine blur is the tool for it. Guarded because the
+  // test recorder and any non-browser 2D context will not have the property.
+  if ('filter' in ctx) ctx.filter = `blur(${blur.toFixed(2)}px)`;
+
+  // Foot lines first, so the blob multiplies over their inner ends and they
+  // vanish into it rather than stopping at its rim.
+  ctx.strokeStyle = `rgba(${SHADOW_RGB},${(SHADOW_ALPHA * SHADOW_LINE_K).toFixed(3)})`;
+  ctx.lineCap = 'round';
+  for (const leg of L.legs) {
+    const { foot } = poseLeg(leg, phase);
+    ctx.lineWidth = Math.max(1, leg.w * 0.55);
+    ctx.beginPath();
+    ctx.moveTo(foot.x + dx, foot.y + dy);
+    ctx.lineTo(centre.x + dx, centre.y + dy);
+    ctx.stroke();
+  }
+
+  // The body blob: every trunk part plus the head, slightly swollen, filled as
+  // ONE path so the overlaps do not stack into a darker core.
+  ctx.beginPath();
+  const masses = L.head ? [...L.parts, L.head] : L.parts;
+  for (const p of masses) {
+    const rx = Math.max(0.5, p.rx * SHADOW_SPREAD);
+    const ry = Math.max(0.5, p.ry * SHADOW_SPREAD);
+    // moveTo/closePath around each: ellipse() would otherwise chain a connecting
+    // line from the previous subpath's end and leave a spur across the shape.
+    ctx.moveTo(p.x + dx + rx, p.y + dy);
+    ctx.ellipse(p.x + dx, p.y + dy, rx, ry, 0, 0, TAU);
+    ctx.closePath();
+  }
+  ctx.fillStyle = `rgba(${SHADOW_RGB},${SHADOW_ALPHA})`;
+  ctx.fill();
+
+  if ('filter' in ctx) ctx.filter = 'none';
   ctx.restore();
 }
 
@@ -1840,6 +2093,15 @@ export function drawBug(ctx, g, opts = {}) {
   ctx.scale(breathe, breathe);
 
   /* ---- Z-ORDER (painter's algorithm: later = on top) ----------------------
+   *
+   * STEP 0 IS THE GROUND SHADOW, and it is beneath literally everything — not
+   * just under the body but under the setae, the legs and the tail as well.
+   * It is not part of the bug: it is the plane the bug is standing ON, so
+   * nothing the bug is made of may ever be drawn below it. It is the only thing
+   * in this file drawn with `multiply` (and one of its two ctx.filter blurs,
+   * the other being the segment centreline) — see
+   * drawGroundShadow for why the blend lives here rather than at ground
+   * composite time, and for the light-from-upper-left offset convention.
    *
    * THE ABDOMEN/THORAX RELATIONSHIP DEPENDS ON WINGS. This is a flip from the
    * previous rule, where the thorax was unconditionally the topmost trunk piece.
@@ -1901,15 +2163,18 @@ export function drawBug(ctx, g, opts = {}) {
    *
    * Resulting call sequence, traced end to end:
    *
-   *   NO WINGS   setae → legs → tail → eyes → mandibles → head → crown mark →
+   *   NO WINGS   SHADOW → setae → legs → tail → eyes → mandibles → head → crown mark →
    *              antennae → HORN → thorax → abdomen group
-   *   HAS WINGS  setae → legs → tail → eyes → mandibles → head → crown mark →
+   *   HAS WINGS  SHADOW → setae → legs → tail → eyes → mandibles → head → crown mark →
    *              antennae → HORN → abdomen group → thorax → wings
    *
    * In the wingless case the abdomen is drawn after the horn as well, which is
    * harmless: the horn points forward, away from the trunk, and the abdomen is
    * at the other end of the bug.
    */
+
+  // 0. the ground plane, under everything the bug is made of.
+  drawGroundShadow(ctx, L, phase);
 
   // 1. behind everything
   drawSetae(ctx, L, col);
@@ -1951,13 +2216,21 @@ export function drawBug(ctx, g, opts = {}) {
     for (const p of trunk) segmentMass(ctx, p, col);
     drawElytra(ctx, L, col);                     // covers lie on the abdomen
     for (let i = 0; i < trunk.length; i++) speckle(ctx, trunk[i], col, L.shimmer, i * 17 + 3);
-    // abdominal seam — one thin darker sliver, no outline. Absent with no abdomen.
+    // The abdominal seam — one thin darker sliver marking the joint, no outline.
+    // Absent with no abdomen.
+    //
+    // SOFTENED, and this is the bar that actually read as "a flat, differently
+    // coloured, hard-edged stripe down the middle": it is `col.seam` (the body
+    // hue two steps DARKER), it was a bare fillRect with four square edges, and
+    // at this width it is the most legible thing on the segment. It goes through
+    // the same clipped-blur softStreak() as the centreline now, so it reads as a
+    // crease in the shell rather than a decal stuck on it. It stays DARK on
+    // purpose — a joint is a shadow, not a highlight — and the alpha comes down
+    // 0.55 → 0.42 now that its edges no longer do the hiding for it.
     const ab = L.abdomen;
     if (ab && L.wingType !== 'elytra') {
-      ctx.fillStyle = col.seam;
-      ctx.globalAlpha = 0.55;
-      ctx.fillRect(ab.x - ab.rx * 0.88, -Math.max(0.5, L.unit * 0.010), ab.rx * 1.76, Math.max(1, L.unit * 0.020));
-      ctx.globalAlpha = 1;
+      softStreak(ctx, ab, ab.rx, ab.ry, ab.rx * 0.88,
+                 Math.max(0.5, L.unit * 0.012), col.seam, col.seamClear, 0.42);
     }
   };
 

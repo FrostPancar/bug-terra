@@ -45,8 +45,34 @@ export const GENE_SPECS = {
   body_length:        { min: 0, max: 1, default: 0.53 },
   body_width:         { min: 0, max: 1, default: 0.21 },
   body_mass:          { min: 0, max: 1, default: 0.75 },
-  head_size:          { min: 0, max: 1, default: 0.10 },
-  thorax_ratio:       { min: 0, max: 1, default: 0.22 },   // thorax vs abdomen
+  /**
+   * PER-PART SIZE, TWO AXES EACH. `head_size` and `thorax_ratio` ARE GONE.
+   *
+   * Every trunk mass used to be a fraction of the single `body_width` gene —
+   * one knob that resized the head, the thorax and the abdomen together, with
+   * `head_size`/`thorax_ratio` only able to shift a part's share of that one
+   * width, and no way at all to say "long abdomen, narrow thorax". The three
+   * masses now size themselves: `*_width` is the lateral half-axis (the part's
+   * `ry`), `*_length` the along-the-body half-axis (its `rx`), and neither
+   * touches any other part.
+   *
+   * `body_width` SURVIVES and still legitimately does work — it is the scale
+   * every one of these six is a fraction of (so the whole bug still has one
+   * overall size), plus the myriapod ring radius, the length/width ratio clamp
+   * and, through `unit`, leg and antenna scaling. What it no longer does is
+   * decide the head/thorax/abdomen PROPORTIONS on its own.
+   *
+   * DEFAULTS ARE CALIBRATED TO THE OLD SPRITE, not to the middle of the range:
+   * each one reproduces the radius the pre-split formula produced at the old
+   * defaults (abdomen 0.54 · thorax 0.315 · head 0.206 of body width), so an
+   * untouched genome renders the proportions it always did.
+   */
+  head_width:         { min: 0, max: 1, default: 0.13 },
+  head_length:        { min: 0, max: 1, default: 0.13 },
+  thorax_width:       { min: 0, max: 1, default: 0.287 },
+  thorax_length:      { min: 0, max: 1, default: 0.287 },
+  abdomen_width:      { min: 0, max: 1, default: 0.41 },
+  abdomen_length:     { min: 0, max: 1, default: 0.41 },
   abdomen_taper:      { min: 0, max: 1, default: 0.51 },   // 0 round, 1 pointed
   carapace_thickness: { min: 0, max: 1, default: 0.70 },
 
@@ -193,6 +219,26 @@ export const GENE_SPECS = {
   // swatch is now a gene: 0–9 index REF_PALETTE_ORDER. 7 is cream, which is
   // what every bug used to get, so the default is the old fixed behaviour.
   light_hue:          { min: 0, max: 9, integer: true, default: 7 },
+  /**
+   * THE LIGHTING'S OWN SATURATION AND LIGHTNESS.
+   *
+   * `light_hue` only ever picked a swatch, and everything else about the bloom
+   * rode on values that were not its own: the core stops used the swatch's
+   * baked-in hex s/l, and the outer fade was built from the BODY's `saturation`
+   * and `lightness`. So "how bright is the light on this bug" was not a
+   * question a genome could answer — it was a side effect of the body colour.
+   * These two own it. Only the HUE now comes off REF_PALETTE; the rendered
+   * bloom colour is hsl(that hue, lighting_saturation, lighting_lightness).
+   *
+   * Defaults reproduce cream (#e5dbcf ≈ 33% saturation, 85% lightness), which
+   * is the light every bug used to get.
+   *
+   * FLOOR: the effective lightness is clamped to the body's own lightness in
+   * palette(), so the bloom can never render DARKER than the shell it sits on,
+   * whatever this gene says. See palette()'s lighting section.
+   */
+  lighting_saturation: { min: 0, max: 1, default: 0.33 },
+  lighting_lightness:  { min: 0, max: 1, default: 0.85 },
   // A flat colour patch capping the top of the head: none / solid gold with a
   // hard edge / the same cap blended down into the head colour. Its colours come
   // straight off bugArt's fixed REF_PALETTE, never from the body hue.
