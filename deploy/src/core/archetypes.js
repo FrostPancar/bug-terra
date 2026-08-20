@@ -33,7 +33,7 @@ export const ARCHETYPES = [
       spine_density: 0.30, tail_length: 0.10, stinger_size: 0.02,
       eye_count: 2, eye_size: 0.30, antenna_length: 0.35,
       metabolism: 0.30, aggression: 0.55,
-      saturation: 0.30, lightness: 0.22, setae: 0.15, iridescence: 0.45, translucency: 0.05,
+      saturation: 0.30, lightness: 0.22, setae: 0.15, translucency: 0.05,
     },
   },
   {
@@ -54,7 +54,7 @@ export const ARCHETYPES = [
       eye_count: 2, eye_size: 0.62, antenna_length: 0.50,
       metabolism: 0.85, aggression: 0.85,
       hue: 0.14, saturation: 0.92, lightness: 0.55,
-      pattern_leg: 0.15, pattern_contrast: 0.95, setae: 0.25, iridescence: 0.20, translucency: 0.15,
+      pattern_leg: 0.15, pattern_contrast: 0.95, setae: 0.25, translucency: 0.15,
     },
   },
   {
@@ -77,7 +77,7 @@ export const ARCHETYPES = [
       spine_density: 0.25, tail_length: 0.15, stinger_size: 0.55,
       eye_count: 8, eye_size: 0.45, antenna_length: 0.12,
       metabolism: 0.45, aggression: 0.70,
-      saturation: 0.25, lightness: 0.18, setae: 0.70, iridescence: 0.10, translucency: 0.05,
+      saturation: 0.25, lightness: 0.18, setae: 0.70, translucency: 0.05,
     },
   },
   {
@@ -96,7 +96,7 @@ export const ARCHETYPES = [
       eye_count: 2, eye_size: 0.35, antenna_length: 0.95,
       metabolism: 0.55, aggression: 0.25,
       hue: 0.08, saturation: 0.35, lightness: 0.24,
-      pattern_leg: 0.9, setae: 0.30, iridescence: 0.30, translucency: 0.10,
+      pattern_leg: 0.9, setae: 0.30, translucency: 0.10,
     },
   },
   {
@@ -140,7 +140,7 @@ export const ARCHETYPES = [
       eye_count: 2, eye_size: 0.72, antenna_length: 0.80,
       metabolism: 0.60, aggression: 0.10,
       saturation: 0.20, lightness: 0.62,
-      pattern_leg: 0.45, setae: 0.95, iridescence: 0.35, translucency: 0.30,
+      pattern_leg: 0.45, setae: 0.95, translucency: 0.30,
     },
   },
   {
@@ -177,7 +177,7 @@ export const ARCHETYPES = [
       eye_count: 2, eye_size: 0.28, antenna_length: 0.55,
       metabolism: 0.28, aggression: 0.30,
       saturation: 0.30, lightness: 0.20,
-      pattern_leg: 0.5, setae: 0.45, iridescence: 0.55, translucency: 0.05,
+      pattern_leg: 0.5, setae: 0.45, translucency: 0.05,
     },
   },
 ];

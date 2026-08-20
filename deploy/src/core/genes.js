@@ -190,18 +190,45 @@ export const GENE_SPECS = {
    * inked black. Nothing about a bug requires those three to agree, and the
    * shared gene made it impossible to give a bug dotted jaws and a flat horn.
    *
-   * The two surface genes bucket FOUR ways now, not three:
+   * The two surface genes bucket FIVE ways now:
    *
-   *     mode = min(3, floor(v × 4))   →  0 flat · 1 gradient · 2 dots · 3 oval
+   *     mode = min(4, floor(v × 5))
+   *       0 flat · 1 gradient · 2 dots · 3 oval · 4 diagonal
    *
-   * `flat` is new and is the whole point of the low defaults: bucket 0 used to
-   * be `gradient`, so an untouched genome had a gradient on its horn and jaws
+   * `diagonal` is the newest — repeating 45° stripes across the whole clipped
+   * silhouette. The divisor moved 4 → 5 with it; 0.08 × 5 = 0.4 still lands in
+   * bucket 0, so the defaults below did NOT have to be recalibrated.
+   *
+   * `flat` is bucket 0 and is the whole point of the low defaults: bucket 0 used
+   * to be `gradient`, so an untouched genome had a gradient on its horn and jaws
    * whether anyone asked for one or not. 0.08 lands in `flat` — solid colour,
    * no gradient, no dots, no highlight — so the default bug is genuinely plain
    * and every treatment is something a genome opted into.
    */
-  pattern_horn:       { min: 0, max: 1, default: 0.08 },   // flat/gradient/dots/oval
-  pattern_mandible:   { min: 0, max: 1, default: 0.08 },   // flat/gradient/dots/oval
+  pattern_horn:       { min: 0, max: 1, default: 0.08 },   // flat/gradient/dots/oval/diagonal
+  pattern_mandible:   { min: 0, max: 1, default: 0.08 },   // flat/gradient/dots/oval/diagonal
+  /**
+   * THE PATTERN'S OWN COLOUR, one gene per component.
+   *
+   * Whatever `pattern_horn` / `pattern_mandible` selects — the gradient's far
+   * stop, the dots, the oval, the stripes — used to be painted in the BODY's own
+   * hue walked toward amber. So "what colour is the decoration on my horn" was
+   * not a question a genome could answer; it was a side effect of the shell
+   * colour, in precisely the way `light_hue` fixed for the segment bloom.
+   *
+   * Same convention as `light_hue` and `wing_tip_hue`: an integer indexing
+   * REF_PALETTE_ORDER (tan/brown/rust/orange/gold/sage/ink/cream/pink/blue).
+   * SEPARATE genes, because the mode genes are already separate — a bug can wear
+   * gold stripes on its horn and sage dots on its jaws.
+   *
+   * Only the HUE comes off the palette. The tone's saturation and lightness are
+   * still derived from the piece's colour and from `pattern_contrast`, so that
+   * gene keeps its whole job. Default 4 is `gold`, the warm amber lift the old
+   * hardcoded shift aimed at, so a genome that never touches these is unchanged
+   * in spirit.
+   */
+  pattern_horn_hue:     { min: 0, max: 9, integer: true, default: 4 },
+  pattern_mandible_hue: { min: 0, max: 9, integer: true, default: 4 },
   // The old `pattern > 0.5 → black limbs` reading, on its own gene now. Same
   // threshold, so a leg that was inked before is inked at the same value.
   pattern_leg:        { min: 0, max: 1, default: 0.20 },   // above 0.5 the limbs ink
@@ -210,8 +237,13 @@ export const GENE_SPECS = {
   // coarse the dots are. That is a house style, not a per-part decision, and
   // splitting them would add sliders whose difference nobody can state an
   // intention about. The mode gene is where the per-part identity lives.
-  pattern_scale:      { min: 0, max: 1, default: 0.11 },   // dot size/density
-  pattern_contrast:   { min: 0, max: 1, default: 0.21 },   // how loud all four read
+  //
+  // `pattern_scale` NOW REACHES THREE MODES, not one. It was dot density and
+  // size only; it also POSITIONS the gradient's light/dark transition along the
+  // piece (0.5 reproduces the old full-length ramp) and sets the diagonal
+  // stripes' pitch. It still does nothing to `flat` or `oval`.
+  pattern_scale:      { min: 0, max: 1, default: 0.11 },   // dot pitch · gradient position · stripe pitch
+  pattern_contrast:   { min: 0, max: 1, default: 0.21 },   // how loud a treatment reads
   // THE LIGHTING COLOUR, heritable and independent of the body's own colour.
   // The body-segment bloom used to be a hardcoded cream whatever the genome
   // said. It still comes off the fixed REF_PALETTE (lighting colour never gets
@@ -248,7 +280,12 @@ export const GENE_SPECS = {
   // as well; the word is avoided here on purpose so the two cannot be confused.
   crown_mark_style:   { min: 0, max: 2, integer: true, default: 0 },   // none/solid/blended
   setae:              { min: 0, max: 1, default: 0.16 },   // hairiness
-  iridescence:        { min: 0, max: 1, default: 0 },
+  // NO `iridescence`. It drove exactly one thing — the fine accent-hue speckle
+  // over the shell and the limbs — and that speckle is gone from bugArt.js (see
+  // the note where speckle() used to be). With nothing left to render, the gene
+  // was a camouflage penalty attached to an invisible finish, so it went too:
+  // out of GENE_SPECS, out of the archetype bias vectors, out of the camouflage
+  // formula in stats.js, and out of classification's surface axis.
   translucency:       { min: 0, max: 1, default: 0.13 },
 };
 

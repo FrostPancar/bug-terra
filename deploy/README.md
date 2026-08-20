@@ -332,8 +332,7 @@ Browser matrices (need a static server on `:8899`):
   the set, and no two sit within 20 units of each other in stat space
 - Seeded pools are diverse, and `nearestArchetype` classifies >85% back correctly
 - New genes drive their stats: no stinger ⇒ zero venom, no wings ⇒ zero flight,
-  spines ⇒ defense, horn ⇒ attack, broad feet ⇒ grip, more eyes ⇒ vision,
-  iridescence ⇒ *less* camouflage
+  spines ⇒ defense, horn ⇒ attack, broad feet ⇒ grip, more eyes ⇒ vision
 
 ---
 

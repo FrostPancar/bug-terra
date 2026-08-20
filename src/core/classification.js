@@ -127,7 +127,7 @@ function venomClass(g) {
 function surfaceClass(g) {
   const candidates = [
     ['ghost',   g.translucency],
-    ['radiant', g.iridescence],
+    ['radiant', g.saturation],
     ['furred',  g.setae],
   ];
   let best = candidates[0];
@@ -350,9 +350,9 @@ export const CLASS_TREE = {
     taxon: 'Jewel Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Radiant', status: 'drafted',
     window: {
-      iridescence: [0.75, 1], saturation: [0.6, 1], carapace_thickness: [0.3, 0.6],
+      saturation: [0.80, 1], lightness: [0.55, 0.85], carapace_thickness: [0.3, 0.6],
     },
-    locks: ['iridescence'], unlocks: ['hue', 'saturation'],
+    locks: ['saturation'], unlocks: ['hue', 'lightness'],
     specialty: { key: 'dazzle', name: 'Dazzle', mods: { agility: 1.08, camouflage: 0.88 } },
     blurb: 'Beauty over brawn. Visible from across the terrarium, and knows it.',
   },

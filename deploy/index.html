@@ -891,20 +891,47 @@
      * inked black. Nothing about a bug requires those three to agree, and the
      * shared gene made it impossible to give a bug dotted jaws and a flat horn.
      *
-     * The two surface genes bucket FOUR ways now, not three:
+     * The two surface genes bucket FIVE ways now:
      *
-     *     mode = min(3, floor(v × 4))   →  0 flat · 1 gradient · 2 dots · 3 oval
+     *     mode = min(4, floor(v × 5))
+     *       0 flat · 1 gradient · 2 dots · 3 oval · 4 diagonal
      *
-     * `flat` is new and is the whole point of the low defaults: bucket 0 used to
-     * be `gradient`, so an untouched genome had a gradient on its horn and jaws
+     * `diagonal` is the newest — repeating 45° stripes across the whole clipped
+     * silhouette. The divisor moved 4 → 5 with it; 0.08 × 5 = 0.4 still lands in
+     * bucket 0, so the defaults below did NOT have to be recalibrated.
+     *
+     * `flat` is bucket 0 and is the whole point of the low defaults: bucket 0 used
+     * to be `gradient`, so an untouched genome had a gradient on its horn and jaws
      * whether anyone asked for one or not. 0.08 lands in `flat` — solid colour,
      * no gradient, no dots, no highlight — so the default bug is genuinely plain
      * and every treatment is something a genome opted into.
      */
     pattern_horn: { min: 0, max: 1, default: 0.08 },
-    // flat/gradient/dots/oval
+    // flat/gradient/dots/oval/diagonal
     pattern_mandible: { min: 0, max: 1, default: 0.08 },
-    // flat/gradient/dots/oval
+    // flat/gradient/dots/oval/diagonal
+    /**
+     * THE PATTERN'S OWN COLOUR, one gene per component.
+     *
+     * Whatever `pattern_horn` / `pattern_mandible` selects — the gradient's far
+     * stop, the dots, the oval, the stripes — used to be painted in the BODY's own
+     * hue walked toward amber. So "what colour is the decoration on my horn" was
+     * not a question a genome could answer; it was a side effect of the shell
+     * colour, in precisely the way `light_hue` fixed for the segment bloom.
+     *
+     * Same convention as `light_hue` and `wing_tip_hue`: an integer indexing
+     * REF_PALETTE_ORDER (tan/brown/rust/orange/gold/sage/ink/cream/pink/blue).
+     * SEPARATE genes, because the mode genes are already separate — a bug can wear
+     * gold stripes on its horn and sage dots on its jaws.
+     *
+     * Only the HUE comes off the palette. The tone's saturation and lightness are
+     * still derived from the piece's colour and from `pattern_contrast`, so that
+     * gene keeps its whole job. Default 4 is `gold`, the warm amber lift the old
+     * hardcoded shift aimed at, so a genome that never touches these is unchanged
+     * in spirit.
+     */
+    pattern_horn_hue: { min: 0, max: 9, integer: true, default: 4 },
+    pattern_mandible_hue: { min: 0, max: 9, integer: true, default: 4 },
     // The old `pattern > 0.5 → black limbs` reading, on its own gene now. Same
     // threshold, so a leg that was inked before is inked at the same value.
     pattern_leg: { min: 0, max: 1, default: 0.2 },
@@ -914,10 +941,15 @@
     // coarse the dots are. That is a house style, not a per-part decision, and
     // splitting them would add sliders whose difference nobody can state an
     // intention about. The mode gene is where the per-part identity lives.
+    //
+    // `pattern_scale` NOW REACHES THREE MODES, not one. It was dot density and
+    // size only; it also POSITIONS the gradient's light/dark transition along the
+    // piece (0.5 reproduces the old full-length ramp) and sets the diagonal
+    // stripes' pitch. It still does nothing to `flat` or `oval`.
     pattern_scale: { min: 0, max: 1, default: 0.11 },
-    // dot size/density
+    // dot pitch · gradient position · stripe pitch
     pattern_contrast: { min: 0, max: 1, default: 0.21 },
-    // how loud all four read
+    // how loud a treatment reads
     // THE LIGHTING COLOUR, heritable and independent of the body's own colour.
     // The body-segment bloom used to be a hardcoded cream whatever the genome
     // said. It still comes off the fixed REF_PALETTE (lighting colour never gets
@@ -956,7 +988,12 @@
     // none/solid/blended
     setae: { min: 0, max: 1, default: 0.16 },
     // hairiness
-    iridescence: { min: 0, max: 1, default: 0 },
+    // NO `iridescence`. It drove exactly one thing — the fine accent-hue speckle
+    // over the shell and the limbs — and that speckle is gone from bugArt.js (see
+    // the note where speckle() used to be). With nothing left to render, the gene
+    // was a camouflage penalty attached to an invisible finish, so it went too:
+    // out of GENE_SPECS, out of the archetype bias vectors, out of the camouflage
+    // formula in stats.js, and out of classification's surface axis.
     translucency: { min: 0, max: 1, default: 0.13 }
   };
   var GENE_ORDER = Object.keys(GENE_SPECS);
@@ -1094,7 +1131,7 @@
     const vision = clamp(40 + g.eye_size * 170 * eyeGain + g.antenna_length * 55, 30, 340);
     const camouflage = clamp(
       100 * sig(
-        0.38 * (1 - g.saturation) + 0.28 * (1 - g.lightness) + 0.24 * (1 - m.volume / 3.4) + 0.18 * g.setae + 0.22 * g.translucency - 0.3 * g.iridescence,
+        0.38 * (1 - g.saturation) + 0.28 * (1 - g.lightness) + 0.24 * (1 - m.volume / 3.4) + 0.18 * g.setae + 0.22 * g.translucency,
         5
       ),
       1,
@@ -1192,7 +1229,7 @@
   function surfaceClass(g) {
     const candidates2 = [
       ["ghost", g.translucency],
-      ["radiant", g.iridescence],
+      ["radiant", g.saturation],
       ["furred", g.setae]
     ];
     let best = candidates2[0];
@@ -1524,12 +1561,12 @@
       adjective: "Radiant",
       status: "drafted",
       window: {
-        iridescence: [0.75, 1],
-        saturation: [0.6, 1],
+        saturation: [0.8, 1],
+        lightness: [0.55, 0.85],
         carapace_thickness: [0.3, 0.6]
       },
-      locks: ["iridescence"],
-      unlocks: ["hue", "saturation"],
+      locks: ["saturation"],
+      unlocks: ["hue", "lightness"],
       specialty: { key: "dazzle", name: "Dazzle", mods: { agility: 1.08, camouflage: 0.88 } },
       blurb: "Beauty over brawn. Visible from across the terrarium, and knows it."
     },
@@ -2400,8 +2437,7 @@
       mandibleType: MANDIBLE_TYPES[clamp2(Math.round(g.mandible_type ?? 0), 0, MANDIBLE_TYPES.length - 1)],
       wingPairs: g.wing_count / 2,
       wingArea: g.wing_area,
-      setae: g.setae,
-      shimmer: g.iridescence
+      setae: g.setae
     };
     buildTrunk(L);
     buildLegs(L);
@@ -2542,16 +2578,27 @@
       });
     }
     const extra = clamp2(Math.round(g.eye_count / 2) - 1, 0, 3);
-    for (let i = 0; i < extra; i++) {
-      const t = extra === 1 ? 0.5 : i / (extra - 1);
-      L.eyes.push({
-        x: hx + headL * lerp(0.5, 0.14, t),
-        y: (i % 2 === 0 ? -1 : 1) * headW * lerp(0.14, 0.38, t),
-        rx: er * 0.17,
-        ry: er * 0.17,
-        side: 0,
-        minor: true
-      });
+    if (extra > 0) {
+      const COL = 1.55;
+      const inner = Math.max(0, headW * 0.98 - er * 0.667);
+      const mr = clamp2(
+        Math.min(er * 0.26, inner * 0.85 / (COL + 1.7)),
+        er * 0.09,
+        er * 0.26
+      );
+      const x0 = hx + headL * 0.44;
+      for (let row = 0; row < extra; row++) {
+        for (const side of [-1, 1]) {
+          L.eyes.push({
+            x: x0 - row * mr * 2.8,
+            y: side * mr * COL,
+            rx: mr * 0.55,
+            ry: mr,
+            side,
+            minor: true
+          });
+        }
+      }
     }
     const antLen = unit * lerp(0.06, 0.95, g.antenna_length);
     if (antLen > unit * 0.15) for (const side of [-1, 1]) L.antennae.push({ side, len: antLen });
@@ -2622,51 +2669,6 @@
     ctx.quadraticCurveTo(bx, by, cx, cy);
     ctx.stroke();
   }
-  function speckle(ctx, part, col, amount, seed) {
-    if (amount < 0.28) return;
-    const k = (amount - 0.28) / 0.72;
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(part.x, 0, part.rx, part.ry, 0, 0, TAU);
-    ctx.clip();
-    const n = Math.round(90 + k * 200);
-    ctx.fillStyle = col.accent;
-    for (let i = 0; i < n; i++) {
-      const a = hash01(i, seed) * TAU;
-      const r = Math.sqrt(hash01(i, seed + 9)) * 0.92;
-      const d = hash01(i, seed + 21);
-      ctx.globalAlpha = (0.1 + d * 0.55) * k;
-      const s = (0.3 + d * 0.9) * Math.max(0.7, part.ry * 0.03);
-      ctx.beginPath();
-      ctx.arc(part.x + Math.cos(a) * part.rx * r, Math.sin(a) * part.ry * r, s, 0, TAU);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-  function speckleLimb(ctx, leg, col, amount) {
-    if (amount < 0.34) return;
-    const k = (amount - 0.34) / 0.66;
-    const n = Math.round(10 + k * 22);
-    ctx.fillStyle = col.accent;
-    for (let i = 0; i < n; i++) {
-      const t = hash01(i, leg.pair * 7 + leg.side + 3);
-      const u = 1 - t;
-      const px = u * u * leg.attach.x + 2 * u * t * leg.knee.x + t * t * leg.foot.x;
-      const py = u * u * leg.attach.y + 2 * u * t * leg.knee.y + t * t * leg.foot.y;
-      const j = hash01(i, leg.pair * 13 + 5);
-      ctx.globalAlpha = (0.18 + j * 0.5) * k;
-      ctx.beginPath();
-      ctx.arc(
-        px + (j - 0.5) * leg.w * 0.7,
-        py + (hash01(i, 31) - 0.5) * leg.w * 0.7,
-        Math.max(0.5, leg.w * 0.1 * (0.5 + j)),
-        0,
-        TAU
-      );
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  }
   function taperedCurve(ctx, p0, p1, p2, w02, w1, fill, steps = 16) {
     taperedPath(ctx, p0, p1, p2, w02, w1, steps);
     ctx.fillStyle = fill;
@@ -2713,15 +2715,13 @@
     }
     return box;
   }
-  var PATTERN_MODES = ["flat", "gradient", "dots", "oval"];
+  var PATTERN_MODES = ["flat", "gradient", "dots", "oval", "diagonal"];
   var PATTERN_GENE = { horn: "pattern_horn", mandible: "pattern_mandible" };
-  function hueToward(from, to, t) {
-    let d = ((to - from) % 1 + 1.5) % 1 - 0.5;
-    return from + d * t;
-  }
+  var PATTERN_HUE_GENE = { horn: "pattern_horn_hue", mandible: "pattern_mandible_hue" };
   function surfacePattern(g, col, which = "horn") {
     const k = clamp2(g.pattern_contrast ?? 0, 0, 1);
-    const h = hueToward(col.h, 0.095, 0.35 + k * 0.5);
+    const hueGene = PATTERN_HUE_GENE[which] ?? "pattern_horn_hue";
+    const h = hexHue(REF_PALETTE[REF_PALETTE_ORDER[clamp2(Math.round(g[hueGene] ?? 4), 0, REF_PALETTE_ORDER.length - 1)]]);
     const v = clamp2(g[PATTERN_GENE[which] ?? "pattern_horn"] ?? 0, 0, 1);
     return {
       mode: PATTERN_MODES[Math.min(PATTERN_MODES.length - 1, Math.floor(v * PATTERN_MODES.length))],
@@ -2764,8 +2764,12 @@
       }
     }
     if (pat.mode === "gradient" && ctx.createLinearGradient) {
+      const BAND = 0.34;
+      const mid = 0.2 + pat.scale * 0.6;
       const gr = ctx.createLinearGradient(root.x, root.y, far.x, far.y);
       gr.addColorStop(0, base);
+      gr.addColorStop(clamp2(mid - BAND, 1e-3, 0.998), base);
+      gr.addColorStop(clamp2(mid + BAND, 2e-3, 0.999), pat.lite);
       gr.addColorStop(1, pat.lite);
       ctx.fillStyle = gr;
     } else {
@@ -2790,6 +2794,19 @@
         ctx.fill();
       }
       ctx.globalAlpha = 1;
+    } else if (pat.mode === "diagonal") {
+      const period = Math.max(2.2, lerp(0.5, 1.8, pat.scale) * Math.max(2, widest));
+      const span = bw + bh;
+      ctx.save();
+      ctx.translate(box.minX, box.minY);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = pat.lite;
+      ctx.globalAlpha = 0.34 + pat.k * 0.52;
+      for (let d = -span; d <= span; d += period) {
+        ctx.fillRect(d, -span, period * 0.42, span * 2);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
     } else {
       const c = { x: lerp(root.x, far.x, 0.74), y: lerp(root.y, far.y, 0.74) };
       const a = Math.atan2(far.y - root.y, far.x - root.x);
@@ -2920,7 +2937,6 @@
       );
       const fr = leg.w * FOOT_PAD_R;
       fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limb);
-      speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
     }
   }
   var HORN_BASE_K = 0.55;
@@ -3173,7 +3189,13 @@
   function drawEyes(ctx, L, col) {
     for (const e of L.eyes) {
       if (e.minor) {
-        fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil);
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.rotate(e.side * 0.3);
+        eyeWedgePath(ctx, e.ry, e.rx, e.side);
+        ctx.fillStyle = L.eyeFill === "dark" ? col.pupil : col.sclera;
+        ctx.fill();
+        ctx.restore();
         continue;
       }
       ctx.save();
@@ -3237,7 +3259,7 @@
   var BLOB_R = 0.88;
   var ABDOMEN_BLOB_SKEW = -0.3;
   var CENTRELINE_RATIO = 1.18;
-  function segmentMass(ctx, p, col) {
+  function segmentMass(ctx, p, col, crease = false) {
     const rx = Math.max(0.5, p.rx);
     const ry = Math.max(0.5, p.ry);
     ctx.save();
@@ -3262,34 +3284,55 @@
       ctx.fill();
     }
     ctx.restore();
-    segmentCentreline(ctx, p, col, rx, ry);
+    segmentCentreline(ctx, p, col, rx, ry, crease);
   }
-  function segmentCentreline(ctx, p, col, rx, ry) {
+  var CREASE_HALF_L = 0.8;
+  var CREASE_HALO_W = 0.085;
+  var CREASE_CORE_W = 0.32;
+  var CREASE_CORE_BLUR = 0.62;
+  var CREASE_CORE_ALPHA = 0.46;
+  function segmentCentreline(ctx, p, col, rx, ry, crease = false) {
     const long = Math.max(rx, ry);
     const short = Math.min(rx, ry);
-    if (long / short < CENTRELINE_RATIO) return;
+    if (!crease && long / short < CENTRELINE_RATIO) return;
     if (!ctx.createLinearGradient) return;
-    softStreak(ctx, p, rx, ry, rx * 0.74, ry * 0.085, col.shellSoft, col.shellClear, 1);
+    const halfL = rx * CREASE_HALF_L;
+    const haloW = ry * CREASE_HALO_W;
+    softStreak(ctx, p, rx, ry, halfL, haloW, haloW, col.shellSoft, col.shellClear, 1);
+    if (!crease) return;
+    softStreak(
+      ctx,
+      p,
+      rx,
+      ry,
+      halfL,
+      haloW * CREASE_CORE_W,
+      haloW * CREASE_CORE_BLUR,
+      col.seam,
+      col.seamClear,
+      CREASE_CORE_ALPHA
+    );
   }
-  function softStreak(ctx, p, rx, ry, halfL, halfW, fill, clear, alpha) {
+  function softStreak(ctx, p, rx, ry, halfL, halfW, blur, fill, clear, alpha) {
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
     ctx.clip();
     ctx.globalAlpha = alpha;
+    const b = Math.max(0.6, blur);
     if ("filter" in ctx) {
-      const blur = Math.max(0.6, halfW);
-      ctx.filter = `blur(${blur.toFixed(2)}px)`;
+      ctx.filter = `blur(${b.toFixed(2)}px)`;
       ctx.fillStyle = fill;
-      ctx.fillRect(p.x - halfL + blur, p.y - halfW * 0.5, Math.max(0.5, (halfL - blur) * 2), halfW);
+      ctx.fillRect(p.x - halfL + b, p.y - halfW * 0.5, Math.max(0.5, (halfL - b) * 2), halfW);
       ctx.filter = "none";
     } else {
-      const gr = ctx.createLinearGradient(0, p.y - halfW, 0, p.y + halfW);
+      const ext = Math.max(halfW, b);
+      const gr = ctx.createLinearGradient(0, p.y - ext, 0, p.y + ext);
       gr.addColorStop(0, clear);
       gr.addColorStop(0.5, fill);
       gr.addColorStop(1, clear);
       ctx.fillStyle = gr;
-      ctx.fillRect(p.x - halfL, p.y - halfW, halfL * 2, halfW * 2);
+      ctx.fillRect(p.x - halfL, p.y - ext, halfL * 2, ext * 2);
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -3370,27 +3413,12 @@
     drawHorn(ctx, L, col, patHorn);
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
-      for (const p of trunk) segmentMass(ctx, p, col);
+      const creased = L.wingType === "elytra" ? null : L.abdomen;
+      for (const p of trunk) segmentMass(ctx, p, col, p === creased);
       drawElytra(ctx, L, col);
-      for (let i = 0; i < trunk.length; i++) speckle(ctx, trunk[i], col, L.shimmer, i * 17 + 3);
-      const ab = L.abdomen;
-      if (ab && L.wingType !== "elytra") {
-        softStreak(
-          ctx,
-          ab,
-          ab.rx,
-          ab.ry,
-          ab.rx * 0.88,
-          Math.max(0.5, L.unit * 0.012),
-          col.seam,
-          col.seamClear,
-          0.42
-        );
-      }
     };
     const drawTrunkThorax = () => {
       segmentMass(ctx, L.thorax, col);
-      speckle(ctx, L.thorax, col, L.shimmer, L.parts.length * 17 + 3);
     };
     if (L.wingPairs > 0) {
       drawTrunkAbdomen();
@@ -4076,7 +4104,6 @@
         saturation: 0.3,
         lightness: 0.22,
         setae: 0.15,
-        iridescence: 0.45,
         translucency: 0.05
       }
     },
@@ -4132,7 +4159,6 @@
         pattern_leg: 0.15,
         pattern_contrast: 0.95,
         setae: 0.25,
-        iridescence: 0.2,
         translucency: 0.15
       }
     },
@@ -4185,7 +4211,6 @@
         saturation: 0.25,
         lightness: 0.18,
         setae: 0.7,
-        iridescence: 0.1,
         translucency: 0.05
       }
     },
@@ -4234,7 +4259,6 @@
         lightness: 0.24,
         pattern_leg: 0.9,
         setae: 0.3,
-        iridescence: 0.3,
         translucency: 0.1
       }
     },
@@ -4345,7 +4369,6 @@
         lightness: 0.62,
         pattern_leg: 0.45,
         setae: 0.95,
-        iridescence: 0.35,
         translucency: 0.3
       }
     },
@@ -4440,7 +4463,6 @@
         lightness: 0.2,
         pattern_leg: 0.5,
         setae: 0.45,
-        iridescence: 0.55,
         translucency: 0.05
       }
     }

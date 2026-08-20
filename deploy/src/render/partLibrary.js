@@ -181,7 +181,6 @@ export const PARTS = [
     gate: 'always, at a fixed 0.95 of the leg width (FOOT_PAD_R)',
     genes: [
       { gene: 'leg_thickness', effect: 'the only thing that changes a foot: the pad is a fixed 0.95 of the leg width, so a thicker leg is the only way to a bigger foot' },
-      { gene: 'leg_count', effect: 'one foot per leg' },
     ],
   },
 
@@ -249,8 +248,9 @@ export const PARTS = [
     genes: [
       { gene: 'horn_size', effect: 'length, 0.18–1.55 of the body unit depending on kind' },
       { gene: 'horn_type', effect: 'which of the five shapes gets drawn' },
-      { gene: 'head_length', effect: 'the horn is anchored to the head\'s rear edge, so a longer head moves its base' },
-      { gene: 'pattern_horn', effect: 'flat / gradient / dots / oval surface treatment on the horn fill — its own gene, independent of the jaws' },
+      { gene: 'pattern_horn', effect: 'flat / gradient / dots / oval / diagonal surface treatment on the horn fill — its own gene, independent of the jaws' },
+      { gene: 'pattern_horn_hue', effect: 'which of the ten reference-palette swatches the decoration tone is drawn from — independent of the body\'s own hue' },
+      { gene: 'pattern_scale', effect: 'gradient: where the light/dark transition sits along the horn\'s long axis. dots: dot size and count. diagonal: stripe pitch. Shared by the horn and the jaws' },
       { gene: 'pattern_contrast', effect: 'how far the light tone departs from the horn colour' },
     ],
   },
@@ -293,7 +293,9 @@ export const PARTS = [
         gene: 'mandible_serration',
         effect: 'multiplies the bite stat, AND cuts teeth into the inner edge at three levels — min(2, floor(v × 3)), so 0–0.33 smooth, 0.33–0.67 one tooth, 0.67+ two. Every kind reads it now: on the chelicerae, 1 or 2 both add the single tip fang that used to be a kind of its own',
       },
-      { gene: 'pattern_mandible', effect: 'flat / gradient / dots / oval surface treatment on the jaw fill — its own gene, independent of the horn' },
+      { gene: 'pattern_mandible', effect: 'flat / gradient / dots / oval / diagonal surface treatment on the jaw fill — its own gene, independent of the horn' },
+      { gene: 'pattern_mandible_hue', effect: 'which of the ten reference-palette swatches the decoration tone is drawn from — independent of the body\'s own hue' },
+      { gene: 'pattern_scale', effect: 'gradient: where the light/dark transition sits along the jaw\'s long axis. dots: dot size and count. diagonal: stripe pitch. Shared by the horn and the jaws' },
       { gene: 'pattern_contrast', effect: 'how far the light tone departs from the jaw colour' },
     ],
   },
@@ -360,7 +362,7 @@ export const PARTS = [
     genes: [
       { gene: 'eye_size', effect: 'radius, 0.45–1.05 of head radius' },
       { gene: 'eye_type', effect: 'the fill treatment — dark speckled / notched / hooked. It no longer changes the silhouette; there is only one' },
-      { gene: 'eye_count', effect: 'pairs past the first are drawn as small dark ocelli' },
+      { gene: 'eye_count', effect: 'pairs past the first are drawn as a small mirrored eye array behind the main pair' },
     ],
   },
   {
@@ -385,22 +387,21 @@ export const PARTS = [
     setVariant: (_g, i) => ({ crown_mark_style: i + 1 }),
     genes: [
       { gene: 'crown_mark_style', effect: '0 none, 1 solid gold cap, 2 the cap blended into the head' },
-      { gene: 'head_length', effect: 'the cap is the front 18% of the head silhouette along its long axis, so it scales with it' },
     ],
   },
   {
     id: 'ocelli',
     group: 'sensory',
     name: 'Extra eyes',
-    blurb: 'Every pair past the first lands on the head as a small dark dot. Three extra pairs is the ceiling.',
+    blurb: 'Every pair past the first joins a small mirrored array behind the main eyes — the same wedge shape, scaled down, arranged in rows so it reads as a deliberate cluster rather than scattered dots. Sized and positioned so it never overlaps the main pair\'s own footprint. Three extra pairs is the ceiling.',
     drawnBy: 'buildHead() → the minor eyes',
     gate: 'eye_count ≥ 4  (extra pairs = clamp(round(eye_count / 2) − 1, 0, 3))',
     present: (g) => g.eye_count >= 4,
     on: { eye_count: 8 },
     off: { eye_count: 2 },
     genes: [
-      { gene: 'eye_count', effect: '4 → one extra pair, 6 → two, 8+ → three (the ceiling). Also +11% vision each pair' },
-      { gene: 'eye_size', effect: 'ocelli are drawn at 0.17 of the main eye radius' },
+      { gene: 'eye_count', effect: '4 → one row of two behind the main pair, 6 → a second row, 8+ → a third (the ceiling). Also +11% vision each pair' },
+      { gene: 'eye_size', effect: 'the array radius is solved from the main eyes\' own radius, clamped so an array eye is always visibly smaller and clear of the main pair\'s silhouette' },
     ],
   },
   {
@@ -415,7 +416,6 @@ export const PARTS = [
     off: { antenna_length: 0 },
     genes: [
       { gene: 'antenna_length', effect: 'reach, 0.06–0.95 of the body unit' },
-      { gene: 'head_width', effect: 'antennae anchor to the head edge' },
     ],
   },
 
@@ -456,30 +456,30 @@ export const PARTS = [
     id: 'hornpattern',
     group: 'surface',
     name: 'Horn & jaw pattern',
-    blurb: 'A surface treatment applied to the whole horn or the whole jaw as ONE shape — flat, a warm gradient to the tip, light speckle dots, or one oval highlight. The horn and the mandibles pick independently. Body patterns are a later pass — this reaches the weapons only.',
+    blurb: 'A surface treatment applied to the whole horn or the whole jaw as ONE shape — flat, a gradient that slides along the shape, light speckle dots, one oval highlight, or repeating diagonal stripes. The horn and the mandibles pick independently, and each also picks its own decoration colour off the reference palette. Body patterns are a later pass — this reaches the weapons only.',
     drawnBy: 'surfacePattern() → patternedSilhouette()',
-    gate: 'a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(3, floor(pattern_horn × 4)) for the horn, the same over pattern_mandible for the jaws',
+    gate: 'a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(4, floor(pattern_horn × 5)) for the horn, the same over pattern_mandible for the jaws',
     present: (g) => g.horn_size >= 0.12 || g.mandible_size >= 0.10,
     on: { mandible_size: 0.75 },
     off: { mandible_size: 0, horn_size: 0 },
-    // The variant strip drives the HORN's gene. The mandible's is the same four
+    // The variant strip drives the HORN's gene. The mandible's is the same five
     // states over its own slider; showing both strips would be two identical
     // pickers side by side.
     variantGene: 'pattern_horn',
-    variants: variants(['flat', 'gradient', 'dots', 'oval'], [
+    variants: variants(['flat', 'gradient', 'dots', 'oval', 'diagonal'], [
       'solid colour, nothing on it at all — the default',
-      'the base colour lifting to a warm amber at the tip',
+      'the base colour lifting to the decoration tone, positioned along the shape by pattern_scale',
       'light speckle dots scattered over the shape',
       'one lighter oval patch near the tip, the rest flat',
+      'repeating 45° stripes swept across the whole clipped silhouette',
     ]),
-    variantOf: (g) => Math.min(3, Math.floor(Math.max(0, Math.min(1, g.pattern_horn)) * 4)),
-    setVariant: (_g, i) => ({ pattern_horn: (i + 0.5) / 4, pattern_mandible: (i + 0.5) / 4 }),
+    variantOf: (g) => Math.min(4, Math.floor(Math.max(0, Math.min(1, g.pattern_horn)) * 5)),
+    setVariant: (_g, i) => ({ pattern_horn: (i + 0.5) / 5, pattern_mandible: (i + 0.5) / 5 }),
     genes: [
-      { gene: 'pattern_horn', effect: 'the HORN\'s treatment: 0–0.25 flat, 0.25–0.5 gradient, 0.5–0.75 dots, 0.75+ oval' },
-      { gene: 'pattern_mandible', effect: 'the JAWS\' treatment, same four buckets, chosen independently of the horn\'s' },
-      { gene: 'pattern_scale', effect: 'dots only — bigger scale means fewer, larger dots. Shared by both components' },
-      { gene: 'pattern_contrast', effect: 'how loud a treatment reads: gradient depth, dot opacity, oval tone gap. Shared by both components' },
-      { gene: 'hue', effect: 'the light tone is the shell hue walked toward amber, so it stays in family' },
+      { gene: 'pattern_horn', effect: 'the HORN\'s treatment: 0–0.2 flat, 0.2–0.4 gradient, 0.4–0.6 dots, 0.6–0.8 oval, 0.8+ diagonal' },
+      { gene: 'pattern_mandible', effect: 'the JAWS\' treatment, same five buckets, chosen independently of the horn\'s' },
+      { gene: 'pattern_scale', effect: 'gradient: slides the light/dark transition along the shape. dots: bigger scale means fewer, larger dots. diagonal: stripe pitch. Shared by both components' },
+      { gene: 'pattern_contrast', effect: 'how loud a treatment reads: gradient depth, dot opacity, oval tone gap, stripe opacity. Shared by both components' },
     ],
   },
   {
@@ -510,22 +510,6 @@ export const PARTS = [
     off: { setae: 0 },
     genes: [
       { gene: 'setae', effect: 'count (10–26) and length of the fringe; also helps camouflage' },
-      { gene: 'abdomen_width', effect: 'setae are drawn off the abdomen rim (the thorax, if there is no abdomen), so they scale with it' },
-    ],
-  },
-  {
-    id: 'speckle',
-    group: 'surface',
-    name: 'Iridescent speckle',
-    blurb: 'Fine granular scatter in the accent colour. Not glitter — a dusting.',
-    drawnBy: 'speckle() / speckleLimb()',
-    gate: 'iridescence ≥ 0.28 on the shell, ≥ 0.34 on the limbs',
-    present: (g) => g.iridescence >= 0.28,
-    on: { iridescence: 0.75 },
-    off: { iridescence: 0 },
-    genes: [
-      { gene: 'iridescence', effect: '90–290 specks by amount; costs camouflage in the stat block' },
-      { gene: 'hue', effect: 'the speck colour is the complement of the shell hue' },
     ],
   },
 ];

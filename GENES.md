@@ -10,7 +10,7 @@ GLB mapping all read it.
 
 ---
 
-## The 56 genes
+## The 57 genes
 
 ### Body plan — 12
 
@@ -90,16 +90,17 @@ GLB mapping all read it.
 | `hue` | 0–1, wraps | Base hue. The only circular gene — it wraps rather than clamps. |
 | `saturation` | 0–1 | Colour intensity. Costs camouflage. |
 | `lightness` | 0–1 | Brightness. Costs camouflage. |
-| `pattern_horn` | 0–1 | The HORN's surface treatment: `min(3, floor(v × 4))` → flat / gradient / dots / oval. The 0.08 default is flat — a default bug's horn carries nothing. |
-| `pattern_mandible` | 0–1 | The MANDIBLES' treatment. Same four buckets, chosen independently of the horn's. |
+| `pattern_horn` | 0–1 | The HORN's surface treatment: `min(4, floor(v × 5))` → flat / gradient / dots / oval / diagonal. The 0.08 default is flat — a default bug's horn carries nothing. |
+| `pattern_mandible` | 0–1 | The MANDIBLES' treatment. Same five buckets, chosen independently of the horn's. |
+| `pattern_horn_hue` | int 0–9 | Which reference-palette swatch the HORN's decoration tone takes its hue from — independent of the body's own hue. |
+| `pattern_mandible_hue` | int 0–9 | Which reference-palette swatch the JAWS' decoration tone takes its hue from — independent of the horn's and the body's. |
 | `pattern_leg` | 0–1 | Above 0.5 the limbs go near-black. (These three were one `pattern` gene; it answered three unrelated questions at once.) |
 | `light_hue` | int 0–9 | Which reference-palette swatch the body-segment lighting bloom takes its HUE from. 7 = cream, the colour every bug used to get. Heritable and independent of `hue`. Only the hue is used — the swatch's baked-in saturation/lightness are discarded. |
 | `lighting_saturation` | 0–1 (default 0.33) | The bloom's own saturation, independent of the body's. |
 | `lighting_lightness` | 0–1 (default 0.85) | The bloom's own lightness, independent of the body's — but clamped UP to the body's own lightness, so the light can never render darker than the shell it sits on. |
-| `pattern_scale` | 0–1 | Dot size and count for the `dots` treatment: 34 small dots at 0, 9 large ones at 1. Shared by the horn and the jaws. |
+| `pattern_scale` | 0–1 | `dots`: dot size and count, 34 small dots at 0, 9 large ones at 1. `gradient`: where the light/dark transition sits along the shape (0 = near the base, 1 = near the tip). `diagonal`: stripe pitch. Shared by the horn and the jaws. |
 | `pattern_contrast` | 0–1 | How loud a treatment reads — gradient depth, dot opacity, oval tone gap. Shared by the horn and the jaws. Firefly, Ladybird and Butterfly all window on it. |
 | `setae` | 0–1 | Hairiness. Breaks up the outline, helps camouflage. |
-| `iridescence` | 0–1 | Metallic sheen. Looks great, **costs camouflage** — a real trade-off. |
 | `translucency` | 0–1 | See-through cuticle. Helps camouflage. |
 
 ---
@@ -118,7 +119,7 @@ Two new ones, and several formulas now read the new genes.
 | health | bulk + shell + `body_segments` |
 | flight | 0 unless `wing_count` > 0; then wing loading vs. beat |
 | vision | `eye_size` × `eye_count` gain + antennae |
-| camouflage | dark/desaturated/small, + `setae` + `translucency`, − `iridescence` |
+| camouflage | dark/desaturated/small, + `setae` + `translucency` |
 
 A seventh fitness preset, **`venomous`**, selects for venom + speed + agility.
 
@@ -161,8 +162,7 @@ archetypes sit within 20 units of each other in stat space. Both are asserted in
 The art layer reads the new genes, so structure is visible rather than just
 numeric: segment lines on the abdomen, two- vs. three-jointed legs, tarsal
 feet, one or two wing pairs, horns, spine rows, tails with stingers, two to
-eight eyes laid out along the head, fur, iridescent sheen, and translucent
-cuticle.
+eight eyes laid out along the head, fur, and translucent cuticle.
 
 A bug hit by a stinger shows **envenomed** in the inspector and keeps losing
 health after the attacker has moved on.

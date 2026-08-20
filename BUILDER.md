@@ -98,13 +98,13 @@ the build button, and a **never** badge beside that taxon in the drift line.
 
 ### 2. The part library — `src/render/partLibrary.js`
 
-The **Part library** and **All 56 genes** tabs cut the same data two ways. The
+The **Part library** and **All 57 genes** tabs cut the same data two ways. The
 library is organised by *what you see on the bug* — 20 things the renderer can
 draw, each owning the two to five genes that shape it, with the threshold where
 it appears, a thumbnail per kind, and a grid tile framed on the part itself
 (`FOCUS` in `partLibrary.js` says how each one is framed: the pose is head-up,
 so a positive `y` brings the head into the tile and a negative one the tail). The gene tab is organised by *the vector* —
-all 56 in `GENE_ORDER`, including the eight that reach no part of the sprite, each
+all 57 in `GENE_ORDER`, including the eight that reach no part of the sprite, each
 saying which parts it feeds. Start in the library when you are building a bug;
 go to the genes when you need one specific dial, or the ones no part exposes.
 
@@ -153,9 +153,9 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 
 | Part | Appears when | Genes |
 |---|---|---|
-| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `head_length`, `pattern_horn`, `pattern_contrast` |
+| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `pattern_horn`, `pattern_horn_hue`, `pattern_scale`, `pattern_contrast` |
 | **Horn serration** | `horn_serration ≥ 1, and the horn must be drawn at all (horn_size ≥ 0.12). NEVER on crown (horn_type 4)` | `horn_serration`, `horn_type`, `horn_size` |
-| **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration`, `pattern_mandible`, `pattern_contrast` |
+| **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration`, `pattern_mandible`, `pattern_mandible_hue`, `pattern_scale`, `pattern_contrast` |
 | **Tail** | `tail_length × 0.44 > 0.08  →  tail_length > 0.182` | `tail_length`, `stinger_size` |
 | **Stinger** | `stinger_size > 0.18, and the tail must be drawn at all` | `stinger_size`, `tail_length` |
 | **Defensive spines** _(stats only)_ | `never drawn — spine_density reaches stats and classification only` | `spine_density` |
@@ -165,9 +165,9 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | Part | Appears when | Genes |
 |---|---|---|
 | **Eyes** | _always on_ | `eye_size`, `eye_type`, `eye_count`, `saturation` |
-| **Crown mark** | `crown_mark_style` ≥ 1 | `crown_mark_style`, `head_length` |
+| **Crown mark** | `crown_mark_style` ≥ 1 | `crown_mark_style` |
 | **Extra eyes** | `eye_count ≥ 4  (extra pairs = clamp(round(eye_count / 2) − 1, 0, 3))` | `eye_count`, `eye_size` |
-| **Antennae** | `antenna_length > 0.104  (the length has to clear 0.15 of the body unit)` | `antenna_length`, `head_width` |
+| **Antennae** | `antenna_length > 0.104  (the length has to clear 0.15 of the body unit)` | `antenna_length` |
 
 ### Surface — colour, speckle, fur
 
@@ -175,10 +175,9 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 |---|---|---|
 | **Shell colour** | _always on_ | `hue`, `saturation`, `lightness` |
 | **Ink limbs** | `pattern_leg > 0.5` | `pattern_leg` |
-| **Horn & jaw pattern** | `a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(3, floor(pattern_horn × 4)) for the horn, the same over pattern_mandible for the jaws` | `pattern_horn`, `pattern_mandible`, `pattern_scale`, `pattern_contrast`, `hue` |
+| **Horn & jaw pattern** | `a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(4, floor(pattern_horn × 5)) for the horn, the same over pattern_mandible for the jaws` | `pattern_horn`, `pattern_mandible`, `pattern_scale`, `pattern_contrast` |
 | **Segment lighting** | always drawn (core) | `light_hue`, `lighting_lightness`, `lighting_saturation`, `lightness` (as the floor only), `body_segments` |
-| **Setae** | `setae ≥ 0.35` | `setae`, `abdomen_width` |
-| **Iridescent speckle** | `iridescence ≥ 0.28 on the shell, ≥ 0.34 on the limbs` | `iridescence`, `hue` |
+| **Setae** | `setae ≥ 0.35` | `setae` |
 
 #### Genes that move numbers, not pixels
 
@@ -199,11 +198,11 @@ the Centipede and Millipede windows while being invisible on the bug.
 
 | Format | What it is |
 |---|---|
-| **JS genome** | the full 56 genes as a `normalizeGenome({...})` literal, grouped and commented |
+| **JS genome** | the full 57 genes as a `normalizeGenome({...})` literal, grouped and commented |
 | **JSON** | the raw genome object |
 | **Patch vs base** | only the genes you changed since loading the build — the parameter combination on its own |
 | **Archetype entry** | a `{ key, name, blurb, spread, bias }` block ready to paste into `ARCHETYPES` |
-| **Share link** | one byte per gene in `GENE_ORDER`, base64url — a 56-character code in the URL hash, with its decoder |
+| **Share link** | one byte per gene in `GENE_ORDER`, base64url — a 57-character code in the URL hash, with its decoder |
 
 The URL hash updates on every edit, so a build is reloadable and shareable
 without a save file. The share code quantises to 1/255 of each gene's range;

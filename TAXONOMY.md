@@ -53,7 +53,7 @@ exactly one bracket per axis, with no authoring and no gaps.
 | `wingPlan` | `wing_count` | apterous (0) · dipterous (2) · tetrapterous (4) |
 | `massClass` | `body_mass` | micro (≤0.18) · standard · titan (≥0.80) |
 | `venomClass` | `stinger_size` + `tail_length` | none · mild · potent · lethal |
-| `surfaceClass` | `translucency` / `iridescence` / `setae` | ghost · radiant · furred · ironclad |
+| `surfaceClass` | `translucency` / `saturation` / `setae` | ghost · radiant · furred · ironclad |
 
 ### 2. The chassis tree — `CLASS_TREE`
 

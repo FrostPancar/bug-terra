@@ -23,7 +23,12 @@
 //   • ONE eye silhouette, three fill treatments. The shape is an asymmetric
 //     wedge — a wide rounded corner at the outer-top, tapering to a point at the
 //     inner-lower side — set wide on the head and partly tucked behind it.
-//   • Iridescence reads as a fine granular speckle, not glitter stars.
+//   • NO SHELL SPECKLE. `iridescence` and the fine granular scatter it painted
+//     over the shell and the limbs are both gone: the gene existed to justify
+//     the speckle, the speckle was the only thing on the sprite that broke the
+//     flat-fill rule above, and nothing else read the gene as art. The only
+//     scatter left anywhere is the horn/jaw `dots` pattern, which is opt-in
+//     through `pattern_horn`/`pattern_mandible`.
 //
 // Three body plans, because forcing a centipede through a beetle's geometry is
 // what made them read as sausages:
@@ -44,7 +49,7 @@ const TAU = Math.PI * 2;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
-/** Deterministic scatter, so speckle never shimmers between frames. */
+/** Deterministic scatter, so a pattern never shimmers between frames. */
 function hash01(i, salt = 0) {
   const x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
   return x - Math.floor(x);
@@ -500,7 +505,6 @@ export function layout(g, ppu = 26) {
     wingPairs: g.wing_count / 2,
     wingArea: g.wing_area,
     setae: g.setae,
-    shimmer: g.iridescence,
   };
 
   buildTrunk(L);
@@ -726,14 +730,48 @@ function buildHead(L) {
       rx: er * 0.55, ry: er, side,
     });
   }
+  /*
+   * THE EXTRA EYES ARE AN ARRAY, not a scatter.
+   *
+   * They used to be plain dark circles at 0.17 × the main radius, dropped along
+   * a line that zig-zagged across the midline — one on the left, the next on the
+   * right, each at a different x AND a different y. Three of them read as three
+   * unrelated specks someone had flicked at the head, and at a large `eye_size`
+   * the first one landed inside the main wedge's own footprint.
+   *
+   * Now: one small GRID. Two columns, mirrored about the midline exactly as the
+   * main pair is, and one ROW PER EXTRA PAIR stepping back down the head. So
+   * eye_count 4 is a single row of two, 6 adds a second row behind it, 8 a
+   * third — the ceiling is unchanged, only the arrangement is.
+   *
+   * They are the same eyeWedgePath silhouette as the main pair, scaled down, so
+   * a bug's eyes all look like the same organ.
+   *
+   * NON-OVERLAP IS COMPUTED, not eyeballed. `inner` is how far the main wedge
+   * actually reaches toward the midline: walking eyeWedgePath's control points
+   * through the 0.30 lean, the closest approach is the outer-edge belly at
+   * (−0.30R, −1.10r), i.e. 0.30·sin(0.30)·R + 1.10·cos(0.30)·r ≈ 0.667 × the
+   * main radius once r = 0.55R is substituted. The array's own half-extent is
+   * mr × (COL + 1.70) — column offset plus the small wedge's outer belly — and
+   * `mr` is solved so that lands inside 85% of the gap. The 0.26 ceiling is the
+   * separate promise that these are always visibly SMALLER than the main pair.
+   */
   const extra = clamp(Math.round(g.eye_count / 2) - 1, 0, 3);
-  for (let i = 0; i < extra; i++) {
-    const t = extra === 1 ? 0.5 : i / (extra - 1);
-    L.eyes.push({
-      x: hx + headL * lerp(0.50, 0.14, t),
-      y: (i % 2 === 0 ? -1 : 1) * headW * lerp(0.14, 0.38, t),
-      rx: er * 0.17, ry: er * 0.17, side: 0, minor: true,
-    });
+  if (extra > 0) {
+    const COL = 1.55;                            // column offset, in small radii
+    const inner = Math.max(0, headW * 0.98 - er * 0.667);
+    const mr = clamp(Math.min(er * 0.26, inner * 0.85 / (COL + 1.70)),
+                     er * 0.09, er * 0.26);
+    const x0 = hx + headL * 0.44;
+    for (let row = 0; row < extra; row++) {
+      for (const side of [-1, 1]) {
+        L.eyes.push({
+          x: x0 - row * mr * 2.8,
+          y: side * mr * COL,
+          rx: mr * 0.55, ry: mr, side, minor: true,
+        });
+      }
+    }
   }
 
   // Antennae read longer: the window was 0.10–0.58 of the body unit, now
@@ -861,51 +899,18 @@ function capsule(ctx, ax, ay, bx, by, cx, cy, w, colour) {
   ctx.stroke();
 }
 
-/** Fine granular speckle — how iridescence reads in this style. */
-function speckle(ctx, part, col, amount, seed) {
-  if (amount < 0.28) return;
-  const k = (amount - 0.28) / 0.72;
-  ctx.save();
-  ctx.beginPath();
-  ctx.ellipse(part.x, 0, part.rx, part.ry, 0, 0, TAU);
-  ctx.clip();
-  const n = Math.round(90 + k * 200);
-  ctx.fillStyle = col.accent;
-  for (let i = 0; i < n; i++) {
-    const a = hash01(i, seed) * TAU;
-    // sqrt keeps the scatter even instead of clumping at the centre
-    const r = Math.sqrt(hash01(i, seed + 9)) * 0.92;
-    const d = hash01(i, seed + 21);
-    ctx.globalAlpha = (0.10 + d * 0.55) * k;
-    const s = (0.3 + d * 0.9) * Math.max(0.7, part.ry * 0.030);
-    ctx.beginPath();
-    ctx.arc(part.x + Math.cos(a) * part.rx * r, Math.sin(a) * part.ry * r, s, 0, TAU);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-/** Speckle along a limb, matching the reference's dusted legs. */
-function speckleLimb(ctx, leg, col, amount) {
-  if (amount < 0.34) return;
-  const k = (amount - 0.34) / 0.66;
-  const n = Math.round(10 + k * 22);
-  ctx.fillStyle = col.accent;
-  for (let i = 0; i < n; i++) {
-    const t = hash01(i, leg.pair * 7 + leg.side + 3);
-    const u = 1 - t;
-    // point on the quadratic
-    const px = u * u * leg.attach.x + 2 * u * t * leg.knee.x + t * t * leg.foot.x;
-    const py = u * u * leg.attach.y + 2 * u * t * leg.knee.y + t * t * leg.foot.y;
-    const j = hash01(i, leg.pair * 13 + 5);
-    ctx.globalAlpha = (0.18 + j * 0.5) * k;
-    ctx.beginPath();
-    ctx.arc(px + (j - 0.5) * leg.w * 0.7, py + (hash01(i, 31) - 0.5) * leg.w * 0.7,
-            Math.max(0.5, leg.w * 0.10 * (0.5 + j)), 0, TAU);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
+/*
+ * speckle() and speckleLimb() USED TO LIVE HERE and are deliberately gone.
+ *
+ * They were the only readers of `iridescence` on the sprite: a fine accent-hue
+ * scatter over every trunk mass and along every leg. The gene went with them
+ * (see genes.js) because it existed only to drive this — it named a finish
+ * nothing else in the file could express, it was the single exception to the
+ * "body segments are FLAT" rule in the style contract at the top, and it cost
+ * camouflage in the stat block for a texture most genomes never turned on.
+ *
+ * `hash01` survives: the horn/jaw `dots` pattern still scatters with it.
+ */
 
 /**
  * A filled shape that follows a quadratic curve and tapers from w0 to w1.
@@ -990,44 +995,56 @@ function taperedOutline(ctx, p0, p1, p2, w0, w1, steps = 16) {
  * SURFACE TREATMENTS for the HORN and the MANDIBLES. Body patterns are a later
  * pass; the shell path is untouched.
  *
- * FOUR modes, not three, and the new one is index 0:
+ * FIVE modes. Index 0 is `flat`, and index 4 is the new one:
  *
  *   flat      solid base colour. No gradient, no dots, no highlight, nothing.
- *   gradient  base lifting to a warm amber toward the tip
+ *   gradient  base lifting to the decoration tone along the shape's long axis
  *   dots      light speckle scattered over the silhouette
  *   oval      one lighter oval patch near the tip, the rest flat
+ *   diagonal  repeating 45° stripes across the whole clipped silhouette
  *
  * `flat` exists because there was no way to ask for a plain horn. Bucket 0 was
  * `gradient`, so every genome — including an untouched one — wore a gradient it
  * had not chosen. Now:
  *
- *   mode = min(3, floor(v × 4))   over `pattern_horn` / `pattern_mandible`
+ *   mode = min(4, floor(v × 5))   over `pattern_horn` / `pattern_mandible`
+ *
+ * The divisor moved 4 → 5 with `diagonal`. The 0.08 default still lands in
+ * bucket 0 (0.08 × 5 = 0.4), so an untouched genome is still plain and no gene
+ * default had to be recalibrated.
  *
  * TWO GENES, not one. The horn and the jaws are separate objects and there is
  * no reason they should agree; `surfacePattern(g, col, 'horn' | 'mandible')`
  * reads the matching gene and every caller says which component it is.
  *
+ * THE DECORATION COLOUR IS ITS OWN GENE TOO, one per component:
+ * `pattern_horn_hue` and `pattern_mandible_hue`. It used to be the BODY's hue
+ * walked toward amber — so "what colour is the pattern on my horn" was not a
+ * question a genome could answer, it was a side effect of the shell colour, in
+ * exactly the way `light_hue` fixed for the segment bloom. These two index
+ * REF_PALETTE_ORDER the same way `light_hue` and `wing_tip_hue` do, and only the
+ * HUE comes off the palette: the tone's saturation and lightness are still
+ * derived from the piece's own colour and from `pattern_contrast`, so that gene
+ * keeps its whole job.
+ *
  * `pattern_scale` and `pattern_contrast` stay SHARED across both. They do not
  * choose a treatment, they modulate whichever treatment was chosen — dot
- * coarseness and overall loudness — which is a house style rather than a
- * per-part decision. See the note in genes.js.
+ * coarseness, gradient position, stripe pitch, overall loudness — which is a
+ * house style rather than a per-part decision. See the note in genes.js.
  */
-const PATTERN_MODES = ['flat', 'gradient', 'dots', 'oval'];
+const PATTERN_MODES = ['flat', 'gradient', 'dots', 'oval', 'diagonal'];
 
 /** Which gene each component's treatment comes off. */
 const PATTERN_GENE = { horn: 'pattern_horn', mandible: 'pattern_mandible' };
-
-/** Shortest way round the wheel, so red never travels through green to amber. */
-function hueToward(from, to, t) {
-  let d = ((to - from) % 1 + 1.5) % 1 - 0.5;
-  return from + d * t;
-}
+/** ...and which gene its decoration colour comes off. */
+const PATTERN_HUE_GENE = { horn: 'pattern_horn_hue', mandible: 'pattern_mandible_hue' };
 
 /** @param {'horn'|'mandible'} which — which component's own gene to read. */
 export function surfacePattern(g, col, which = 'horn') {
   const k = clamp(g.pattern_contrast ?? 0, 0, 1);
-  // Warm lift: the reference sheet shifts red → amber toward the tip.
-  const h = hueToward(col.h, 0.095, 0.35 + k * 0.5);
+  const hueGene = PATTERN_HUE_GENE[which] ?? 'pattern_horn_hue';
+  const h = hexHue(REF_PALETTE[REF_PALETTE_ORDER[
+    clamp(Math.round(g[hueGene] ?? 4), 0, REF_PALETTE_ORDER.length - 1)]]);
   const v = clamp(g[PATTERN_GENE[which] ?? 'pattern_horn'] ?? 0, 0, 1);
   return {
     mode: PATTERN_MODES[Math.min(PATTERN_MODES.length - 1, Math.floor(v * PATTERN_MODES.length))],
@@ -1056,8 +1073,9 @@ export function surfacePattern(g, col, which = 'horn') {
  *   2. FILL ONCE   flat, or with a gradient spanning the COMBINED bounding
  *      geometry from the base of the first piece to the far end of the shape.
  *   3. CLIP ONCE   to that same combined path.
- *   4. DECORATE ONCE  dots scattered across the whole silhouette's box, or a
- *      single oval highlight near its far end.
+ *   4. DECORATE ONCE  dots scattered across the whole silhouette's box, a
+ *      single oval highlight near its far end, or one family of diagonal
+ *      stripes swept across the box — never once per piece.
  *
  * `pieces` is an array of `{p0, p1, p2, w0, w1}` descriptors. The horn and
  * mandible cases build the array first and hand the lot over, rather than
@@ -1114,8 +1132,24 @@ function patternedSilhouette(ctx, pieces, base, pat, seed) {
 
   // 2. fill once.
   if (pat.mode === 'gradient' && ctx.createLinearGradient) {
+    /*
+     * `pattern_scale` MOVES THE TRANSITION. It had no effect on this mode at all
+     * before — it was documented as a dots-only knob — so the gradient always
+     * ran the full base→tip span and there was no way to ask for "light only at
+     * the very tip" or "light almost all the way down".
+     *
+     * `mid` is where the changeover sits along the root→far axis, and the two
+     * stops straddle it by BAND, so a low scale piles the light toward the base
+     * and a high scale pushes it out to the tip. 0.5 reproduces the old
+     * full-length ramp exactly, which is what keeps this a new control rather
+     * than a change to what gradient already meant.
+     */
+    const BAND = 0.34;
+    const mid = 0.20 + pat.scale * 0.60;
     const gr = ctx.createLinearGradient(root.x, root.y, far.x, far.y);
     gr.addColorStop(0, base);
+    gr.addColorStop(clamp(mid - BAND, 0.001, 0.998), base);
+    gr.addColorStop(clamp(mid + BAND, 0.002, 0.999), pat.lite);
     gr.addColorStop(1, pat.lite);
     ctx.fillStyle = gr;
   } else {
@@ -1149,6 +1183,33 @@ function patternedSilhouette(ctx, pieces, base, pat, seed) {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+  } else if (pat.mode === 'diagonal') {
+    /*
+     * 4. ONE family of 45° stripes across the WHOLE accumulated silhouette.
+     *
+     * Same discipline as the dots: the bars are laid out over the combined
+     * bounding box and the single clip established above throws away whatever
+     * misses the shape. A shaft and its four barbs therefore wear one continuous
+     * striping that lines up across the joins, instead of five independent
+     * stripe families each restarting on its own piece.
+     *
+     * The frame is rotated −45° about the box's top-left corner, so the bars are
+     * plain vertical rects in that frame and their spacing is a straight
+     * `period` step. `span` is the box's own diagonal reach, doubled, which is
+     * more than enough to cover the box from any corner after the rotation.
+     */
+    const period = Math.max(2.2, lerp(0.50, 1.80, pat.scale) * Math.max(2, widest));
+    const span = bw + bh;
+    ctx.save();
+    ctx.translate(box.minX, box.minY);
+    ctx.rotate(-Math.PI / 4);
+    ctx.fillStyle = pat.lite;
+    ctx.globalAlpha = 0.34 + pat.k * 0.52;
+    for (let d = -span; d <= span; d += period) {
+      ctx.fillRect(d, -span, period * 0.42, span * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   } else {
     // 4. ONE highlight patch, near the far end of the whole shape.
     const c = { x: lerp(root.x, far.x, 0.74), y: lerp(root.y, far.y, 0.74) };
@@ -1355,7 +1416,6 @@ function drawLegs(ctx, L, col, phase) {
     // alone is what makes it visible.
     const fr = leg.w * FOOT_PAD_R;
     fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limb);
-    speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
   }
 }
 
@@ -1728,7 +1788,23 @@ function drawEyes(ctx, L, col) {
   // hook. Nothing coloured is drawn inside an eye any more, and `col.iris` is
   // gone from palette() with it.
   for (const e of L.eyes) {
-    if (e.minor) { fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil); continue; }
+    /*
+     * The array eyes are the SAME wedge, just small — see buildHead(). They were
+     * plain circles, which is why they read as specks rather than as eyes. They
+     * take the main pair's fill so a bug's eyes are all one organ, and they carry
+     * NO interior mark: a notch or a hook at a quarter of the size is two or
+     * three pixels of mud, and the array's job is to read as an array.
+     */
+    if (e.minor) {
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(e.side * 0.30);
+      eyeWedgePath(ctx, e.ry, e.rx, e.side);
+      ctx.fillStyle = L.eyeFill === 'dark' ? col.pupil : col.sclera;
+      ctx.fill();
+      ctx.restore();
+      continue;
+    }
 
     ctx.save();
     ctx.translate(e.x, e.y);
@@ -1832,7 +1908,7 @@ const CENTRELINE_RATIO = 1.18;
  * NOTE the head does NOT come through here, and no longer has an equivalent of
  * its own: it is a single flat `col.shell` fill in drawBug(), with no lighting.
  */
-function segmentMass(ctx, p, col) {
+function segmentMass(ctx, p, col, crease = false) {
   const rx = Math.max(0.5, p.rx);
   const ry = Math.max(0.5, p.ry);
 
@@ -1865,7 +1941,7 @@ function segmentMass(ctx, p, col) {
   }
   ctx.restore();
 
-  segmentCentreline(ctx, p, col, rx, ry);
+  segmentCentreline(ctx, p, col, rx, ry, crease);
 }
 
 /**
@@ -1889,57 +1965,97 @@ function segmentMass(ctx, p, col) {
  * drawGroundShadow's is (the test recorder and non-browser contexts lack it),
  * and where it is missing the old lateral-gradient path is the fallback.
  *
- * This is NOT the abdominal seam drawn in drawBug(). That is a thin, DARK
- * `col.seam` sliver marking a joint (soft-edged too now — it shares
- * softStreak() with this — but still narrow and still darker than the shell);
- * this is a wide, soft, shell-coloured
- * fade. On an abdomen carrying both, the seam reads as a crisp core inside this
- * softer streak rather than competing with it — hence the low alpha here.
+ * ONE LINE, NOT TWO — and this is the whole point of `crease`.
+ *
+ * The abdominal seam used to be a SECOND, independent softStreak() fired from
+ * drawBug() after this one. The comment there claimed it would read as "a crisp
+ * core inside a softer streak". It did not: rendered and looked at close up, an
+ * abdomen showed a correct faint wide streak AND a separate hard hairline. Three
+ * mismatches, all of them consequences of the two calls being independent:
+ *
+ *   LENGTH   halo 0.74·rx, seam 0.88·rx. The seam stuck 0.14·rx out of both ends
+ *            of the halo, which is the single clearest "these are two different
+ *            marks" cue there is.
+ *   BLUR     the halo's blur radius was its own half-width, ry·0.085 (≈2.7px on
+ *            a stock abdomen). The seam's was max(0.5, unit·0.012) (≈0.9px). A
+ *            sub-pixel blur is not a blur; the seam came out a hard-edged stroke
+ *            no matter what was drawn under it.
+ *   CONTRAST the halo is `col.shellSoft`, ~4/255 off the shell it sits on. The
+ *            seam is `col.seam` at 0.42 alpha, ~50/255 off it. The eye cannot
+ *            read a mark twelve times fainter than another as its halo.
+ *
+ * So they are one call site now. `halfL` is computed ONCE and both streaks use
+ * it; the core's half-width and blur are fractions OF THE HALO's half-width, so
+ * the nesting is structural and cannot drift; and the core's blur is a real
+ * fraction of the halo rather than a number of its own, so it can never collapse
+ * to a hairline again. The core stays DARK on purpose — a joint is a shadow, not
+ * a highlight.
+ *
+ * `crease` also OVERRIDES the elongation gate. The seam never had one, so a
+ * round abdomen used to get the hard line with no halo at all — the worst case
+ * of the three. The halo now goes wherever the core goes.
  */
-function segmentCentreline(ctx, p, col, rx, ry) {
+const CREASE_HALF_L = 0.80;    // fraction of rx — shared by halo and core
+const CREASE_HALO_W = 0.085;   // fraction of ry
+const CREASE_CORE_W = 0.32;    // fraction of the HALO's half-width
+const CREASE_CORE_BLUR = 0.62; // ditto — never a number of its own
+const CREASE_CORE_ALPHA = 0.46;
+
+function segmentCentreline(ctx, p, col, rx, ry, crease = false) {
   const long = Math.max(rx, ry);
   const short = Math.min(rx, ry);
-  if (long / short < CENTRELINE_RATIO) return;
+  if (!crease && long / short < CENTRELINE_RATIO) return;
   if (!ctx.createLinearGradient) return;
 
-  softStreak(ctx, p, rx, ry, rx * 0.74, ry * 0.085, col.shellSoft, col.shellClear, 1);
+  const halfL = rx * CREASE_HALF_L;
+  const haloW = ry * CREASE_HALO_W;
+  softStreak(ctx, p, rx, ry, halfL, haloW, haloW, col.shellSoft, col.shellClear, 1);
+  if (!crease) return;
+  softStreak(ctx, p, rx, ry, halfL, haloW * CREASE_CORE_W, haloW * CREASE_CORE_BLUR,
+             col.seam, col.seamClear, CREASE_CORE_ALPHA);
 }
 
 /**
  * A soft-edged bar down a part's long axis, clipped to that part's ellipse.
  *
- * Shared by the centreline and the abdominal seam, which are the file's two
- * along-the-body streaks and used to soften — or not soften — by two different
- * rules. The clip is what makes ctx.filter safe here: the blur cannot leave the
- * silhouette because the silhouette is the clip. Where ctx.filter is missing
- * (the test recorder, non-browser contexts) it degrades to the old lateral
- * linear-gradient, which is soft on the long sides and hard at the ends — worse,
- * but never wrong-coloured.
+ * Used TWICE FROM ONE PLACE — segmentCentreline() draws the shell-coloured halo
+ * and, on a creased mass, the darker core nested inside it. The clip is what
+ * makes ctx.filter safe here: the blur cannot leave the silhouette because the
+ * silhouette is the clip. Where ctx.filter is missing (the test recorder,
+ * non-browser contexts) it degrades to a lateral linear-gradient, which is soft
+ * on the long sides and hard at the ends — worse, but never wrong-coloured.
+ *
+ * `blur` IS ITS OWN ARGUMENT, and that is what the double-line fix turns on. It
+ * used to be derived as max(0.6, halfW), which ties softness to width — so the
+ * narrower of two nested streaks was automatically the crisper one, i.e. exactly
+ * backwards for a core meant to disappear into a halo. The caller now sets the
+ * two independently and expresses the core's blur as a fraction of the HALO's
+ * width, so a thin core is still a soft one.
  */
-function softStreak(ctx, p, rx, ry, halfL, halfW, fill, clear, alpha) {
+function softStreak(ctx, p, rx, ry, halfL, halfW, blur, fill, clear, alpha) {
   ctx.save();
   ctx.beginPath();
   ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
   ctx.clip();
   ctx.globalAlpha = alpha;
 
+  const b = Math.max(0.6, blur);
   if ('filter' in ctx) {
-    // A blur radius of the streak's own half-width: the core stays solid and
-    // every edge — sides AND ends — falls off over roughly its own width. The
-    // rect is shrunk by that radius on both axes so the blurred extent lands
-    // where the hard rect used to.
-    const blur = Math.max(0.6, halfW);
-    ctx.filter = `blur(${blur.toFixed(2)}px)`;
+    // The rect is shrunk by the blur radius along its length so the blurred
+    // extent lands where the hard rect used to; both ENDS fall off over `b` too,
+    // which is what stops a streak reading as a bar with square ends.
+    ctx.filter = `blur(${b.toFixed(2)}px)`;
     ctx.fillStyle = fill;
-    ctx.fillRect(p.x - halfL + blur, p.y - halfW * 0.5, Math.max(0.5, (halfL - blur) * 2), halfW);
+    ctx.fillRect(p.x - halfL + b, p.y - halfW * 0.5, Math.max(0.5, (halfL - b) * 2), halfW);
     ctx.filter = 'none';
   } else {
-    const gr = ctx.createLinearGradient(0, p.y - halfW, 0, p.y + halfW);
+    const ext = Math.max(halfW, b);
+    const gr = ctx.createLinearGradient(0, p.y - ext, 0, p.y + ext);
     gr.addColorStop(0, clear);
     gr.addColorStop(0.5, fill);
     gr.addColorStop(1, clear);
     ctx.fillStyle = gr;
-    ctx.fillRect(p.x - halfL, p.y - halfW, halfL * 2, halfW * 2);
+    ctx.fillRect(p.x - halfL, p.y - ext, halfL * 2, ext * 2);
   }
   ctx.globalAlpha = 1;
   ctx.restore();
@@ -2211,33 +2327,24 @@ export function drawBug(ctx, g, opts = {}) {
   // 7/8. the trunk, ordered by whether the bug has wings
   const trunk = L.parts.filter((p) => p !== L.thorax);
 
-  /** The abdomen group: segment masses, elytra, speckle, seam. Moves as one. */
+  /** The abdomen group: segment masses (crease included) and elytra. */
   const drawTrunkAbdomen = () => {
-    for (const p of trunk) segmentMass(ctx, p, col);
-    drawElytra(ctx, L, col);                     // covers lie on the abdomen
-    for (let i = 0; i < trunk.length; i++) speckle(ctx, trunk[i], col, L.shimmer, i * 17 + 3);
-    // The abdominal seam — one thin darker sliver marking the joint, no outline.
-    // Absent with no abdomen.
+    // THE SEAM IS NO LONGER DRAWN HERE. It used to be a second, independent
+    // softStreak() laid over the abdomen after the fact, and that is exactly why
+    // the abdomen showed TWO lines: see the ONE LINE note over segmentCentreline
+    // for the three mismatches that produced. It is now the dark core of the one
+    // crease segmentMass() draws, so there is no second stroke to drift.
     //
-    // SOFTENED, and this is the bar that actually read as "a flat, differently
-    // coloured, hard-edged stripe down the middle": it is `col.seam` (the body
-    // hue two steps DARKER), it was a bare fillRect with four square edges, and
-    // at this width it is the most legible thing on the segment. It goes through
-    // the same clipped-blur softStreak() as the centreline now, so it reads as a
-    // crease in the shell rather than a decal stuck on it. It stays DARK on
-    // purpose — a joint is a shadow, not a highlight — and the alpha comes down
-    // 0.55 → 0.42 now that its edges no longer do the hiding for it.
-    const ab = L.abdomen;
-    if (ab && L.wingType !== 'elytra') {
-      softStreak(ctx, ab, ab.rx, ab.ry, ab.rx * 0.88,
-                 Math.max(0.5, L.unit * 0.012), col.seam, col.seamClear, 0.42);
-    }
+    // `elytra` is still the switch that suppresses the dark core — a shell cover
+    // hides the joint — so segmentMass() is told which mass wants a crease.
+    const creased = L.wingType === 'elytra' ? null : L.abdomen;
+    for (const p of trunk) segmentMass(ctx, p, col, p === creased);
+    drawElytra(ctx, L, col);                     // covers lie on the abdomen
   };
 
-  /** The thorax and its own speckle. */
+  /** The thorax. */
   const drawTrunkThorax = () => {
     segmentMass(ctx, L.thorax, col);
-    speckle(ctx, L.thorax, col, L.shimmer, L.parts.length * 17 + 3);
   };
 
   if (L.wingPairs > 0) {

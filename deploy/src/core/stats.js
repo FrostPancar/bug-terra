@@ -149,11 +149,11 @@ export function computeStats(g) {
   const vision = clamp(40 + g.eye_size * 170 * eyeGain + g.antenna_length * 55, 30, 340);
 
   // CAMOUFLAGE — dark, desaturated, small bugs hide better. Fur breaks up an
-  // outline and translucency helps; iridescence is a liability.
+  // outline and translucency helps.
   const camouflage = clamp(
     100 * sig(
       0.38 * (1 - g.saturation) + 0.28 * (1 - g.lightness) + 0.24 * (1 - m.volume / 3.4)
-      + 0.18 * g.setae + 0.22 * g.translucency - 0.30 * g.iridescence, 5),
+      + 0.18 * g.setae + 0.22 * g.translucency, 5),
     1, 100
   );
 

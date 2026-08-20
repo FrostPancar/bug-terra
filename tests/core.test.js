@@ -180,9 +180,9 @@ test('new genes drive their stats', () => {
   const wingless = computeStats({ ...base, wing_count: 0, wing_area: 0.9 });
   assert.equal(wingless.flight, 0, 'no wings must mean no flight');
 
-  const shiny = computeStats({ ...base, iridescence: 1 });
-  const dull = computeStats({ ...base, iridescence: 0 });
-  assert.ok(dull.camouflage > shiny.camouflage, 'iridescence must cost camouflage');
+  const furred = computeStats({ ...base, setae: 1 });
+  const hairless = computeStats({ ...base, setae: 0 });
+  assert.ok(furred.camouflage > hairless.camouflage, 'setae must help camouflage');
 });
 
 test('stat formulas respond monotonically to their driving gene', () => {

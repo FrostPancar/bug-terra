@@ -252,7 +252,7 @@ pre b{color:var(--yellow);font-weight:600}
     <div class="deskBottom">
       <div class="tabs" id="tabs">
         <button data-tab="library" aria-pressed="true">Part library</button>
-        <button data-tab="genes" aria-pressed="false">All 56 genes</button>
+        <button data-tab="genes" aria-pressed="false">All 57 genes</button>
         <button data-tab="start" aria-pressed="false">Start from</button>
         <button data-tab="export" aria-pressed="false">Export</button>
       </div>
@@ -483,20 +483,47 @@ pre b{color:var(--yellow);font-weight:600}
      * inked black. Nothing about a bug requires those three to agree, and the
      * shared gene made it impossible to give a bug dotted jaws and a flat horn.
      *
-     * The two surface genes bucket FOUR ways now, not three:
+     * The two surface genes bucket FIVE ways now:
      *
-     *     mode = min(3, floor(v × 4))   →  0 flat · 1 gradient · 2 dots · 3 oval
+     *     mode = min(4, floor(v × 5))
+     *       0 flat · 1 gradient · 2 dots · 3 oval · 4 diagonal
      *
-     * `flat` is new and is the whole point of the low defaults: bucket 0 used to
-     * be `gradient`, so an untouched genome had a gradient on its horn and jaws
+     * `diagonal` is the newest — repeating 45° stripes across the whole clipped
+     * silhouette. The divisor moved 4 → 5 with it; 0.08 × 5 = 0.4 still lands in
+     * bucket 0, so the defaults below did NOT have to be recalibrated.
+     *
+     * `flat` is bucket 0 and is the whole point of the low defaults: bucket 0 used
+     * to be `gradient`, so an untouched genome had a gradient on its horn and jaws
      * whether anyone asked for one or not. 0.08 lands in `flat` — solid colour,
      * no gradient, no dots, no highlight — so the default bug is genuinely plain
      * and every treatment is something a genome opted into.
      */
     pattern_horn: { min: 0, max: 1, default: 0.08 },
-    // flat/gradient/dots/oval
+    // flat/gradient/dots/oval/diagonal
     pattern_mandible: { min: 0, max: 1, default: 0.08 },
-    // flat/gradient/dots/oval
+    // flat/gradient/dots/oval/diagonal
+    /**
+     * THE PATTERN'S OWN COLOUR, one gene per component.
+     *
+     * Whatever `pattern_horn` / `pattern_mandible` selects — the gradient's far
+     * stop, the dots, the oval, the stripes — used to be painted in the BODY's own
+     * hue walked toward amber. So "what colour is the decoration on my horn" was
+     * not a question a genome could answer; it was a side effect of the shell
+     * colour, in precisely the way `light_hue` fixed for the segment bloom.
+     *
+     * Same convention as `light_hue` and `wing_tip_hue`: an integer indexing
+     * REF_PALETTE_ORDER (tan/brown/rust/orange/gold/sage/ink/cream/pink/blue).
+     * SEPARATE genes, because the mode genes are already separate — a bug can wear
+     * gold stripes on its horn and sage dots on its jaws.
+     *
+     * Only the HUE comes off the palette. The tone's saturation and lightness are
+     * still derived from the piece's colour and from `pattern_contrast`, so that
+     * gene keeps its whole job. Default 4 is `gold`, the warm amber lift the old
+     * hardcoded shift aimed at, so a genome that never touches these is unchanged
+     * in spirit.
+     */
+    pattern_horn_hue: { min: 0, max: 9, integer: true, default: 4 },
+    pattern_mandible_hue: { min: 0, max: 9, integer: true, default: 4 },
     // The old `pattern > 0.5 → black limbs` reading, on its own gene now. Same
     // threshold, so a leg that was inked before is inked at the same value.
     pattern_leg: { min: 0, max: 1, default: 0.2 },
@@ -506,10 +533,15 @@ pre b{color:var(--yellow);font-weight:600}
     // coarse the dots are. That is a house style, not a per-part decision, and
     // splitting them would add sliders whose difference nobody can state an
     // intention about. The mode gene is where the per-part identity lives.
+    //
+    // `pattern_scale` NOW REACHES THREE MODES, not one. It was dot density and
+    // size only; it also POSITIONS the gradient's light/dark transition along the
+    // piece (0.5 reproduces the old full-length ramp) and sets the diagonal
+    // stripes' pitch. It still does nothing to `flat` or `oval`.
     pattern_scale: { min: 0, max: 1, default: 0.11 },
-    // dot size/density
+    // dot pitch · gradient position · stripe pitch
     pattern_contrast: { min: 0, max: 1, default: 0.21 },
-    // how loud all four read
+    // how loud a treatment reads
     // THE LIGHTING COLOUR, heritable and independent of the body's own colour.
     // The body-segment bloom used to be a hardcoded cream whatever the genome
     // said. It still comes off the fixed REF_PALETTE (lighting colour never gets
@@ -548,7 +580,12 @@ pre b{color:var(--yellow);font-weight:600}
     // none/solid/blended
     setae: { min: 0, max: 1, default: 0.16 },
     // hairiness
-    iridescence: { min: 0, max: 1, default: 0 },
+    // NO `iridescence`. It drove exactly one thing — the fine accent-hue speckle
+    // over the shell and the limbs — and that speckle is gone from bugArt.js (see
+    // the note where speckle() used to be). With nothing left to render, the gene
+    // was a camouflage penalty attached to an invisible finish, so it went too:
+    // out of GENE_SPECS, out of the archetype bias vectors, out of the camouflage
+    // formula in stats.js, and out of classification's surface axis.
     translucency: { min: 0, max: 1, default: 0.13 }
   };
   var GENE_ORDER = Object.keys(GENE_SPECS);
@@ -674,7 +711,6 @@ pre b{color:var(--yellow);font-weight:600}
         saturation: 0.3,
         lightness: 0.22,
         setae: 0.15,
-        iridescence: 0.45,
         translucency: 0.05
       }
     },
@@ -730,7 +766,6 @@ pre b{color:var(--yellow);font-weight:600}
         pattern_leg: 0.15,
         pattern_contrast: 0.95,
         setae: 0.25,
-        iridescence: 0.2,
         translucency: 0.15
       }
     },
@@ -783,7 +818,6 @@ pre b{color:var(--yellow);font-weight:600}
         saturation: 0.25,
         lightness: 0.18,
         setae: 0.7,
-        iridescence: 0.1,
         translucency: 0.05
       }
     },
@@ -832,7 +866,6 @@ pre b{color:var(--yellow);font-weight:600}
         lightness: 0.24,
         pattern_leg: 0.9,
         setae: 0.3,
-        iridescence: 0.3,
         translucency: 0.1
       }
     },
@@ -943,7 +976,6 @@ pre b{color:var(--yellow);font-weight:600}
         lightness: 0.62,
         pattern_leg: 0.45,
         setae: 0.95,
-        iridescence: 0.35,
         translucency: 0.3
       }
     },
@@ -1038,7 +1070,6 @@ pre b{color:var(--yellow);font-weight:600}
         lightness: 0.2,
         pattern_leg: 0.5,
         setae: 0.45,
-        iridescence: 0.55,
         translucency: 0.05
       }
     }
@@ -1199,7 +1230,7 @@ pre b{color:var(--yellow);font-weight:600}
     const vision = clamp(40 + g.eye_size * 170 * eyeGain + g.antenna_length * 55, 30, 340);
     const camouflage = clamp(
       100 * sig(
-        0.38 * (1 - g.saturation) + 0.28 * (1 - g.lightness) + 0.24 * (1 - m.volume / 3.4) + 0.18 * g.setae + 0.22 * g.translucency - 0.3 * g.iridescence,
+        0.38 * (1 - g.saturation) + 0.28 * (1 - g.lightness) + 0.24 * (1 - m.volume / 3.4) + 0.18 * g.setae + 0.22 * g.translucency,
         5
       ),
       1,
@@ -1358,7 +1389,7 @@ pre b{color:var(--yellow);font-weight:600}
   function surfaceClass(g) {
     const candidates = [
       ["ghost", g.translucency],
-      ["radiant", g.iridescence],
+      ["radiant", g.saturation],
       ["furred", g.setae]
     ];
     let best = candidates[0];
@@ -1690,12 +1721,12 @@ pre b{color:var(--yellow);font-weight:600}
       adjective: "Radiant",
       status: "drafted",
       window: {
-        iridescence: [0.75, 1],
-        saturation: [0.6, 1],
+        saturation: [0.8, 1],
+        lightness: [0.55, 0.85],
         carapace_thickness: [0.3, 0.6]
       },
-      locks: ["iridescence"],
-      unlocks: ["hue", "saturation"],
+      locks: ["saturation"],
+      unlocks: ["hue", "lightness"],
       specialty: { key: "dazzle", name: "Dazzle", mods: { agility: 1.08, camouflage: 0.88 } },
       blurb: "Beauty over brawn. Visible from across the terrarium, and knows it."
     },
@@ -2559,8 +2590,7 @@ pre b{color:var(--yellow);font-weight:600}
       mandibleType: MANDIBLE_TYPES[clamp2(Math.round(g.mandible_type ?? 0), 0, MANDIBLE_TYPES.length - 1)],
       wingPairs: g.wing_count / 2,
       wingArea: g.wing_area,
-      setae: g.setae,
-      shimmer: g.iridescence
+      setae: g.setae
     };
     buildTrunk(L);
     buildLegs(L);
@@ -2701,16 +2731,27 @@ pre b{color:var(--yellow);font-weight:600}
       });
     }
     const extra = clamp2(Math.round(g.eye_count / 2) - 1, 0, 3);
-    for (let i = 0; i < extra; i++) {
-      const t = extra === 1 ? 0.5 : i / (extra - 1);
-      L.eyes.push({
-        x: hx + headL * lerp(0.5, 0.14, t),
-        y: (i % 2 === 0 ? -1 : 1) * headW * lerp(0.14, 0.38, t),
-        rx: er * 0.17,
-        ry: er * 0.17,
-        side: 0,
-        minor: true
-      });
+    if (extra > 0) {
+      const COL = 1.55;
+      const inner = Math.max(0, headW * 0.98 - er * 0.667);
+      const mr = clamp2(
+        Math.min(er * 0.26, inner * 0.85 / (COL + 1.7)),
+        er * 0.09,
+        er * 0.26
+      );
+      const x0 = hx + headL * 0.44;
+      for (let row = 0; row < extra; row++) {
+        for (const side of [-1, 1]) {
+          L.eyes.push({
+            x: x0 - row * mr * 2.8,
+            y: side * mr * COL,
+            rx: mr * 0.55,
+            ry: mr,
+            side,
+            minor: true
+          });
+        }
+      }
     }
     const antLen = unit * lerp(0.06, 0.95, g.antenna_length);
     if (antLen > unit * 0.15) for (const side of [-1, 1]) L.antennae.push({ side, len: antLen });
@@ -2781,51 +2822,6 @@ pre b{color:var(--yellow);font-weight:600}
     ctx.quadraticCurveTo(bx, by, cx, cy);
     ctx.stroke();
   }
-  function speckle(ctx, part, col, amount, seed) {
-    if (amount < 0.28) return;
-    const k = (amount - 0.28) / 0.72;
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(part.x, 0, part.rx, part.ry, 0, 0, TAU);
-    ctx.clip();
-    const n = Math.round(90 + k * 200);
-    ctx.fillStyle = col.accent;
-    for (let i = 0; i < n; i++) {
-      const a = hash01(i, seed) * TAU;
-      const r = Math.sqrt(hash01(i, seed + 9)) * 0.92;
-      const d = hash01(i, seed + 21);
-      ctx.globalAlpha = (0.1 + d * 0.55) * k;
-      const s = (0.3 + d * 0.9) * Math.max(0.7, part.ry * 0.03);
-      ctx.beginPath();
-      ctx.arc(part.x + Math.cos(a) * part.rx * r, Math.sin(a) * part.ry * r, s, 0, TAU);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-  function speckleLimb(ctx, leg, col, amount) {
-    if (amount < 0.34) return;
-    const k = (amount - 0.34) / 0.66;
-    const n = Math.round(10 + k * 22);
-    ctx.fillStyle = col.accent;
-    for (let i = 0; i < n; i++) {
-      const t = hash01(i, leg.pair * 7 + leg.side + 3);
-      const u = 1 - t;
-      const px = u * u * leg.attach.x + 2 * u * t * leg.knee.x + t * t * leg.foot.x;
-      const py = u * u * leg.attach.y + 2 * u * t * leg.knee.y + t * t * leg.foot.y;
-      const j = hash01(i, leg.pair * 13 + 5);
-      ctx.globalAlpha = (0.18 + j * 0.5) * k;
-      ctx.beginPath();
-      ctx.arc(
-        px + (j - 0.5) * leg.w * 0.7,
-        py + (hash01(i, 31) - 0.5) * leg.w * 0.7,
-        Math.max(0.5, leg.w * 0.1 * (0.5 + j)),
-        0,
-        TAU
-      );
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  }
   function taperedCurve(ctx, p0, p1, p2, w0, w1, fill, steps = 16) {
     taperedPath(ctx, p0, p1, p2, w0, w1, steps);
     ctx.fillStyle = fill;
@@ -2872,15 +2868,13 @@ pre b{color:var(--yellow);font-weight:600}
     }
     return box;
   }
-  var PATTERN_MODES = ["flat", "gradient", "dots", "oval"];
+  var PATTERN_MODES = ["flat", "gradient", "dots", "oval", "diagonal"];
   var PATTERN_GENE = { horn: "pattern_horn", mandible: "pattern_mandible" };
-  function hueToward(from, to, t) {
-    let d = ((to - from) % 1 + 1.5) % 1 - 0.5;
-    return from + d * t;
-  }
+  var PATTERN_HUE_GENE = { horn: "pattern_horn_hue", mandible: "pattern_mandible_hue" };
   function surfacePattern(g, col, which = "horn") {
     const k = clamp2(g.pattern_contrast ?? 0, 0, 1);
-    const h = hueToward(col.h, 0.095, 0.35 + k * 0.5);
+    const hueGene = PATTERN_HUE_GENE[which] ?? "pattern_horn_hue";
+    const h = hexHue(REF_PALETTE[REF_PALETTE_ORDER[clamp2(Math.round(g[hueGene] ?? 4), 0, REF_PALETTE_ORDER.length - 1)]]);
     const v = clamp2(g[PATTERN_GENE[which] ?? "pattern_horn"] ?? 0, 0, 1);
     return {
       mode: PATTERN_MODES[Math.min(PATTERN_MODES.length - 1, Math.floor(v * PATTERN_MODES.length))],
@@ -2923,8 +2917,12 @@ pre b{color:var(--yellow);font-weight:600}
       }
     }
     if (pat.mode === "gradient" && ctx.createLinearGradient) {
+      const BAND = 0.34;
+      const mid = 0.2 + pat.scale * 0.6;
       const gr = ctx.createLinearGradient(root.x, root.y, far.x, far.y);
       gr.addColorStop(0, base);
+      gr.addColorStop(clamp2(mid - BAND, 1e-3, 0.998), base);
+      gr.addColorStop(clamp2(mid + BAND, 2e-3, 0.999), pat.lite);
       gr.addColorStop(1, pat.lite);
       ctx.fillStyle = gr;
     } else {
@@ -2949,6 +2947,19 @@ pre b{color:var(--yellow);font-weight:600}
         ctx.fill();
       }
       ctx.globalAlpha = 1;
+    } else if (pat.mode === "diagonal") {
+      const period = Math.max(2.2, lerp(0.5, 1.8, pat.scale) * Math.max(2, widest));
+      const span = bw + bh;
+      ctx.save();
+      ctx.translate(box.minX, box.minY);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = pat.lite;
+      ctx.globalAlpha = 0.34 + pat.k * 0.52;
+      for (let d = -span; d <= span; d += period) {
+        ctx.fillRect(d, -span, period * 0.42, span * 2);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
     } else {
       const c = { x: lerp(root.x, far.x, 0.74), y: lerp(root.y, far.y, 0.74) };
       const a = Math.atan2(far.y - root.y, far.x - root.x);
@@ -3079,7 +3090,6 @@ pre b{color:var(--yellow);font-weight:600}
       );
       const fr = leg.w * FOOT_PAD_R;
       fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limb);
-      speckleLimb(ctx, { ...leg, knee, foot }, col, L.shimmer);
     }
   }
   var HORN_BASE_K = 0.55;
@@ -3332,7 +3342,13 @@ pre b{color:var(--yellow);font-weight:600}
   function drawEyes(ctx, L, col) {
     for (const e of L.eyes) {
       if (e.minor) {
-        fillEllipse(ctx, e.x, e.y, e.rx, e.ry, col.pupil);
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.rotate(e.side * 0.3);
+        eyeWedgePath(ctx, e.ry, e.rx, e.side);
+        ctx.fillStyle = L.eyeFill === "dark" ? col.pupil : col.sclera;
+        ctx.fill();
+        ctx.restore();
         continue;
       }
       ctx.save();
@@ -3396,7 +3412,7 @@ pre b{color:var(--yellow);font-weight:600}
   var BLOB_R = 0.88;
   var ABDOMEN_BLOB_SKEW = -0.3;
   var CENTRELINE_RATIO = 1.18;
-  function segmentMass(ctx, p, col) {
+  function segmentMass(ctx, p, col, crease = false) {
     const rx = Math.max(0.5, p.rx);
     const ry = Math.max(0.5, p.ry);
     ctx.save();
@@ -3421,34 +3437,55 @@ pre b{color:var(--yellow);font-weight:600}
       ctx.fill();
     }
     ctx.restore();
-    segmentCentreline(ctx, p, col, rx, ry);
+    segmentCentreline(ctx, p, col, rx, ry, crease);
   }
-  function segmentCentreline(ctx, p, col, rx, ry) {
+  var CREASE_HALF_L = 0.8;
+  var CREASE_HALO_W = 0.085;
+  var CREASE_CORE_W = 0.32;
+  var CREASE_CORE_BLUR = 0.62;
+  var CREASE_CORE_ALPHA = 0.46;
+  function segmentCentreline(ctx, p, col, rx, ry, crease = false) {
     const long = Math.max(rx, ry);
     const short = Math.min(rx, ry);
-    if (long / short < CENTRELINE_RATIO) return;
+    if (!crease && long / short < CENTRELINE_RATIO) return;
     if (!ctx.createLinearGradient) return;
-    softStreak(ctx, p, rx, ry, rx * 0.74, ry * 0.085, col.shellSoft, col.shellClear, 1);
+    const halfL = rx * CREASE_HALF_L;
+    const haloW = ry * CREASE_HALO_W;
+    softStreak(ctx, p, rx, ry, halfL, haloW, haloW, col.shellSoft, col.shellClear, 1);
+    if (!crease) return;
+    softStreak(
+      ctx,
+      p,
+      rx,
+      ry,
+      halfL,
+      haloW * CREASE_CORE_W,
+      haloW * CREASE_CORE_BLUR,
+      col.seam,
+      col.seamClear,
+      CREASE_CORE_ALPHA
+    );
   }
-  function softStreak(ctx, p, rx, ry, halfL, halfW, fill, clear, alpha) {
+  function softStreak(ctx, p, rx, ry, halfL, halfW, blur, fill, clear, alpha) {
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
     ctx.clip();
     ctx.globalAlpha = alpha;
+    const b = Math.max(0.6, blur);
     if ("filter" in ctx) {
-      const blur = Math.max(0.6, halfW);
-      ctx.filter = `blur(${blur.toFixed(2)}px)`;
+      ctx.filter = `blur(${b.toFixed(2)}px)`;
       ctx.fillStyle = fill;
-      ctx.fillRect(p.x - halfL + blur, p.y - halfW * 0.5, Math.max(0.5, (halfL - blur) * 2), halfW);
+      ctx.fillRect(p.x - halfL + b, p.y - halfW * 0.5, Math.max(0.5, (halfL - b) * 2), halfW);
       ctx.filter = "none";
     } else {
-      const gr = ctx.createLinearGradient(0, p.y - halfW, 0, p.y + halfW);
+      const ext = Math.max(halfW, b);
+      const gr = ctx.createLinearGradient(0, p.y - ext, 0, p.y + ext);
       gr.addColorStop(0, clear);
       gr.addColorStop(0.5, fill);
       gr.addColorStop(1, clear);
       ctx.fillStyle = gr;
-      ctx.fillRect(p.x - halfL, p.y - halfW, halfL * 2, halfW * 2);
+      ctx.fillRect(p.x - halfL, p.y - ext, halfL * 2, ext * 2);
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -3529,27 +3566,12 @@ pre b{color:var(--yellow);font-weight:600}
     drawHorn(ctx, L, col, patHorn);
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
-      for (const p of trunk) segmentMass(ctx, p, col);
+      const creased = L.wingType === "elytra" ? null : L.abdomen;
+      for (const p of trunk) segmentMass(ctx, p, col, p === creased);
       drawElytra(ctx, L, col);
-      for (let i = 0; i < trunk.length; i++) speckle(ctx, trunk[i], col, L.shimmer, i * 17 + 3);
-      const ab = L.abdomen;
-      if (ab && L.wingType !== "elytra") {
-        softStreak(
-          ctx,
-          ab,
-          ab.rx,
-          ab.ry,
-          ab.rx * 0.88,
-          Math.max(0.5, L.unit * 0.012),
-          col.seam,
-          col.seamClear,
-          0.42
-        );
-      }
     };
     const drawTrunkThorax = () => {
       segmentMass(ctx, L.thorax, col);
-      speckle(ctx, L.thorax, col, L.shimmer, L.parts.length * 17 + 3);
     };
     if (L.wingPairs > 0) {
       drawTrunkAbdomen();
@@ -3751,8 +3773,7 @@ pre b{color:var(--yellow);font-weight:600}
       drawnBy: "drawLegs() \u2192 the foot circle at leg.foot",
       gate: "always, at a fixed 0.95 of the leg width (FOOT_PAD_R)",
       genes: [
-        { gene: "leg_thickness", effect: "the only thing that changes a foot: the pad is a fixed 0.95 of the leg width, so a thicker leg is the only way to a bigger foot" },
-        { gene: "leg_count", effect: "one foot per leg" }
+        { gene: "leg_thickness", effect: "the only thing that changes a foot: the pad is a fixed 0.95 of the leg width, so a thicker leg is the only way to a bigger foot" }
       ]
     },
     /* --------------------------------------------------------------- wings -- */
@@ -3818,8 +3839,9 @@ pre b{color:var(--yellow);font-weight:600}
       genes: [
         { gene: "horn_size", effect: "length, 0.18\u20131.55 of the body unit depending on kind" },
         { gene: "horn_type", effect: "which of the five shapes gets drawn" },
-        { gene: "head_length", effect: "the horn is anchored to the head's rear edge, so a longer head moves its base" },
-        { gene: "pattern_horn", effect: "flat / gradient / dots / oval surface treatment on the horn fill \u2014 its own gene, independent of the jaws" },
+        { gene: "pattern_horn", effect: "flat / gradient / dots / oval / diagonal surface treatment on the horn fill \u2014 its own gene, independent of the jaws" },
+        { gene: "pattern_horn_hue", effect: "which of the ten reference-palette swatches the decoration tone is drawn from \u2014 independent of the body's own hue" },
+        { gene: "pattern_scale", effect: "gradient: where the light/dark transition sits along the horn's long axis. dots: dot size and count. diagonal: stripe pitch. Shared by the horn and the jaws" },
         { gene: "pattern_contrast", effect: "how far the light tone departs from the horn colour" }
       ]
     },
@@ -3862,7 +3884,9 @@ pre b{color:var(--yellow);font-weight:600}
           gene: "mandible_serration",
           effect: "multiplies the bite stat, AND cuts teeth into the inner edge at three levels \u2014 min(2, floor(v \xD7 3)), so 0\u20130.33 smooth, 0.33\u20130.67 one tooth, 0.67+ two. Every kind reads it now: on the chelicerae, 1 or 2 both add the single tip fang that used to be a kind of its own"
         },
-        { gene: "pattern_mandible", effect: "flat / gradient / dots / oval surface treatment on the jaw fill \u2014 its own gene, independent of the horn" },
+        { gene: "pattern_mandible", effect: "flat / gradient / dots / oval / diagonal surface treatment on the jaw fill \u2014 its own gene, independent of the horn" },
+        { gene: "pattern_mandible_hue", effect: "which of the ten reference-palette swatches the decoration tone is drawn from \u2014 independent of the body's own hue" },
+        { gene: "pattern_scale", effect: "gradient: where the light/dark transition sits along the jaw's long axis. dots: dot size and count. diagonal: stripe pitch. Shared by the horn and the jaws" },
         { gene: "pattern_contrast", effect: "how far the light tone departs from the jaw colour" }
       ]
     },
@@ -3928,7 +3952,7 @@ pre b{color:var(--yellow);font-weight:600}
       genes: [
         { gene: "eye_size", effect: "radius, 0.45\u20131.05 of head radius" },
         { gene: "eye_type", effect: "the fill treatment \u2014 dark speckled / notched / hooked. It no longer changes the silhouette; there is only one" },
-        { gene: "eye_count", effect: "pairs past the first are drawn as small dark ocelli" }
+        { gene: "eye_count", effect: "pairs past the first are drawn as a small mirrored eye array behind the main pair" }
       ]
     },
     {
@@ -3952,23 +3976,22 @@ pre b{color:var(--yellow);font-weight:600}
       variantOf: (g) => Math.max(0, Math.min(1, Math.round(g.crown_mark_style ?? 0) - 1)),
       setVariant: (_g, i) => ({ crown_mark_style: i + 1 }),
       genes: [
-        { gene: "crown_mark_style", effect: "0 none, 1 solid gold cap, 2 the cap blended into the head" },
-        { gene: "head_length", effect: "the cap is the front 18% of the head silhouette along its long axis, so it scales with it" }
+        { gene: "crown_mark_style", effect: "0 none, 1 solid gold cap, 2 the cap blended into the head" }
       ]
     },
     {
       id: "ocelli",
       group: "sensory",
       name: "Extra eyes",
-      blurb: "Every pair past the first lands on the head as a small dark dot. Three extra pairs is the ceiling.",
+      blurb: "Every pair past the first joins a small mirrored array behind the main eyes \u2014 the same wedge shape, scaled down, arranged in rows so it reads as a deliberate cluster rather than scattered dots. Sized and positioned so it never overlaps the main pair's own footprint. Three extra pairs is the ceiling.",
       drawnBy: "buildHead() \u2192 the minor eyes",
       gate: "eye_count \u2265 4  (extra pairs = clamp(round(eye_count / 2) \u2212 1, 0, 3))",
       present: (g) => g.eye_count >= 4,
       on: { eye_count: 8 },
       off: { eye_count: 2 },
       genes: [
-        { gene: "eye_count", effect: "4 \u2192 one extra pair, 6 \u2192 two, 8+ \u2192 three (the ceiling). Also +11% vision each pair" },
-        { gene: "eye_size", effect: "ocelli are drawn at 0.17 of the main eye radius" }
+        { gene: "eye_count", effect: "4 \u2192 one row of two behind the main pair, 6 \u2192 a second row, 8+ \u2192 a third (the ceiling). Also +11% vision each pair" },
+        { gene: "eye_size", effect: "the array radius is solved from the main eyes' own radius, clamped so an array eye is always visibly smaller and clear of the main pair's silhouette" }
       ]
     },
     {
@@ -3982,8 +4005,7 @@ pre b{color:var(--yellow);font-weight:600}
       on: { antenna_length: 0.7 },
       off: { antenna_length: 0 },
       genes: [
-        { gene: "antenna_length", effect: "reach, 0.06\u20130.95 of the body unit" },
-        { gene: "head_width", effect: "antennae anchor to the head edge" }
+        { gene: "antenna_length", effect: "reach, 0.06\u20130.95 of the body unit" }
       ]
     },
     /* ------------------------------------------------------------- surface -- */
@@ -4023,30 +4045,30 @@ pre b{color:var(--yellow);font-weight:600}
       id: "hornpattern",
       group: "surface",
       name: "Horn & jaw pattern",
-      blurb: "A surface treatment applied to the whole horn or the whole jaw as ONE shape \u2014 flat, a warm gradient to the tip, light speckle dots, or one oval highlight. The horn and the mandibles pick independently. Body patterns are a later pass \u2014 this reaches the weapons only.",
+      blurb: "A surface treatment applied to the whole horn or the whole jaw as ONE shape \u2014 flat, a gradient that slides along the shape, light speckle dots, one oval highlight, or repeating diagonal stripes. The horn and the mandibles pick independently, and each also picks its own decoration colour off the reference palette. Body patterns are a later pass \u2014 this reaches the weapons only.",
       drawnBy: "surfacePattern() \u2192 patternedSilhouette()",
-      gate: "a horn or a mandible has to be drawn (horn_size \u2265 0.12 or mandible_size \u2265 0.10); mode = min(3, floor(pattern_horn \xD7 4)) for the horn, the same over pattern_mandible for the jaws",
+      gate: "a horn or a mandible has to be drawn (horn_size \u2265 0.12 or mandible_size \u2265 0.10); mode = min(4, floor(pattern_horn \xD7 5)) for the horn, the same over pattern_mandible for the jaws",
       present: (g) => g.horn_size >= 0.12 || g.mandible_size >= 0.1,
       on: { mandible_size: 0.75 },
       off: { mandible_size: 0, horn_size: 0 },
-      // The variant strip drives the HORN's gene. The mandible's is the same four
+      // The variant strip drives the HORN's gene. The mandible's is the same five
       // states over its own slider; showing both strips would be two identical
       // pickers side by side.
       variantGene: "pattern_horn",
-      variants: variants(["flat", "gradient", "dots", "oval"], [
+      variants: variants(["flat", "gradient", "dots", "oval", "diagonal"], [
         "solid colour, nothing on it at all \u2014 the default",
-        "the base colour lifting to a warm amber at the tip",
+        "the base colour lifting to the decoration tone, positioned along the shape by pattern_scale",
         "light speckle dots scattered over the shape",
-        "one lighter oval patch near the tip, the rest flat"
+        "one lighter oval patch near the tip, the rest flat",
+        "repeating 45\xB0 stripes swept across the whole clipped silhouette"
       ]),
-      variantOf: (g) => Math.min(3, Math.floor(Math.max(0, Math.min(1, g.pattern_horn)) * 4)),
-      setVariant: (_g, i) => ({ pattern_horn: (i + 0.5) / 4, pattern_mandible: (i + 0.5) / 4 }),
+      variantOf: (g) => Math.min(4, Math.floor(Math.max(0, Math.min(1, g.pattern_horn)) * 5)),
+      setVariant: (_g, i) => ({ pattern_horn: (i + 0.5) / 5, pattern_mandible: (i + 0.5) / 5 }),
       genes: [
-        { gene: "pattern_horn", effect: "the HORN's treatment: 0\u20130.25 flat, 0.25\u20130.5 gradient, 0.5\u20130.75 dots, 0.75+ oval" },
-        { gene: "pattern_mandible", effect: "the JAWS' treatment, same four buckets, chosen independently of the horn's" },
-        { gene: "pattern_scale", effect: "dots only \u2014 bigger scale means fewer, larger dots. Shared by both components" },
-        { gene: "pattern_contrast", effect: "how loud a treatment reads: gradient depth, dot opacity, oval tone gap. Shared by both components" },
-        { gene: "hue", effect: "the light tone is the shell hue walked toward amber, so it stays in family" }
+        { gene: "pattern_horn", effect: "the HORN's treatment: 0\u20130.2 flat, 0.2\u20130.4 gradient, 0.4\u20130.6 dots, 0.6\u20130.8 oval, 0.8+ diagonal" },
+        { gene: "pattern_mandible", effect: "the JAWS' treatment, same five buckets, chosen independently of the horn's" },
+        { gene: "pattern_scale", effect: "gradient: slides the light/dark transition along the shape. dots: bigger scale means fewer, larger dots. diagonal: stripe pitch. Shared by both components" },
+        { gene: "pattern_contrast", effect: "how loud a treatment reads: gradient depth, dot opacity, oval tone gap, stripe opacity. Shared by both components" }
       ]
     },
     {
@@ -4076,23 +4098,7 @@ pre b{color:var(--yellow);font-weight:600}
       on: { setae: 0.85 },
       off: { setae: 0 },
       genes: [
-        { gene: "setae", effect: "count (10\u201326) and length of the fringe; also helps camouflage" },
-        { gene: "abdomen_width", effect: "setae are drawn off the abdomen rim (the thorax, if there is no abdomen), so they scale with it" }
-      ]
-    },
-    {
-      id: "speckle",
-      group: "surface",
-      name: "Iridescent speckle",
-      blurb: "Fine granular scatter in the accent colour. Not glitter \u2014 a dusting.",
-      drawnBy: "speckle() / speckleLimb()",
-      gate: "iridescence \u2265 0.28 on the shell, \u2265 0.34 on the limbs",
-      present: (g) => g.iridescence >= 0.28,
-      on: { iridescence: 0.75 },
-      off: { iridescence: 0 },
-      genes: [
-        { gene: "iridescence", effect: "90\u2013290 specks by amount; costs camouflage in the stat block" },
-        { gene: "hue", effect: "the speck colour is the complement of the shell hue" }
+        { gene: "setae", effect: "count (10\u201326) and length of the fringe; also helps camouflage" }
       ]
     }
   ];
@@ -4277,7 +4283,7 @@ const push = (next) => {
 
 /* ------------------------------------------------- share codes in the URL */
 
-// One byte per gene over its own range, in GENE_ORDER. 41 genes -> 56 chars.
+// One byte per gene over its own range, in GENE_ORDER. 42 genes -> 57 chars.
 function encodeGenome(g) {
   const bytes = GENE_ORDER.map((k) => {
     const s = GENE_SPECS[k];
@@ -4689,9 +4695,9 @@ function paintExport() {
  * tapping "add" on a part near the bottom of the library would throw you back to
  * the top. Hold the offset across the rebuild unless the tab itself changed.
  */
-/** The two browsing tabs cut the same 41 genes two ways — say which is which. */
+/** The two browsing tabs cut the same 42 genes two ways — say which is which. */
 const TAB_HINT = {
-  genes: 'All 56 genes in GENE_ORDER, including the ten that move stats but ' +
+  genes: 'All 57 genes in GENE_ORDER, including the ten that move stats but ' +
          'draw nothing. Every slider says which parts it feeds.',
   export: 'The build you have made, as code you can paste back into the project.',
 };

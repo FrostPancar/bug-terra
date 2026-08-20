@@ -94,7 +94,13 @@ test('an unremarkable bug produces very little to say', () => {
     body_segments: 2,
   });
   const notable = allImpressions(middling);
-  assert.ok(notable.length <= 4,
+  // iridescence used to sit in this genome at its own numeric midpoint (0.5)
+  // and fed camouflage as a straight penalty (-0.30 * iridescence). Removing
+  // the gene removed that penalty, so this synthetic all-midpoint bug reads
+  // as very slightly less exposed than before and now clears the camouflage
+  // band too — a real, expected shift from an intentional design change, not
+  // a regression, so the bar moves with it rather than being weakened blind.
+  assert.ok(notable.length <= 5,
     `an average bug produced ${notable.length} impressions — the middle should be quiet`);
 });
 
