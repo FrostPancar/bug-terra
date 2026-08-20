@@ -6,7 +6,8 @@ import { breedGeneration, rank } from '../core/breeding.js';
 import { seededPopulation } from '../core/archetypes.js';
 import { makeRng } from '../core/rng.js';
 import { PlantBed } from './plants.js';
-import { placeObject, fieldAt, breedingModifiers, trainerAt } from './objects.js';
+import { placeObject, canPlace, specOf, fieldAt, breedingModifiers, trainerAt } from './objects.js';
+import { Burrow } from './burrow.js';
 import { Knowledge, sendToVet, vetStatus, isAway, VET } from './knowledge.js';
 import { Autosave, loadSave, clearSave, canPersist } from './save.js';
 import { normalizeGenome } from '../core/genes.js';
@@ -92,6 +93,20 @@ export class TerrariumScene extends Phaser.Scene {
     // discarded on refresh — see sim/save.js.
     this.autosave = new Autosave(() => this.serialize());
     this.resumed = false;
+
+    /**
+     * Which of the three things the player is doing: watching the terrarium,
+     * placing something in it, or underground. Every input in the scene branches
+     * on this and nothing else — see src/ui/modes.js for the half of the state
+     * machine that lives in the HUD.
+     */
+    this.mode = 'watch';
+    /** The catalog id armed for placement, or null. Only meaningful in 'place'. */
+    this.armed = null;
+    /** @type {Burrow|null} built on the first trip down, kept for the session. */
+    this.burrow = null;
+    /** The bug currently underground: out of the terrarium, not gone. */
+    this.underground = null;
   }
 
   /**
@@ -127,6 +142,9 @@ export class TerrariumScene extends Phaser.Scene {
     this.groundLayer = this.add.graphics().setDepth(-2);
     this.ground = this.add.image(0, 0, 'dirt').setOrigin(0.5).setDepth(-1);
     this.plantLayer = this.add.graphics().setDepth(2);
+    // The placement ghost: where the thing you are holding would land, and
+    // whether it would fit. Empty except while arming something.
+    this.ghostLayer = this.add.graphics().setDepth(20);
     this.fxLayer = this.add.graphics().setDepth(30);
     this.lightLayer = this.add.graphics().setDepth(40);
     this.fx = [];
@@ -134,11 +152,15 @@ export class TerrariumScene extends Phaser.Scene {
     this.applyWorldBounds();
     this.drawGround();
     this.buildGarden();
+    // The garden otherwise waits for the first half-second of ticks to appear,
+    // which on a cold load is a visible beat of bare floor.
+    this.drawGarden();
     // A resumed run spawns the animals it actually had, not a fresh draw from
     // the same seed — the population is the save's source of truth.
     this.spawnGeneration(restored?.population ?? seededPopulation(this.popSize, this.rng));
 
     this.input.on('pointerdown', (p) => this.handleClick(p));
+    this.input.on('pointermove', (p) => { if (this.armed) this.drawGhost(p.worldX, p.worldY); });
     this.scale.on('resize', this.onResize, this);
     this.events.once('shutdown', () => this.scale.off('resize', this.onResize, this));
   }
@@ -161,8 +183,13 @@ export class TerrariumScene extends Phaser.Scene {
       timeScale: this.timeScale,
       clock: this.clock,
       history: this.history.slice(-40),
-      population: [...this.bugs, ...this.atVet].map((b) => ({ ...b.genome })),
+      population: [...this.bugs, ...this.atVet, ...(this.underground ? [this.underground] : [])]
+        .map((b) => ({ ...b.genome })),
       knowledge: this.knowledge.export(),
+      // What the player built. Positions are stored raw and re-clamped into the
+      // walls on load, so a terrarium reshaped by a different screen still
+      // lands everything inside itself.
+      objects: this.objects.map((o) => ({ id: o.id, x: Math.round(o.x), y: Math.round(o.y) })),
     };
   }
 
@@ -191,6 +218,9 @@ export class TerrariumScene extends Phaser.Scene {
     if (Number.isFinite(saved.clock)) this.clock = saved.clock;
     if (Array.isArray(saved.history)) this.history = saved.history;
     this.knowledge = new Knowledge(saved.knowledge ?? {});
+    // Held until buildGarden() runs, which is the only thing that knows where
+    // the walls ended up on THIS screen.
+    this.savedObjects = Array.isArray(saved.objects) ? saved.objects : null;
     this.resumed = true;
     return { population, rngState: Number.isFinite(saved.rngState) ? saved.rngState : this.seed };
   }
@@ -209,6 +239,13 @@ export class TerrariumScene extends Phaser.Scene {
     clearSave();
     this.knowledge = new Knowledge();
     this.resumed = false;
+    if (this.mode === 'burrow') this.exitBurrow();
+    this.disarm();
+    // Starting over means the terrarium too, not just the animals in it.
+    this.savedObjects = null;
+    this.burrow = null;
+    this.buildGarden();
+    this.drawGarden();
     this.reseed();
   }
 
@@ -352,15 +389,31 @@ export class TerrariumScene extends Phaser.Scene {
     });
     this.objects = [];
 
-    // A starter garden so the loop is visible on first run. Everything here is
-    // ordinary placement — nothing about it is special-cased.
     const r = makeRng(777);
     const at = (fx, fy) => ({ x: b.x + b.width * fx, y: b.y + b.height * fy });
-    const pond = at(0.18, 0.72);
-    const heap = at(0.82, 0.24);
-    this.objects.push(placeObject('pond', pond.x, pond.y));
-    this.objects.push(placeObject('compost_heap', heap.x, heap.y));
-    this.objects.push(placeObject('training_rock', at(0.5, 0.2).x, at(0.5, 0.2).y));
+
+    if (this.savedObjects) {
+      // A resumed run gets back exactly what it built, clamped into whatever
+      // shape the walls are this time.
+      for (const o of this.savedObjects) {
+        try {
+          specOf(o.id);
+          this.objects.push(placeObject(
+            o.id,
+            Math.min(b.right - 20, Math.max(b.x + 20, o.x)),
+            Math.min(b.bottom - 20, Math.max(b.y + 20, o.y))
+          ));
+        } catch { /* an id this build no longer has: drop it, keep the rest */ }
+      }
+      this.savedObjects = null;
+    } else {
+      // A first run starts with the two structures the loop actually needs to be
+      // legible — somewhere to breed and somewhere to train — and nothing else.
+      // Everything past that is the player's to place; see `placeAt`.
+      const pond = at(0.18, 0.72);
+      this.objects.push(placeObject('pond', pond.x, pond.y));
+      this.objects.push(placeObject('training_rock', at(0.52, 0.22).x, at(0.52, 0.22).y));
+    }
 
     const starters = ['grass_patch', 'moss_bed', 'fern_cluster', 'berry_bush', 'flowering_bush']
       .slice(0, this.settings.garden ?? 5);
@@ -392,6 +445,16 @@ export class TerrariumScene extends Phaser.Scene {
     for (const o of this.objects) {
       const r = Math.max(12, o.spec.footprint || 14);
       const reach = o.spec.radius ?? 0;
+
+      // The way down is the one object that is a hole rather than a marking, so
+      // it is drawn as one: a dark mouth with a lip you can find at a glance.
+      if (o.spec.traversal?.entrance) {
+        g.fillStyle(PALETTE.yellow, 0.9).fillCircle(o.x, o.y, r + 4);
+        g.fillStyle(PALETTE.ink, 0.82).fillCircle(o.x, o.y, r);
+        g.fillStyle(PALETTE.ink, 0.35).fillCircle(o.x, o.y + r * 0.35, r * 0.8);
+        continue;
+      }
+
       if (reach > 0) g.fillStyle(PALETTE.ink, 0.045).fillCircle(o.x, o.y, reach);
       g.fillStyle(PALETTE.ink, 0.2).fillCircle(o.x, o.y, r * 1.25);
       g.fillStyle(CATEGORY_COLOUR[o.spec.category] ?? PALETTE.cream, 0.3)
@@ -437,6 +500,147 @@ export class TerrariumScene extends Phaser.Scene {
         g.fillStyle(PALETTE.cream, 0.7).fillCircle(p.x - 1.4, p.y - len * 0.62 - 1.5, 1.6);
       }
     }
+  }
+
+  /* ---------------------------------------------------------- placement --- */
+
+  /**
+   * Hold something, ready to put it down. Arming is all the scene knows about
+   * the build menu: the HUD decides WHAT you are holding, and the scene decides
+   * whether the spot you tapped will take it.
+   */
+  arm(id) {
+    specOf(id);                       // throws on an id the catalog doesn't have
+    this.armed = id;
+    this.mode = 'place';
+    this.emitState();
+    return true;
+  }
+
+  /** Put it down again. The terrarium goes back to being something you watch. */
+  disarm() {
+    this.armed = null;
+    if (this.mode === 'place') this.mode = 'watch';
+    this.ghostLayer.clear();
+    this.emitState();
+  }
+
+  /** Inside the walls, and far enough from everything already there. */
+  canPlaceAt(id, x, y) {
+    const b = this.terrariumBounds;
+    const spec = specOf(id);
+    const edge = Math.max(16, spec.footprint || 0);
+    if (x < b.x + edge || x > b.right - edge || y < b.y + edge || y > b.bottom - edge) {
+      return { ok: false, reason: 'too close to the glass' };
+    }
+    if (!canPlace(this.objects, id, x, y)) return { ok: false, reason: 'something is already there' };
+    return { ok: true, reason: null };
+  }
+
+  /**
+   * Put an object in the terrarium. This is the only way anything gets placed —
+   * the starter garden calls the same `placeObject` underneath, so nothing the
+   * player builds is on a different footing from what they were given.
+   */
+  placeAt(id, x, y) {
+    const check = this.canPlaceAt(id, x, y);
+    if (!check.ok) return check;
+    const o = placeObject(id, Math.round(x), Math.round(y));
+    this.objects.push(o);
+    this.drawGarden();
+    this.flash(o.x, o.y, CATEGORY_COLOUR[o.spec.category] ?? PALETTE.cream, 22);
+    this.markDirty();
+    this.emitState();
+    return { ok: true, reason: null, name: o.spec.name };
+  }
+
+  /** Every placed Burrow Entrance, nearest to the terrarium's middle first. */
+  entrances() {
+    return this.objects.filter((o) => o.spec.traversal?.entrance);
+  }
+
+  /** The ghost under the pointer: where it would land, and whether it would fit. */
+  drawGhost(x, y) {
+    const g = this.ghostLayer;
+    g.clear();
+    if (!this.armed) return;
+    const spec = specOf(this.armed);
+    const ok = this.canPlaceAt(this.armed, x, y).ok;
+    const tint = ok ? (CATEGORY_COLOUR[spec.category] ?? PALETTE.cream) : PALETTE.red;
+    const reach = spec.radius ?? 0;
+    if (reach > 0) g.fillStyle(tint, 0.09).fillCircle(x, y, reach);
+    g.fillStyle(tint, ok ? 0.5 : 0.35).fillCircle(x, y, Math.max(12, spec.footprint || 14));
+    g.lineStyle(3, ok ? PALETTE.cream : PALETTE.red, 0.95);
+    g.strokeCircle(x, y, Math.max(12, spec.footprint || 14) + 6);
+  }
+
+  /* -------------------------------------------------------- burrow mode --- */
+
+  /**
+   * Down. Requires a bug and a Burrow Entrance to take it through — which is
+   * the whole link between the build menu and the dirt zone: you cannot reach
+   * `src/world/` until you have built the thing that reaches it.
+   */
+  enterBurrow(bug, entrance = this.entrances()[0]) {
+    if (this.mode === 'burrow') return { ok: false, reason: 'already down there' };
+    if (!entrance) return { ok: false, reason: 'no burrow entrance to go through' };
+    if (!bug || !bug.alive) return { ok: false, reason: 'pick a bug that is still standing' };
+
+    this.disarm();
+    if (!this.burrow) this.burrow = new Burrow(this, { seed: this.seed >>> 0 });
+    if (!this.burrow.enter(bug, entrance)) return { ok: false, reason: 'that bug cannot go down' };
+
+    // Out of the terrarium while it is underground, exactly as the vet does it.
+    this.underground = bug;
+    this.bugs = this.bugs.filter((b) => b !== bug);
+    bug.sprite.setVisible(false);
+    bug.sprite.setStatic(true);
+    if (this.selected === bug) this.selected = this.bugs[0] ?? null;
+
+    this.mode = 'burrow';
+    this.setSceneVisible(false);
+    this.emitState();
+    return { ok: true, reason: null };
+  }
+
+  /** Up. Whatever was dug stays dug; the bug comes back where it went down. */
+  exitBurrow() {
+    if (this.mode !== 'burrow') return null;
+    const finds = this.burrow.exit();
+    const bug = this.underground;
+    if (bug) {
+      const b = this.terrariumBounds;
+      const door = this.entrances()[0];
+      bug.sprite.setVisible(true);
+      bug.sprite.setStatic(false);
+      bug.sprite.setPosition(door?.x ?? b.centerX, door?.y ?? b.centerY);
+      bug.wander = bug.pickWanderPoint();
+      this.bugs.push(bug);
+      this.selected = bug;
+      // A trip underground is time spent with an animal, so it is worth
+      // remembering as one — the same channel training and fighting use.
+      if (finds.length) {
+        this.knowledge.trained(bug.genome, `dug up ${finds[finds.length - 1].said}`);
+      }
+    }
+    this.underground = null;
+    this.mode = 'watch';
+    this.setSceneVisible(true);
+    this.markDirty();
+    this.emitState();
+    return finds;
+  }
+
+  /** Show or hide everything that belongs to the terrarium rather than the dirt. */
+  setSceneVisible(on) {
+    this.plantLayer.setVisible(on);
+    this.ghostLayer.setVisible(on);
+    this.fxLayer.setVisible(on);
+    this.ground.setVisible(true);      // the floor photo is the dirt either way
+    for (const bug of this.bugs) bug.sprite.setVisible(on);
+    if (!on) return;
+    this.lightLayer.clear();
+    this.drawGarden();
   }
 
   /* ------------------------------------------------------- vet station --- */
@@ -676,8 +880,31 @@ export class TerrariumScene extends Phaser.Scene {
     this.fx.push({ x, y, color, size, life: 0.28, max: 0.28 });
   }
 
+  /**
+   * One tap, three meanings — and the mode is the only thing that decides which.
+   * Underground it steers, while armed it builds, and otherwise it picks a bug.
+   */
   handleClick(p) {
+    if (this.mode === 'burrow') { this.burrow.aim(p); return; }
+    if (this.armed) {
+      const res = this.placeAt(this.armed, p.worldX, p.worldY);
+      this.events.emit('placed', { id: this.armed, ...res });
+      this.drawGhost(p.worldX, p.worldY);
+      return;
+    }
+
     const reach = pickRadius(WORLD, this.touch);
+
+    // A placed Burrow Entrance is a door, so tapping it opens it. This is the
+    // shortest path there is from the thing you built to the mode it leads to —
+    // the HUD offers the same trip, this is just the one on the floor.
+    for (const door of this.entrances()) {
+      if ((door.x - p.worldX) ** 2 + (door.y - p.worldY) ** 2 < reach * reach) {
+        this.events.emit('entranceTap', door);
+        return;
+      }
+    }
+
     let best = null, bestD = reach * reach;
     for (const b of this.bugs) {
       const d = (b.sprite.x - p.worldX) ** 2 + (b.sprite.y - p.worldY) ** 2;
@@ -696,6 +923,17 @@ export class TerrariumScene extends Phaser.Scene {
     const dt = Math.min(0.05, delta / 1000);
     this.clock += dt;
     this.env = behaviourAt(dayFraction(new Date(), this.timeScale));
+
+    // Underground, the terrarium keeps its own clock — the day still turns and
+    // the vet still counts down — but nothing up there is drawn or stepped.
+    if (this.mode === 'burrow') {
+      this.burrow.update(dt);
+      this.returnFromVet();
+      this.hudTick = (this.hudTick ?? 0) + dt;
+      if (this.hudTick > 0.2) { this.hudTick = 0; this.emitState(); }
+      this.autosave.tick(dt);
+      return;
+    }
 
     const alive = this.bugs.filter((b) => b.alive);
     for (const b of alive) b.update(dt, alive);
@@ -780,7 +1018,14 @@ export class TerrariumScene extends Phaser.Scene {
       resumed: this.resumed,
       breedNote: this.breedNote ?? null,
       alive: alive.length,
-      total: this.bugs.length + this.atVet.length,
+      total: this.bugs.length + this.atVet.length + (this.underground ? 1 : 0),
+      // What the player is doing, and what the HUD is therefore allowed to
+      // offer them. src/ui/modes.js is the other half of this.
+      mode: this.mode,
+      armed: this.armed,
+      built: this.objects.map((o) => ({ id: o.id, name: o.spec.name, category: o.spec.category })),
+      canBurrow: this.entrances().length > 0,
+      burrow: this.burrow?.snapshot() ?? { active: false, bug: null, finds: [] },
       popSize: this.popSize,
       tier: this.settings?.tier ?? 'desktop',
       trend: this.poolTrend(),

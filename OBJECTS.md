@@ -115,6 +115,11 @@ Wormway (paired fast travel) · Bridge/Tunnel (permanent link, no jump) ·
 Beacon (idle-wander attractor — steering, not commanding) · Vine Trellis
 (climbable, and shades what is under it).
 
+**Burrow Entrance** is the one object that leads *out* of the terrarium. It
+carries `traversal.entrance`, and it is the only way into burrow mode: the HUD
+will not go underground until one has been placed, and tapping the hole itself
+sends the selected bug down it. See `src/sim/burrow.js` and `src/ui/modes.js`.
+
 ### Environmental
 
 Heat Lamp (`light +0.55`) · Shade Tree (`light −0.45`) · Filter Stone (aquatic

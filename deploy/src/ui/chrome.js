@@ -45,6 +45,25 @@ export function setPaused(button, paused) {
 }
 
 /**
+ * Something happened, said once and then gone.
+ *
+ * A find in the dirt, a refused placement, a bug that cannot go down: all of it
+ * is news rather than state, and news does not belong in a panel the player has
+ * to read. Three at a time, oldest dropped, each gone in a few seconds.
+ */
+export function makeToaster(root, { life = 3200, max = 3 } = {}) {
+  return function toast(text, tone = '') {
+    if (!root || !text) return;
+    const el = document.createElement('div');
+    el.className = tone ? `toast ${tone}` : 'toast';
+    el.textContent = text;
+    root.appendChild(el);
+    while (root.children.length > max) root.firstChild.remove();
+    setTimeout(() => el.remove(), REDUCED() ? life * 0.6 : life);
+  };
+}
+
+/**
  * A short squash when a readout changes. The generation counter is the one
  * number the terrarium does show, so it is worth noticing when it moves.
  */

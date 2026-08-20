@@ -23,8 +23,9 @@ writeFileSync(resolve(out, 'dev.html'),
     /<script src="https:\/\/cdnjs[^"]*"><\/script>/,
     '<script src="./vendor/phaser.min.js"></script>'));
 
-// dev-only archetype sheet, handy for eyeballing gene diversity
+// dev-only sheets: the archetype gallery and the part-by-part builder
 cpSync(resolve(root, 'tools/gallery.html'), resolve(out, 'gallery.html'));
+cpSync(resolve(root, 'tools/builder.html'), resolve(out, 'builder.html'));
 cpSync(resolve(root, 'tools/hero.html'), resolve(out, 'hero.html'));
 
 console.log('staged deploy/');

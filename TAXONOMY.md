@@ -120,6 +120,14 @@ Tier 0 · **Larva** — everything starts here and most things stay here.
 | Fly | Diptera | `wing_count = 2`, `wing_beat ≥.72`, `body_mass ≤.30`, `mandible ≤.25` |
 | True Bug | Hemiptera | `horn_type = rostrum`, `horn .35–.78`, `mandible ≤.30`, `carapace .25–.65` |
 | Grasshopper | Orthoptera | `leg_length ≥.70`, `leg_thickness ≥.55`, `antenna ≥.45`, `body_length ≥.45` |
+| Firefly | Coleoptera | `wing_count 2–4`, `wing_type = elytra`, `carapace ≤.35`, `pattern_contrast ≥.7` |
+| Butterfly | Lepidoptera | `wing_area ≥.85`, `mandible ≤.20`, `setae ≤.30`, `pattern_contrast ≥.75`, `saturation ≥.65` |
+
+The last two are here rather than under Beetle and Moth because each one is the
+**negation of its parent's defining gene** — see *Structural questions* below.
+Their `order` still says Coleoptera and Lepidoptera, because that is where the
+real relationship lives. Order and parent are allowed to disagree; that is the
+same seam hybrids fall out of.
 
 ### Tier 1 — the two non-hexapod brackets
 
@@ -137,7 +145,6 @@ the clade axis alone, so any chassis can drift into them symmetrically.
 | Stag Beetle | Beetle | Locking Jaws — attack ×1.14, rate ×0.92 |
 | Jewel Beetle | Beetle | Dazzle — agility ×1.08, camouflage ×0.88 |
 | Ground Beetle | Beetle | Run Down — speed ×1.10 |
-| Firefly | Beetle | Cold Light — vision ×1.15, camouflage ×0.85 |
 | Ladybird | Beetle | Warning Colours — defense ×1.10 |
 | **Weevil** | **Beetle** | Boring Snout — attack ×1.06, defense ×1.06 |
 | Venom Striker | Wasp | Concentrated Venom — venom ×1.20 |
@@ -147,7 +154,6 @@ the clade axis alone, so any chassis can drift into them symmetrically.
 | Scorpion | Arachnid | Pincer and Tail — venom ×1.12, defense ×1.08 |
 | Centipede | Myriapod | — |
 | Millipede | Myriapod | Curl — defense ×1.14, speed ×0.92 |
-| Butterfly | Moth | Flash Colour — agility ×1.10, camouflage ×0.85 |
 
 ### Tier 3
 
@@ -184,6 +190,19 @@ Winged is scoped on purpose: a winged wasp is not a remarkable fact about a wasp
 | Hornet sat beside Wasp | **Nested under Wasp** as Tier 2 — it reads as an aggressive wasp, not a sibling order. |
 | Arachnid/Myriapod windowed too narrowly | **Redefined as pure `leg_count` brackets.** Spider and Centipede moved down to Tier 2 beneath them. |
 | Pill Bug is a crustacean | **Left out.** It does not share a root with Larva, and inventing a second root for one unwindowed taxon is not worth it yet. |
+| Ground Beetle asked for `leg_length ≥.60` under a Beetle capped at `.45` | **Narrowed the child to `[0.34, 0.45]`.** Carabidae is a beetle family — the Weevil call above applies unchanged — and the blurb already said "quick *for a beetle*". Long-for-a-beetle is the top of Beetle's range, not a mantis's legs. |
+| Firefly asked for `carapace ≤.35` under a Beetle floored at `.55` | **Re-parented to Larva**, keeping `order: Coleoptera`. Its whole idea is "gave up its shell" and Beetle's single defining gene is its shell; narrowing it deletes the concept, loosening Beetle deletes Beetle. |
+| Butterfly asked for `setae ≤.30` under a Moth floored at `.75` | **Re-parented to Larva**, keeping `order: Lepidoptera`. "Same chassis, opposite surface" is now *stated* — `wing_area` and `mandible_size` are copied onto the node — rather than inherited from a parent that also demands fur. |
+
+All three were **unreachable**: `classify()` only reaches a node when every
+ancestor's window is satisfied too, so a child that contradicts its parent can
+never be anyone. `mergedWindow()` in `src/core/taxonBuild.js` finds them and
+`tests/parts.test.js` asserts every taxon builds a genome that classifies as
+itself, so this class of bug cannot come back quietly.
+
+Re-parenting the last two keeps the §4 hard wall intact: Butterfly still requires
+`wing_area ≥ 0.85`, so a Beetle lineage reaching it still has to cross the same
+gap it always did.
 
 One deviation from the doc's drafted numbers is recorded in the source: Weevil's
 window was widened from `[0.80, 0.45, 0.55]` to `[0.72, 0.42, 0.52]`. The

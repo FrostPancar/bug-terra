@@ -1,0 +1,241 @@
+# The bug builder — `tools/builder.html`
+
+A workshop for the gene vector. Load a taxon or an archetype, tap parts on and
+off, drag the genes that drive them, and export the combination as code.
+
+## Two ways to run it
+
+**Served** — imports the live `src/` modules, so it can never drift from the game:
+
+```bash
+npm run dev                      # serves the repo root on :5173
+# then open  /tools/builder.html
+```
+
+`tools/builder.html` also stages to `deploy/builder.html`, where the same file
+resolves `./src/` instead of `../src/`.
+
+**As one file** — no server, no network, nothing to install:
+
+```bash
+npm run build:builder            # -> dist/builder.html  (~133 kB)
+```
+
+Then double-click `dist/builder.html`, or open it from `file://`. The bundler
+inlines every module it needs onto `globalThis.BUGSIM` and the page prefers that
+over fetching. A `file://` page cannot fetch ES modules, which is why the served
+copy alone will not open off disk — it shows a message telling you which of
+these two to use rather than a blank panel.
+
+Note what that trade means: the single file is a **snapshot**. Rebuild it after
+touching genes, art, classification or the part catalogue, or it will quietly
+describe the old renderer. The served copy has no such problem.
+
+Either way the preview is `bugArt.js`, the bars are `computeStats()`, and the
+label is `classify()`. There is no second copy of any of it.
+
+The tool is a dev surface, so unlike the HUD it is allowed to show numbers.
+`tests/hidden.test.js` scans `src/ui/` and `src/main.js` for that vocabulary;
+nothing here is in either.
+
+---
+
+## The three things it does
+
+### 1. Default builds — `src/core/taxonBuild.js`
+
+`classify()` reads a genome and names it. `buildForTaxon()` goes the other way,
+and it is not a search:
+
+1. **Intersect** every window from the root down to the taxon. `Rhinoceros
+   Beetle` inherits Beetle's `carapace_thickness ≥ 0.55` on top of its own.
+2. **Pick the closest archetype** — the one already missing the fewest
+   constraints. A Stag Beetle built off the beetle plan looks like a beetle; one
+   built off the moth plan looks like a mistake.
+3. **Snap only the genes that miss**, to the middle of their window rather than
+   its edge — an edge value is one breeding step out of the taxon it was built for.
+4. **Walk back out of deeper windows.** The snapped genome often satisfies a
+   child too, and `descend()` always takes the deepest match, so asking for a
+   Wasp handed back a Swift Flier. The build now pushes one gene at a time out
+   of the deeper window, never touching a gene the target itself constrains.
+
+Every taxon whose windows are satisfiable classifies as *itself* — asserted for
+all 31 nodes in `tests/parts.test.js`.
+
+#### When a taxon cannot be built, the tool says so
+
+A child window that contradicts its parent's is unreachable by **any** genome,
+because `classify()` only reaches a node if every ancestor's window is satisfied
+too. `mergedWindow()` intersects the path, so the builder can report the exact
+clash — which gene, which two nodes, which two ranges — instead of quietly
+handing back the parent and letting you wonder why the taxon never sticks.
+
+Writing this catalogue turned up three live ones, all since fixed in
+`CLASS_TREE`: Ground Beetle asked for `leg_length ≥ 0.60` under a Beetle capped
+at `0.45`, Firefly for `carapace_thickness ≤ 0.35` under a Beetle floored at
+`0.55`, and Butterfly for `setae ≤ 0.30` under a Moth floored at `0.75`. One was
+a window that belonged inside its parent's; the other two were concepts that
+negate their parent, and are now siblings that keep `order` while hanging off
+`larva`.
+
+Two knock-ons came out of that fix, both measured against a 4,000-genome sample
+rather than argued from the windows:
+
+- Ground Beetle's carapace was *also* drafted at `[0.35, 0.6]`, which merged with
+  Beetle's `[0.55, 1]` down to a 0.05-wide slice. Legal, so the conflict check
+  never flagged it — but far too narrow for a lineage to ever breed into. The
+  check catches contradictions, not windows that are merely vanishing.
+- Once the Firefly was standing at tier 1 on three loose genes it started taking
+  genomes off the Wasp, and a bug with a stinger is better described by its
+  stinger than by its markings. Pinning `wing_type: 1` — elytra — settled it:
+  hard wing cases are what still make a firefly a beetle underneath, and
+  categorically what a wasp does not have. Firefly went from 127 draws per 4,000
+  to 66, and the Wasp got its genomes back.
+
+The check is recomputed at load, not baked in: author a new contradiction and it
+shows up immediately as a ⚠ in the taxon list, a red **unreachable** note under
+the build button, and a **never** badge beside that taxon in the drift line.
+
+### 2. The part library — `src/render/partLibrary.js`
+
+The **Part library** and **All 41 genes** tabs cut the same data two ways. The
+library is organised by *what you see on the bug* — 20 things the renderer can
+draw, each owning the two to five genes that shape it, with the threshold where
+it appears, a thumbnail per kind, and a grid tile framed on the part itself
+(`FOCUS` in `partLibrary.js` says how each one is framed: the pose is head-up,
+so a positive `y` brings the head into the tile and a negative one the tail). The gene tab is organised by *the vector* —
+all 41 in `GENE_ORDER`, including the ten that reach no part of the sprite, each
+saying which parts it feeds. Start in the library when you are building a bug;
+go to the genes when you need one specific dial, or the ones no part exposes.
+
+`bugArt.js` knows how to draw a bug. Nothing else knew *what* it draws, so the
+only way to find out whether `spine_density` put anything on the sprite was to
+read 800 lines of canvas code. The catalogue writes that down once: 20 parts,
+the genes behind each, and the exact threshold at which each appears.
+
+Two rules keep it honest, both enforced by `tests/parts.test.js`, which renders
+through a recording stand-in for a 2D context and compares the call log:
+
+- Every gate is the **real expression** from `bugArt.js`. A part that claims to
+  be drawn must change the canvas calls when it is added.
+- A gene that feeds stats but puts nothing on the sprite is marked **stats only**
+  and says what it really does. A gene marked that way must leave the render
+  byte-identical across its whole range.
+
+That second test already caught one wrong claim: `body_segments` looked like a
+stat-only gene and is not — it stretches the whole body through `morphology()`.
+
+
+### Body — the masses everything else mounts on
+
+| Part | Appears when | Genes |
+|---|---|---|
+| **Body plan** | _always on_ | `leg_count`, `body_length` |
+| **Abdomen** | _always on_ | `body_length`, `body_width`, `abdomen_taper`, `body_segments` |
+| **Thorax** | _always on_ | `thorax_ratio`, `body_width` |
+| **Head** | _always on_ | `head_size`, `body_width` |
+| **Trunk segments** | `body plan is myriapod; count = clamp(round(6 + body_length × 4), 6, 10)` | `body_length`, `leg_count` |
+
+### Limbs — legs and what is on the end of them
+
+| Part | Appears when | Genes |
+|---|---|---|
+| **Legs** | _always on_ | `leg_count`, `leg_length`, `leg_thickness`, `leg_spread`, `leg_joints` |
+| **Tarsal claws** | `claw_size > 0.30` | `claw_size`, `leg_thickness` |
+
+### Wings — four kinds fan, one kind covers
+
+| Part | Appears when | Genes |
+|---|---|---|
+| **Wings** | `wing_count > 0 && wing_area > 0.05` | `wing_count`, `wing_type`, `wing_area`, `wing_beat` |
+
+### Weapons — the front end and the back end
+
+| Part | Appears when | Genes |
+|---|---|---|
+| **Horn** | `horn_size ≥ 0.12` | `horn_size`, `horn_type`, `head_size` |
+| **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration` |
+| **Tail** | `tail_length × 0.44 > 0.08  →  tail_length > 0.182` | `tail_length`, `stinger_size` |
+| **Stinger** | `stinger_size > 0.18, and the tail must be drawn at all` | `stinger_size`, `tail_length` |
+| **Defensive spines** _(stats only)_ | `never drawn — spine_density reaches stats and classification only` | `spine_density` |
+
+### Sensory — eyes and antennae
+
+| Part | Appears when | Genes |
+|---|---|---|
+| **Eyes** | _always on_ | `eye_size`, `eye_type`, `eye_count`, `saturation` |
+| **Extra eyes** | `eye_count ≥ 4  (extra pairs = clamp(round(eye_count / 2) − 1, 0, 3))` | `eye_count`, `eye_size` |
+| **Antennae** | `antenna_length > 0.104  (the length has to clear 0.15 of the body unit)` | `antenna_length`, `head_size` |
+
+### Surface — colour, speckle, fur
+
+| Part | Appears when | Genes |
+|---|---|---|
+| **Shell colour** | _always on_ | `hue`, `saturation`, `lightness` |
+| **Ink limbs** | `pattern > 0.5` | `pattern`, `pattern_scale`, `pattern_contrast` |
+| **Setae** | `setae ≥ 0.35` | `setae`, `body_width` |
+| **Iridescent speckle** | `iridescence ≥ 0.28 on the shell, ≥ 0.34 on the limbs` | `iridescence`, `hue` |
+
+#### Genes that move numbers, not pixels
+
+Ten of the 41 reach no part of the sprite. The builder badges them rather
+than leaving you to wonder why the slider does nothing:
+
+`body_mass` · `carapace_thickness` · `leg_joints` · `mandible_serration` ·
+`spine_density` · `metabolism` · `aggression` · `pattern_scale` ·
+`pattern_contrast` · `translucency`
+
+Two of those are worth calling out: `pattern` is the only one of the four
+pattern genes with any art at all (it picks black limbs over body-toned ones),
+and `spine_density` is required by the Centipede and Millipede windows while
+being invisible on the bug.
+
+### 3. Export
+
+| Format | What it is |
+|---|---|
+| **JS genome** | the full 41 genes as a `normalizeGenome({...})` literal, grouped and commented |
+| **JSON** | the raw genome object |
+| **Patch vs base** | only the genes you changed since loading the build — the parameter combination on its own |
+| **Archetype entry** | a `{ key, name, blurb, spread, bias }` block ready to paste into `ARCHETYPES` |
+| **Share link** | one byte per gene in `GENE_ORDER`, base64url — a 56-character code in the URL hash, with its decoder |
+
+The URL hash updates on every edit, so a build is reloadable and shareable
+without a save file. The share code quantises to 1/255 of each gene's range;
+round-tripping it moves no gene by more than 0.002 and never changes the taxon.
+
+---
+
+## Using it
+
+- **The library is the left column and the bug is the right one**, so a tap and
+  what it did are on screen together. Below 1000px they stack, and a pinned
+  92px copy of the preview follows you down the list — tap it to jump back up.
+- **The library is a grid of the parts themselves.** Every tile is *your* bug
+  framed on that one part — the horn tile is the horn you actually have, at the
+  size and kind you set. A part the bug does not carry yet is drawn as it would
+  look if added, hatched and dimmed so the state stays unambiguous.
+- **Tap a tile to expand it** into the full view: blurb, the gate, the render
+  function, the kinds, and a slider per gene. One section is open at a time —
+  an expanded part spans the grid, and two of them bury the catalogue.
+- **The corner pill adds or removes** without opening anything: `+` for a part
+  the bug lacks, `−` for one it has, a grey dot for a part that is always on,
+  and purple for one that only moves numbers.
+- **Variant thumbnails** are the current bug with only that kind swapped, so the
+  five horns are compared on your animal rather than on a stock one.
+- **Sliders** redraw live and re-check every gate on release, so a part can
+  appear or vanish under you as you drag. That is the point: the gate is the
+  interesting part of the gene.
+- The stage shows what the genome classifies as, its clade brackets, its flat
+  traits, and the two nearest taxa it has **not** reached with the gene each one
+  is waiting on.
+
+---
+
+## Extending the catalogue
+
+Adding a part to `bugArt.js` means adding an entry to `PARTS` in
+`partLibrary.js` — id, group, blurb, the `gate` string copied from the render
+condition, the genes with what each does, and `on` / `off` patches. If the gate
+is wrong or the gene list has a typo, `tests/parts.test.js` fails; nothing has to
+be wired into the builder itself.

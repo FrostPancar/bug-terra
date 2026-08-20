@@ -3,7 +3,9 @@
 import { TerrariumScene, WORLD } from './sim/terrarium.js';
 import { computeWorld, tierSettings, isTouchDevice, setViewport } from './sim/viewport.js';
 import { FITNESS } from './core/stats.js';
-import { pressable, setPaused, bump } from './ui/chrome.js';
+import { pressable, setPaused, bump, makeToaster } from './ui/chrome.js';
+import { makeBuildMenu } from './ui/build.js';
+import { createModes } from './ui/modes.js';
 import { DIRT_URI } from './assets/dirt.js';
 
 // NOTE: this module deliberately imports no gene list and no stat list. The
@@ -23,6 +25,8 @@ const touch = isTouchDevice();
 // Painting it with the same floor photograph makes that band disappear instead
 // of reading as a flat strip of the wrong brown.
 stage.style.backgroundImage = `url("${DIRT_URI}")`;
+
+const toast = makeToaster($('toasts'));
 
 /* Size the world to the stage's real box, not the window — the bottom sheet
    and the notch both eat into it. */
@@ -60,12 +64,23 @@ const game = new Phaser.Game({
 });
 
 let scene = null;
+let modes = null;
+let build = null;
+
 game.events.once('ready', () => {
   scene = game.scene.getScene('terrarium');
   // handy in the console, and the viewport test reads the playable box from it
   window.__terrarium = { game, scene, WORLD };
   scene.events.on('state', render);
-  scene.events.on('selected', () => { if (isSheetMode()) expandSheet(); });
+  scene.events.on('selected', () => { if (isSheetMode() && modes?.mode === 'watch') expandSheet(); });
+  // Finds in the dirt and refused placements are news, not state.
+  scene.events.on('burrowNote', ({ text, tone }) => toast(text, tone === 'common' ? '' : tone));
+  // The door on the floor does what the Burrow button does.
+  scene.events.on('entranceTap', () => modes?.toBurrow(scene.selected));
+  scene.events.on('placed', (res) => {
+    if (res.ok) toast(`${res.name} placed.`);
+    else toast(res.reason, 'bad');
+  });
   // `ready` fires when the GAME boots, which is now before the scene has
   // created — the floor photograph put create() behind the loader. Wiring the
   // HUD against a scene with no world yet resized a terrarium that did not
@@ -79,30 +94,47 @@ game.events.once('ready', () => {
 
 let lastSel = null;
 let lastVet = null;
-
 let lastGen = null;
+let lastBuilt = null;
+let lastFinds = -1;
 
 function render(s) {
+  // --- the status card: the only three numbers on screen ---
   $('clock').textContent = s.clock;
-  // The phase is named in ink and coloured by the dot on the terrarium — the
-  // sky's own colour is near-white at midday and vanishes on paper.
   $('phase').textContent = s.env.label;
-  $('gen').textContent = s.generation;
   $('alive').textContent = `${s.alive}/${s.total}`;
-  $('seedOut').textContent = s.seed;
-  $('trend').textContent = s.trend;
-  $('spread').textContent = s.diversity;
-  // The day/night phase reads as a colour on the dirt rather than a bar.
+  // The day/night phase reads as a colour on the card as well as a word.
   $('sunDot').style.background = s.env.css;
 
-  // The badge over the terrarium — the generation you are looking at, and the
-  // only number the game shows. It squashes when it moves so a fast-forward is
-  // something you see rather than something you check.
+  // The generation squashes when it moves, so a fast-forward is something you
+  // see rather than something you check.
   if (s.generation !== lastGen) {
     lastGen = s.generation;
-    $('genBadgeNum').textContent = s.generation;
-    bump($('genBadgeNum'));
+    $('gen').textContent = s.generation;
+    bump($('gen'));
   }
+
+  // --- collapsed-sheet summary ---
+  $('hGen').textContent = `gen ${s.generation}`;
+  $('hAlive').textContent = `${s.alive}/${s.total}`;
+  $('hHint').textContent = s.mode === 'burrow'
+    ? 'underground'
+    : (s.selected ? s.selected.name : 'tap a bug');
+
+  // --- things that only earn their place once they say something ---
+  // "too early to say" is not information at first launch, so the line is not
+  // there at first launch.
+  const trend = $('trend');
+  const spread = $('spread');
+  const hasHistory = s.generation > 1;
+  trend.hidden = !hasHistory;
+  spread.hidden = !hasHistory;
+  if (hasHistory) {
+    trend.textContent = s.trend;
+    spread.textContent = s.diversity;
+  }
+
+  $('seedOut').textContent = s.seed;
 
   // A refused breed is a real outcome and says so; anything else clears it.
   const note = $('breedNote');
@@ -110,14 +142,14 @@ function render(s) {
   if (s.breedNote) note.textContent = s.breedNote;
 
   renderSaveNote(s);
-
-  // collapsed-sheet summary
-  $('hClock').textContent = s.clock;
-  $('hPhase').textContent = s.env.label;
-  $('hGen').textContent = s.generation;
-  $('hAlive').textContent = `${s.alive}/${s.total}`;
-
+  renderBuilt(s);
+  renderBurrow(s);
   renderVet(s);
+
+  // The build menu needs to know what is armed and whether a way down exists,
+  // and the mode machine follows the scene if it moved without being asked.
+  build?.sync({ armedId: s.armed, entrance: s.canBurrow });
+  modes?.sync(s.mode);
 
   const b = s.selected;
   // Only rebuild the inspect panel when something meaningful changed — on a
@@ -128,7 +160,12 @@ function render(s) {
   if (sig === lastSel) return;
   lastSel = sig;
 
-  if (!b) { $('inspect').innerHTML = `<p class="muted">${touch ? 'Tap' : 'Click'} a bug.</p>`; return; }
+  $('bugActions').hidden = !b;
+  if (!b) {
+    $('inspect').innerHTML =
+      `<p class="muted small">${touch ? 'Tap' : 'Click'} a bug to get to know it.</p>`;
+    return;
+  }
 
   // Physical facts are free — they are literally drawn on the sprite. Traits
   // are earned. Performance is only ever a phrase, and only once you've seen it.
@@ -148,7 +185,7 @@ function render(s) {
 
   $('inspect').innerHTML = `
     <h3>${esc(b.name)} <span class="kind">${esc(b.kind)}</span>${b.alive ? '' : ' <span class="dead">DOWN</span>'}</h3>
-    <p class="muted small">#${esc(b.tag)} · gen ${b.generation} · ${esc(b.condition)} ·
+    <p class="line">#${esc(b.tag)} · gen ${b.generation} · ${esc(b.condition)} ·
        ${esc(b.vigour)}${b.envenomed ? ' · <span class="envenomed">envenomed</span>' : ''}</p>
     <div class="facts">${facts}</div>
     ${tells}
@@ -174,29 +211,57 @@ function renderSaveNote(s) {
   $('forget').disabled = !s.persists;
 }
 
+/** What you have built, as a list of names. Bundled, not itemised on the HUD. */
+function renderBuilt(s) {
+  const sig = s.built.map((o) => o.id).join(',');
+  if (sig === lastBuilt) return;
+  lastBuilt = sig;
+  $('builtList').innerHTML = s.built.length
+    ? s.built.map((o) => `<span class="fact">${esc(o.name)}</span>`).join('')
+    : '<span class="fact">nothing placed yet</span>';
+}
+
+/** The trip underground: who is down there and what they have turned up. */
+function renderBurrow(s) {
+  if (s.mode !== 'burrow') { lastFinds = -1; return; }
+  const who = s.burrow.bug?.name ?? 'Underground';
+  $('burrowWho').textContent = `${who} is digging`;
+  if (s.burrow.finds.length === lastFinds) return;
+  lastFinds = s.burrow.finds.length;
+  $('burrowFinds').innerHTML = s.burrow.finds
+    .map((f) => `<li>Turned up ${esc(f.said)}.</li>`).join('');
+  $('burrowHint').hidden = s.burrow.finds.length > 0;
+}
+
 /** The vet block: who is away, how long, and whether this one can go in. */
 function renderVet(s) {
   const b = s.selected;
   const away = s.atVet ?? [];
-  const sig = `${b?.id ?? 'none'}|${b?.vet?.state ?? '-'}|${away.map((a) => `${a.id}:${a.remaining}`).join(',')}`;
+  const sig = `${b?.id ?? 'none'}|${b?.vet?.state ?? '-'}|${s.canBurrow}|${s.mode}|` +
+    away.map((a) => `${a.id}:${a.remaining}`).join(',');
   if (sig === lastVet) return;
   lastVet = sig;
 
   const btn = $('vetSend');
+  const down = $('sendDown');
   const state = $('vetState');
   if (!b) {
     btn.disabled = true;
+    down.disabled = true;
     state.textContent = 'pick a bug first';
   } else if (b.vet.state === 'available') {
     btn.disabled = false;
-    state.textContent = `${b.name} can go in`;
+    state.textContent = `The vet can look ${b.name} over. It costs you the bug for a while.`;
   } else if (b.vet.state === 'visiting') {
     btn.disabled = true;
-    state.textContent = 'already there';
+    state.textContent = 'already at the vet';
   } else {
     btn.disabled = true;
-    state.textContent = `${b.name} needs to settle first`;
+    state.textContent = `${b.name} needs to settle before another visit`;
   }
+  // Sending a bug down is only offered once there is somewhere for it to go.
+  down.disabled = !b || !b.alive || s.mode === 'burrow';
+  down.textContent = s.canBurrow ? 'Send down' : 'Dig a way down';
 
   const list = away.length
     ? `<p class="vet-away">Away: ${away.map((a) =>
@@ -323,6 +388,11 @@ function panelOverlap() {
   const canvas = document.querySelector('#canvasHost canvas');
   if (!canvas) return 0;
   const c = canvas.getBoundingClientRect();
+  // A zero-size canvas means the page is not laid out at all — a hidden pane, a
+  // backgrounded tab, a display:none ancestor. The CSS-px -> world-px conversion
+  // below divides by that height, so measuring now would fence the terrarium
+  // down to its 160 px floor and leave it there. Keep the last honest answer.
+  if (c.width < 2 || c.height < 2) return scene.insetBottom;
   const a = document.querySelector('aside').getBoundingClientRect();
   const overlapX = Math.max(0, Math.min(a.right, c.right) - Math.max(a.left, c.left));
   if (overlapX < c.width * 0.5) return 0;      // beside, not over
@@ -375,7 +445,7 @@ function wireViewport() {
   window.visualViewport?.addEventListener('resize', onChange, { passive: true });
 
   // Start collapsed whenever the panel is a sheet: the terrarium is the thing
-  // worth looking at, and the summary row still carries the clock and the count.
+  // worth looking at, and the summary row still carries the gen and the count.
   if (isSheetMode()) collapseSheet();
   syncViewport();
 }
@@ -392,6 +462,50 @@ function wire() {
   wireSwipe();
   $('canvasHost').style.gridArea = '1 / 1';
 
+  /* ---- the three verbs, and the machine that links them ---- */
+
+  build = makeBuildMenu({
+    root: $('buildBody'),
+    title: $('buildTitle'),
+    back: $('buildBack'),
+    onArm: (id) => modes.toPlace(id),
+    onBurrow: () => modes.toBurrow(scene.selected),
+  });
+
+  modes = createModes({
+    scene,
+    build,
+    toast,
+    dom: {
+      screenWatch: $('screenWatch'),
+      screenBuild: $('screenBuild'),
+      screenBurrow: $('screenBurrow'),
+      dock: $('dock'),
+      modeBar: $('modeBar'),
+      modeText: $('modeText'),
+      modeDone: $('modeDone'),
+      build: $('build'),
+      burrow: $('burrow'),
+    },
+    sheet: { expand: expandSheet, isSheet: isSheetMode },
+  });
+
+  $('breed').onclick = () => scene.breed();
+  $('build').onclick = () => (modes.mode === 'watch' ? modes.toBuild() : modes.toWatch());
+  $('burrow').onclick = () => modes.toBurrow(scene.selected);
+  $('modeDone').onclick = () => modes.toWatch();
+  $('surface').onclick = () => modes.toWatch();
+  $('sendDown').onclick = () => modes.toBurrow(scene.selected);
+
+  $('pause').onclick = (e) => {
+    const running = scene.matter.world.enabled;
+    scene.matter.world.enabled = !running;
+    setPaused(e.currentTarget, running);
+  };
+
+  $('ff').onclick = () => scene.fastForward(Number($('ffN').value) || 10);
+  $('reseed').onclick = () => scene.reseed();
+
   $('vetSend').onclick = () => {
     const bug = scene.selected;
     if (!bug) return;
@@ -401,25 +515,18 @@ function wire() {
     scene.sendToVet(bug);
   };
 
-  $('breed').onclick = () => scene.breed();
-  $('ff').onclick = () => scene.fastForward(Number($('ffN').value) || 10);
-  $('reseed').onclick = () => scene.reseed();
-  $('pause').onclick = (e) => {
-    const running = scene.matter.world.enabled;
-    scene.matter.world.enabled = !running;
-    setPaused(e.currentTarget, running);
-  };
-
   // Starting over throws the saved run away, so it asks first — an hour of
   // watching is exactly the thing you cannot get back.
   $('forget').onclick = () => {
     const ok = window.confirm(
       'Start over? This clears the terrarium and everything you have learned about it.');
     if (!ok) return;
+    modes.toWatch();
     scene.forgetRun();
     lastSel = null;
     lastVet = null;
     lastSave = null;
+    lastBuilt = null;
     vetCard = null;
     $('vetAway').innerHTML = '';
   };
@@ -444,6 +551,8 @@ function wire() {
       if (ev.target.matches('input, select, textarea')) return;
       if (ev.key === 'b') scene.breed();
       if (ev.key === 'r') scene.reseed();
+      // Escape always means "put it down and come back up".
+      if (ev.key === 'Escape' && modes.mode !== 'watch') modes.toWatch();
     });
   }
 
@@ -472,5 +581,6 @@ function wire() {
   stage.addEventListener('gesturestart', (e) => e.preventDefault());
 
   // Press feedback that survives a touch — see src/ui/chrome.js.
-  pressable('.chip');
+  pressable('.btn');
+  modes.refresh();
 }

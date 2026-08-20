@@ -37,10 +37,22 @@ await p.tap('#breed'); await p.waitForTimeout(700);
 const g1 = await p.textContent('#gen');
 console.log(`breed tap    gen ${g0} -> ${g1}`);
 
-// pop slider still reachable & functional
+// pause toggles (the button is icon-only now, so read what it announces)
 await p.tap('#pause'); await p.waitForTimeout(300);
-console.log('pause label  ', await p.textContent('#pause'));
+console.log('pause label  ', await p.getAttribute('#pause','aria-label'));
 await p.tap('#pause'); await p.waitForTimeout(300);
+
+// build -> place a burrow entrance -> go under -> come back up
+await p.tap('#build'); await p.waitForTimeout(400);
+await p.tap('.tile.feature'); await p.waitForTimeout(300);
+const cb = await p.locator('canvas').boundingBox();
+await p.tap('canvas', { position:{ x: cb.width*0.5, y: cb.height*0.4 } }); await p.waitForTimeout(400);
+await p.tap('#modeDone'); await p.waitForTimeout(300);
+await p.tap('#burrow'); await p.waitForTimeout(600);
+console.log('burrow mode  ', await p.evaluate(()=>window.__terrarium.scene.mode));
+await p.screenshot({path:'shots/burrow.png'});
+await p.tap('#surface'); await p.waitForTimeout(500);
+console.log('surfaced     ', await p.evaluate(()=>window.__terrarium.scene.mode));
 
 // run a while to catch leaks / late errors
 await p.waitForTimeout(4000);

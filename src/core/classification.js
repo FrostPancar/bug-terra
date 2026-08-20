@@ -288,7 +288,10 @@ export const CLASS_TREE = {
     blurb: 'Ten legs on a body built in repeating parts.',
   },
 
-  /* ---- tier 2: Coleoptera ---- */
+  /* ---- Coleoptera: tier 2 under Beetle, except the Firefly ----
+     The Firefly is grouped here because its ORDER is Coleoptera, but it hangs
+     off Larva at tier 1 — see the note on the node. Order and parent are
+     allowed to disagree; that is the same seam hybrids fall out of. */
   armored_beetle: {
     taxon: 'Armoured Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Ironclad', status: 'coded',
@@ -345,18 +348,44 @@ export const CLASS_TREE = {
   carabidae: {
     taxon: 'Ground Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Coursing', status: 'drafted',
+    // Carabidae is a beetle family, so this stays under Coleoptera — the same
+    // call §5 made for the Weevil. That means the window has to fit INSIDE
+    // Beetle's rather than argue with it: the blurb already says "quick FOR A
+    // BEETLE", and long-for-a-beetle is the top of Beetle's leg range, not a
+    // mantis's legs. Drafted as leg_length [0.60, 1] against a parent capped at
+    // 0.45, which is a contradiction and made the taxon unreachable.
+    //
+    // Carapace was drafted at [0.35, 0.6] too, which merged with Beetle's
+    // [0.55, 1] down to a 0.05-wide slice — legal, but so narrow that nothing
+    // would ever breed into it. Widened to a real "moderate armour" band.
     window: {
-      leg_length: [0.6, 1], aggression: [0.6, 1], carapace_thickness: [0.35, 0.6],
+      leg_length: [0.34, 0.45], aggression: [0.6, 1], carapace_thickness: [0.55, 0.75],
     },
     locks: [], unlocks: ['leg_length', 'aggression'],
     specialty: { key: 'run_down', name: 'Run Down', mods: { speed: 1.10 } },
     blurb: 'Predatory and quick for a beetle. Chases rather than waits.',
   },
   lampyridae: {
-    taxon: 'Firefly', tier: 2, parent: 'beetle', order: 'Coleoptera',
+    // Re-parented off Beetle. Its whole idea is the negation of its parent's:
+    // "gave up its shell" against a chassis whose single defining gene is
+    // carapace >= 0.55. Narrowing it to fit would delete the concept, and
+    // loosening Beetle's floor would delete Beetle. So it hangs off Larva and
+    // keeps `order: Coleoptera` — the order field carries the real-world
+    // relationship while the chassis tree parents by gene compatibility, the
+    // same split §5 already made for Arachnid and Myriapod.
+    //
+    // Tightened while moving. Standing at tier 1 on three loose genes, it
+    // started taking genomes off the Wasp — and a bug with a stinger is better
+    // described by the stinger than by its markings. `wing_type: 1` is elytra,
+    // the hard wing cases, which is what still makes this a beetle underneath
+    // the soft body and what a wasp categorically does not have. A kind gene
+    // carrying the taxonomic weight, the same way the Rhinoceros Beetle pins
+    // horn_type.
+    taxon: 'Firefly', tier: 1, parent: 'larva', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Glimmering', status: 'drafted',
     window: {
-      wing_count: [2, 4], carapace_thickness: [0, 0.35], pattern_contrast: [0.6, 1],
+      wing_count: [2, 4], wing_type: 1, carapace_thickness: [0, 0.35],
+      pattern_contrast: [0.7, 1],
     },
     locks: [], unlocks: ['pattern_contrast', 'wing_area'],
     specialty: { key: 'cold_light', name: 'Cold Light', mods: { vision: 1.15, camouflage: 0.85 } },
@@ -457,11 +486,24 @@ export const CLASS_TREE = {
     blurb: 'Defence-curl instead of venom. The inverse of a centipede.',
   },
 
-  /* ---- tier 2: Lepidoptera ---- */
+  /* ---- Lepidoptera: the Butterfly, now a sibling of the Moth rather than a
+     child of it. Same order, incompatible surface — see the note on the node. */
   butterfly: {
-    taxon: 'Butterfly', tier: 2, parent: 'moth', order: 'Lepidoptera',
+    // Re-parented off Moth, for the same reason the Firefly left Beetle: the
+    // blurb promises "opposite surface entirely" and Moth's identity includes
+    // setae >= 0.75, so smooth-and-under-a-furred-parent cannot both be true.
+    //
+    // "Same chassis as a moth" is now STATED rather than inherited — wing_area
+    // and mandible_size are copied onto this node explicitly. That keeps the
+    // promise the blurb makes, and it keeps the §4 hard wall intact: a Butterfly
+    // still sits on the far side of wing_area >= 0.85, so no Beetle lineage can
+    // reach it without crossing the same gap it always had to.
+    taxon: 'Butterfly', tier: 1, parent: 'larva', order: 'Lepidoptera',
     clade: 'hexapod', adjective: 'Painted', status: 'drafted',
-    window: { pattern_contrast: [0.75, 1], saturation: [0.65, 1], setae: [0, 0.3] },
+    window: {
+      wing_area: [0.85, 1], mandible_size: [0, 0.20], setae: [0, 0.3],
+      pattern_contrast: [0.75, 1], saturation: [0.65, 1],
+    },
     locks: [], unlocks: ['hue', 'pattern'],
     specialty: { key: 'flash_colour', name: 'Flash Colour', mods: { agility: 1.10, camouflage: 0.85 } },
     blurb: 'Same chassis as a moth, opposite surface entirely.',

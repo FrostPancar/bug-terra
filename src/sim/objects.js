@@ -130,6 +130,14 @@ export const OBJECT_SPECS = {
     traversal: { climbable: true },
     env: { light: -0.25 },
   },
+  burrow_entrance: {
+    id: 'burrow_entrance', name: 'Burrow Entrance', category: 'traversal', radius: 0, footprint: 26,
+    // The one object that leads OUT of the terrarium. Placing it is what makes
+    // burrow mode reachable at all — see src/ui/modes.js, which will not let you
+    // go under until one of these exists to go under through.
+    blurb: 'A hole in the floor. Send a bug down it to dig the dirt zone.',
+    traversal: { link: 'dirt', instant: false, entrance: true },
+  },
 
   /* ---------------------------------------------------------- environment */
   heat_lamp: {

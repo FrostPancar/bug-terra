@@ -43,25 +43,60 @@ is inlined.
 ```bash
 npm install        # only needed for the single-file build + tests
 npm run dev        # serves on http://localhost:5173
-npm test           # 134 tests over genes / stats / breeding / classification /
-                   # objects / world / hidden / session
+npm test           # 147 tests over genes / stats / breeding / classification /
+                   # parts / objects / world / hidden / session
 npm run build      # re-embeds src/assets/ and regenerates dist/terrarium.html
 ```
+
+**The builder:** with a dev server on the repo root, open
+`/tools/builder.html` — it imports `src/` live, so it can never drift from the
+game. For a copy that opens straight off disk with no server:
+
+```bash
+npm run build:builder     # -> dist/builder.html, self-contained, 133 kB
+```
+
+Load a taxon or an archetype, tap parts on and off, drag the genes, and export
+the combination as code — see [BUILDER.md](./BUILDER.md).
 
 ---
 
 ## Controls
 
+The HUD shows three verbs and three numbers. Everything else is one tap down,
+inside a section you open on purpose — see [Modes](#modes) below.
+
 | Action | How |
 |---|---|
 | Inspect a bug | click it — you get what you've earned, in words |
-| See what a bug actually is | `Take it in` — the Vet Station, visually only |
-| Breed one generation | `Breed` button, or `b` |
-| Fast-forward N generations | `Fast-forward` (headless, then respawns) |
-| New random population | `Reseed`, or `r` |
-| Change selection pressure | the `breeding for` dropdown |
-| Watch a full day in minutes | `time scale` slider (1 = real time) |
-| Throw the run away | `Start over` in the panel — it asks first |
+| See what a bug actually is | `Vet` on the bug card — visually only |
+| Breed one generation | `Breed` in the dock, or `b` |
+| Put something in the terrarium | `Build` → pick a category → pick a thing → tap the floor |
+| Go underground | `Burrow`, `Send down` on the bug card, or tap a placed entrance |
+| Come back up | `Surface` / `Come back up`, or `Esc` |
+| Fast-forward N generations | `Breeding` section → `Fast-forward` |
+| Change selection pressure | `Breeding` section → the `breeding for` dropdown |
+| Watch a full day in minutes | `Terrarium` section → `time scale` (1 = real time) |
+| New random population | `This run` → `New population`, or `r` |
+| Throw the run away | `This run` → `Start over` — it asks first |
+
+### Modes
+
+Three, and one state machine — `src/ui/modes.js` — owns the moves between them.
+
+```
+WATCH ──[Build]──▶ BUILD ──[pick a thing]──▶ PLACE ──[tap the floor]──┐
+  ▲                  │  ▲                      │  (stays armed, so    │
+  │                  │  └────────[Back]────────┘   you can place      │
+  ├──────[Done]──────┴─────────────────────────────  several)  ◀──────┘
+  │
+  └──[Surface]── BURROW ◀──[Burrow]── needs a placed Burrow Entrance + a bug
+```
+
+The gate is deliberate: the dirt zone is reached **through a thing you built**.
+Asking to burrow with no entrance does not refuse — it drops you into the build
+menu already holding one. In the scene, the same three modes decide what a tap
+means: steer, place, or select a bug (`TerrariumScene.handleClick`).
 
 ---
 
@@ -232,6 +267,12 @@ against a `LocalAuthority` stand-in that runs in-process; a real transport
 swaps in as one object. Chunks are implicit-solid until first dig, so an
 untouched dirt zone costs zero bytes. See [WORLD.md](./WORLD.md).
 
+`src/sim/burrow.js` is how you actually get in there: place a Burrow Entrance,
+send a bug down it, and drag to steer. Dig radius and cadence come off `grip`,
+`attack` and `attackRate`, so a bug that was already good is already good
+underground — no fifteenth stat. Finds come back as sentences, never as loot
+counts.
+
 ---
 
 ## Tests
@@ -307,9 +348,11 @@ src/core/archetypes.js     eight body plans + seeding + nearest-archetype label
 src/core/genes.schema.json JSON Schema for the genome
 src/core/stats.js          morphology + pure stat formulas + fitness presets
 src/core/classification.js clade brackets + taxonomy tree (second pure read)
+src/core/taxonBuild.js     the inverse of classify(): taxon -> a genome that is one
 src/core/impressions.js    stats -> words; the no-numbers vocabulary
 src/core/breeding.js       crossover, mutation, selection, generation loop
 src/render/bugArt.js       procedural canvas art + spritesheet baking
+src/render/partLibrary.js  every part the renderer draws + the genes behind each
 src/sim/animator.js        animation state machine
 src/sim/dayNight.js        real-clock day/night + behaviour modifiers
 src/sim/bug.js             entity: stats -> body, animator, behaviour
@@ -317,26 +360,32 @@ src/sim/knowledge.js       what the player has earned + the Vet Station
 src/sim/save.js            the run, kept across reloads
 src/sim/objects.js         placeable object catalog + field aggregation
 src/sim/plants.js          plant lifecycle FSM + three upkeep meters
+src/sim/burrow.js          burrow mode: the dirt zone, dug and drawn
 src/sim/terrarium.js       Phaser scene, decor, garden, generation control
 src/world/chunks.js        dirt-zone chunks, dig/fill ops, regrowth, POIs
 src/world/grid.js          cell topology + spiral assignment
 src/world/gates.js         gateOpen / pvpEnabled and the entry rules
 src/world/discovery.js     falloff curve, dig power, borrowed holes
 src/world/index.js         DirtWorld client + LocalAuthority stand-in
-src/ui/chrome.js           flat control behaviour (press, pause, badge)
+src/ui/chrome.js           flat control behaviour (press, pause, toasts, bump)
+src/ui/build.js            the two-step build menu over the object catalog
+src/ui/modes.js            watch / build / place / burrow — the state machine
 src/assets/dirt.jpg        the floor photograph
 src/assets/dirt.js         GENERATED data URI — see tools/embed-assets.mjs
 src/main.js                boot + HUD (cannot render a number)
 GENES.md                   full gene and archetype reference
 TAXONOMY.md                the classification tree, and what it resolved
+BUILDER.md                 the bug builder tool and the part catalogue
 OBJECTS.md                 terrarium objects + the plant upkeep loop
 WORLD.md                   multiplayer world, dirt zone, sync authority
 HIDDEN.md                  the no-numbers rule and how it's enforced
 CONCEPT.md                 the plain-language pitch, no source-reading required
 DEPLOY.md                  build + deploy notes
 THIRD-PARTY.md             ported/vendored code and licences
-tests/*.test.js            134 tests across six files
+tests/*.test.js            147 tests across seven files
 tools/build-single.mjs     bundles + inlines into dist/terrarium.html
+tools/builder.html         the bug builder — taxon builds, part library, export
+tools/build-builder.mjs    inlines the builder's modules -> dist/builder.html
 ```
 
 ---
@@ -451,23 +500,45 @@ palette lives twice, once as CSS custom properties in `index.html` and once as
 different formats; both are pulled off the photograph and the bug art rather
 than invented beside them.
 
+Every control is one control: a **filled rounded rectangle, bold Helvetica,
+uppercase, one hard offset shadow**, at a different size and colour depending on
+what it does. There is no second button style anywhere — the dock, the panel
+sections, the build tiles and the mode banner are all that shape.
+
 The chrome is three things and no more:
 
 | Where | What |
 |---|---|
-| top left | a yellow badge with the generation number, and a bug's eye |
+| top left | one card: time of day, generation, how many are still standing |
 | top right | pause |
-| bottom | Breed · Fast-forward · Reseed |
+| bottom | Breed · Build · Burrow — replaced by a mode banner while placing or underground |
 
-The generation counter is the **only** number the game shows, and it is about
-the run rather than about any animal — the no-numbers rule is untouched, and
-`tests/hidden.test.js` still enforces it. The day/night phase is a coloured dot
-beside the badge instead of a label, because the sky's own colour is nearly
-white at midday and disappears against paper.
+Those three numbers are the **only** numbers the game shows, and every one of
+them is about the run rather than about any animal — the no-numbers rule is
+untouched, and `tests/hidden.test.js` still enforces it. The day/night phase is
+a coloured dot on the card as well as a word, because the sky's own colour is
+nearly white at midday and disappears against paper.
+
+### What a first launch shows
+
+The rule for the panel is that a player who has just arrived should see the
+terrarium, the animal they tapped, and the three things they can do. So:
+
+- The **bug card** is the panel, and the two things you can do to a bug — take
+  it to the vet, send it down — are *on* it rather than in a block of their own.
+- Tuning (`breeding for`, fast-forward, population, time scale), the seed, and
+  starting over are inside three closed accordions. Each holds a whole job.
+- Lines that cannot say anything yet do not appear at all. "Too early to say"
+  and "nothing to compare yet" were the pool trend and spread with no history
+  behind them; they now show up at generation two, when they mean something.
+- The build catalog is twenty-seven things, shown as six categories that open
+  into four or five. One flat list is a catalogue; two steps is a decision.
 
 Structures on the floor are drawn as damp worked earth with a wash of their
-category's colour, not as solid discs. At full opacity they read as stray UI
-someone left lying on the photograph.
+category's colour, not as solid discs — at full opacity they read as stray UI
+someone left lying on the photograph. The Burrow Entrance is the exception and
+is drawn as what it is: a dark mouth with a yellow lip, because it is a hole
+rather than a marking, and because you have to be able to find it to tap it.
 
 ### What happened to the glass
 

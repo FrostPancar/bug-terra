@@ -14,7 +14,8 @@
     "serve": "node tools/serve.mjs deploy",
     "test:viewport": "node tools/viewport-test.mjs",
     "test:interact": "node tools/interaction-test.mjs",
-    "digest": "node tools/make-digest.mjs"
+    "digest": "node tools/make-digest.mjs",
+    "build:builder": "node tools/build-builder.mjs"
   },
   "devDependencies": {
     "phaser": "3.80.1",

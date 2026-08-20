@@ -16,9 +16,14 @@
 
      The floor is a real photo of dirt (src/assets/dirt.jpg) and the bugs are
      flat vector shapes with no outlines and no gradients. The chrome follows
-     the same rules: filled shapes, hard edges, and shadows that are a solid
-     offset rather than a blur — a sticker laid on the scene, not a pane of
-     glass floating over it.
+     the same rules: filled rounded rectangles, hard edges, bold Helvetica, and
+     shadows that are a solid offset rather than a blur — stickers laid on the
+     scene, not panes of glass floating over it.
+
+     What the chrome SHOWS is governed by one rule: at first launch a player
+     should see the terrarium, the animal they tapped, and the three things they
+     can do. Everything else — tuning, seeds, trends, starting over — lives one
+     tap down, inside a section they open on purpose.
      ==================================================================== */
   :root {
     /* pulled off the floor photograph and the bug art, not invented beside them */
@@ -28,6 +33,8 @@
     --blue: #2f52c4;
     --yellow: #f2be3c;
     --green: #1e7b5f;
+    --purple: #7c4bb8;
+    --leaf: #6f7f43;
     --cream: #efe2c9;
     --ink: #17110d;
 
@@ -37,7 +44,7 @@
     --muted: #8a7050;
     --line: #d9c5a1;
 
-    --sheet: 46vh;              /* expanded bottom-sheet height on phones */
+    --sheet: 52vh;              /* expanded bottom-sheet height on phones */
     --sheet-now: 14px;          /* how much panel is below the dock, per layout */
     --safe-b: env(safe-area-inset-bottom, 0px);
     --safe-t: env(safe-area-inset-top, 0px);
@@ -47,8 +54,19 @@
     /* the one shadow in the whole design: solid, offset, never blurred */
     --drop: 0 4px 0 rgba(23, 17, 13, .26);
     --drop-sm: 0 3px 0 rgba(23, 17, 13, .22);
+
+    /* Helvetica, bold, everywhere. No network request for a font — the
+       single-file build has to stay a single file. */
+    --font: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+    --r-lg: 18px;
+    --r-md: 14px;
+    --r-sm: 10px;
   }
   * { box-sizing: border-box; }
+  /* Every control here sets its own `display`, which beats the UA sheet's
+     `[hidden] { display: none }`. The HUD hides things by attribute constantly
+     — the dock, the mode banner, half the panel — so the attribute wins. */
+  [hidden] { display: none !important; }
 
   html, body {
     margin: 0; padding: 0;
@@ -58,10 +76,7 @@
     text-size-adjust: 100%;
   }
   body {
-    /* Rounded and geometric, to match the bug art. System faces only — the
-       single-file build must not make a network request for a font. */
-    font: 500 14px/1.5 ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN",
-          Avenir, "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 700 14px/1.45 var(--font);
     height: 100vh;                        /* fallback for older Safari */
     height: -webkit-fill-available;
     height: 100dvh;                       /* the one that actually behaves on iOS */
@@ -70,7 +85,7 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 330px;
+    grid-template-columns: minmax(0, 1fr) 340px;
     grid-template-rows: 100%;
   }
 
@@ -97,6 +112,14 @@
   #canvasHost {
     display: grid; place-items: center;
     min-width: 0; min-height: 0; overflow: hidden;
+    position: relative; z-index: 1;      /* above the letterbox wash, below the HUD */
+  }
+  /* Underground, the bands the FIT letterbox leaves beside the canvas would
+     otherwise stay lit like the surface — a bright strip of daylight either
+     side of a tunnel. This darkens the backdrop, not the canvas. */
+  body.is-underground #stage::after {
+    content: ''; position: absolute; inset: 0; z-index: 0;
+    background: rgba(36, 23, 8, .82); pointer-events: none;
   }
   #canvasHost canvas { display: block; max-width: 100%; max-height: 100%; }
 
@@ -111,112 +134,138 @@
   }
   #hud > * { pointer-events: auto; }
 
-  /* ------------------------------------------------- generation badge -- */
-  /* The one number the terrarium is willing to show you: which generation you
-     are looking at. Everything about the ANIMALS is still words only. */
-  #genBadge {
+  /* ------------------------------------------------------ status card -- */
+  /* Three readings, one card. The clock, the generation and how many are still
+     standing are the only numbers a first-time player needs, and bundling them
+     into a single object means the top of the screen holds one thing instead
+     of three. */
+  #status {
     position: absolute; top: calc(14px + var(--safe-t)); left: calc(14px + var(--safe-l));
-    width: 62px; height: 62px; border-radius: 50%;
-    background: var(--yellow);
+    display: flex; align-items: stretch; gap: 0;
+    background: var(--cream); color: var(--ink);
+    border-radius: var(--r-md);
     box-shadow: var(--drop);
-    display: grid; place-items: center;
+    overflow: hidden;
     pointer-events: none;
   }
-  #genBadgeNum {
-    font-size: 27px; font-weight: 800; line-height: 1;
-    color: var(--blue);
-    font-variant-numeric: tabular-nums;
-    transform-origin: 50% 50%;
+  #status .cell {
+    display: flex; flex-direction: column; justify-content: center; gap: 1px;
+    padding: 7px 12px;
   }
-  #genBadgeNum.is-bumped { animation: pop .34s cubic-bezier(.34, 1.7, .5, 1); }
-  @keyframes pop { 0% { transform: scale(1); } 42% { transform: scale(1.32); } 100% { transform: scale(1); } }
-
-  /* the little eye clinging to the badge — the same eye the bugs wear */
-  #genEye {
-    position: absolute; right: -7px; bottom: 6px;
-    width: 23px; height: 23px; border-radius: 50%;
-    background: var(--red);
-    display: grid; place-items: center;
+  #status .cell + .cell { border-left: 2px solid rgba(23, 17, 13, .12); }
+  #status small {
+    font-size: 9px; font-weight: 800; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--dirt-deep);
   }
-  #genEye::before {
-    content: ''; width: 15px; height: 15px; border-radius: 50%; background: #fff;
+  #status b {
+    font-size: 17px; font-weight: 800; line-height: 1.05;
+    font-variant-numeric: tabular-nums; letter-spacing: -.01em;
   }
-  #genEye::after {
-    content: ''; position: absolute; width: 7.5px; height: 7.5px;
-    border-radius: 50%; background: var(--ink);
-    /* the pupil sits low-left, which is what makes it read as looking at you */
-    transform: translate(-1px, 1px);
-  }
-
-  /* the phase of the real-clock day, as a colour rather than a label */
+  #status b.is-bumped { animation: pop .34s cubic-bezier(.34, 1.7, .5, 1); }
+  @keyframes pop { 0% { transform: scale(1); } 42% { transform: scale(1.3); } 100% { transform: scale(1); } }
+  /* the phase of the real-clock day, as a colour rather than a paragraph */
   #sunDot {
-    position: absolute; top: calc(15px + var(--safe-t)); left: calc(86px + var(--safe-l));
-    width: 16px; height: 16px; border-radius: 50%;
-    background: var(--cream);
-    box-shadow: var(--drop-sm);
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--cream); margin-right: 5px; vertical-align: baseline;
+    box-shadow: inset 0 0 0 1.5px rgba(23, 17, 13, .25);
     transition: background .6s linear;
-    pointer-events: none;
   }
 
-  /* ------------------------------------------------------ flat buttons -- */
-  .chip {
+  /* ------------------------------------------------- the button system -- */
+  /* Flat fill, rounded rectangle, bold Helvetica, one hard offset shadow.
+     Every button in the game is this button at a different size and colour. */
+  .btn {
     -webkit-appearance: none; appearance: none;
-    border: 0; padding: 0; margin: 0;
-    /* the label under each button is positioned against ITS button, not the
-       HUD — without this all three stack in the same place */
-    position: relative;
-    border-radius: 50%;
-    display: grid; place-items: center;
-    cursor: pointer;
-    touch-action: manipulation;
-    color: var(--cream);
+    border: 0; margin: 0;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 0 16px; min-height: 46px;
+    border-radius: var(--r-md);
+    font: 800 13px/1 var(--font);
+    letter-spacing: .07em; text-transform: uppercase;
+    color: var(--cream); background: var(--dirt-deep);
+    cursor: pointer; touch-action: manipulation;
     box-shadow: var(--drop);
     transition: transform .12s cubic-bezier(.34, 1.5, .5, 1), box-shadow .12s ease;
   }
-  .chip svg {
-    width: 24px; height: 24px;
-    fill: currentColor; stroke: none;
-    pointer-events: none;
-  }
-  .chip.is-pressed { transform: translateY(4px); box-shadow: 0 0 0 rgba(23,17,13,.26); }
-  .chip:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
-  @media (hover: hover) { .chip:hover { transform: translateY(-1px); } }
+  .btn svg { width: 20px; height: 20px; fill: currentColor; pointer-events: none; flex: 0 0 auto; }
+  .btn.is-pressed, .btn:active { transform: translateY(4px); box-shadow: 0 0 0 rgba(23, 17, 13, .26); }
+  .btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  @media (hover: hover) { .btn:not(:disabled):hover { transform: translateY(-1px); } }
+  .btn:disabled { opacity: .42; box-shadow: none; transform: none; cursor: default; }
+
+  .btn.red    { background: var(--red); }
+  .btn.blue   { background: var(--blue); }
+  .btn.green  { background: var(--green); }
+  .btn.yellow { background: var(--yellow); color: var(--ink); }
+  .btn.purple { background: var(--purple); }
+  .btn.leaf   { background: var(--leaf); }
+  .btn.cream  { background: var(--cream); color: var(--dirt-deep); }
+  .btn.paper  { background: var(--paper-2); color: var(--text); }
+
+  .btn.sm { min-height: 38px; padding: 0 12px; font-size: 11.5px; border-radius: var(--r-sm); }
+  .btn.xs { min-height: 30px; padding: 0 10px; font-size: 10.5px; border-radius: 8px; gap: 5px;
+            box-shadow: var(--drop-sm); }
+  .btn.icon { width: 52px; min-height: 52px; padding: 0; }
+  .btn.wide { width: 100%; }
 
   #pause {
     position: absolute; top: calc(14px + var(--safe-t)); right: calc(14px + var(--safe-r));
-    width: 62px; height: 62px;
     background: var(--blue); color: var(--yellow);
   }
   #pause[aria-pressed="true"] { background: var(--green); }
 
-  /* the working controls, in a row along the bottom over the dirt */
+  /* ---------------------------------------------------------- the dock -- */
+  /* The three verbs. Nothing else is a top-level action, because nothing else
+     is something you do to the whole terrarium. */
   #dock {
     position: absolute; left: 50%; transform: translateX(-50%);
-    /* +30 rather than +18: the labels hang BELOW each button, and at +18 they
-       clipped the sheet's rounded top edge on a phone. */
-    bottom: calc(var(--sheet-now) + 30px);
-    display: flex; gap: 20px; align-items: flex-start;
-    pointer-events: none;
+    bottom: calc(var(--sheet-now) + 16px);
+    display: flex; gap: 10px; align-items: center;
     transition: bottom .28s cubic-bezier(.4, 0, .2, 1);
   }
-  #dock .chip { pointer-events: auto; width: 56px; height: 56px; }
-  #breed { background: var(--red); }
-  #ff { background: var(--green); }
-  #reseed { background: var(--cream); color: var(--dirt-deep); }
+  #dock .btn { box-shadow: var(--drop); }
 
-  .chip span {
-    position: absolute; top: calc(100% + 7px); left: 50%;
-    transform: translateX(-50%);
-    font-size: 11px; font-weight: 700; letter-spacing: .01em;
-    color: var(--cream); white-space: nowrap; pointer-events: none;
-    /* these labels sit on a photograph, so they carry their own contrast */
-    text-shadow: 0 2px 0 rgba(23, 17, 13, .55);
+  /* ------------------------------------------------------- mode banner -- */
+  /* While you are placing something or underground, the dock steps aside and
+     this says what mode you are in and how to leave it. One banner, never both. */
+  #modeBar {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--sheet-now) + 16px);
+    display: flex; align-items: center; gap: 10px;
+    max-width: min(560px, calc(100% - 28px));
+    padding: 8px 8px 8px 14px;
+    background: var(--ink); color: var(--cream);
+    border-radius: var(--r-lg); box-shadow: var(--drop);
+    transition: bottom .28s cubic-bezier(.4, 0, .2, 1);
   }
+  #modeBar[hidden] { display: none; }
+  #modeText { font-size: 12px; font-weight: 700; line-height: 1.25; }
+  #modeText b { display: block; font-size: 12.5px; font-weight: 800;
+                letter-spacing: .09em; text-transform: uppercase; color: var(--yellow); }
+
+  /* ------------------------------------------------------------ toasts -- */
+  /* Finds and refusals, said once and gone. Never a log the player has to read. */
+  #toasts {
+    position: absolute; top: calc(76px + var(--safe-t)); left: 50%;
+    transform: translateX(-50%);
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
+    pointer-events: none; width: max-content; max-width: calc(100% - 28px);
+  }
+  .toast {
+    background: var(--ink); color: var(--cream);
+    padding: 8px 14px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; box-shadow: var(--drop-sm);
+    animation: toast-in .22s ease both;
+  }
+  .toast.rare { background: var(--yellow); color: var(--ink); }
+  .toast.uncommon { background: var(--purple); }
+  .toast.bad { background: var(--red); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } }
 
   /* ------------------------------------------------------------ panel -- */
   /* A sheet of paper laid on the dirt. Opaque, with the same hard shadow the
-     buttons use — the old multiply scrim was built to dissolve a dark panel
-     into a dark scene, and there is no dark scene any more. */
+     buttons use. It shows exactly one screen at a time — watch, build, or
+     underground — because those are three different jobs. */
   aside {
     grid-column: 2;
     background: var(--paper);
@@ -224,73 +273,108 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: calc(16px + var(--safe-t)) 16px calc(40px + var(--safe-b));
+    padding: calc(16px + var(--safe-t)) 14px calc(40px + var(--safe-b));
     min-height: 0;
   }
 
-  h1 { font-size: 16px; font-weight: 800; letter-spacing: .01em;
-       margin: 0 0 4px; color: var(--red); }
-  h3 { font-size: 15px; font-weight: 800; margin: 0 0 2px; color: var(--text); }
-  h4 { font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
-       color: var(--muted); margin: 14px 0 6px; font-weight: 800; }
+  h1 { font-size: 15px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+       margin: 0 0 10px; color: var(--red); }
+  h3 { font-size: 16px; font-weight: 800; margin: 0 0 2px; color: var(--text);
+       letter-spacing: -.01em; }
   .muted { color: var(--muted); }
   .small { font-size: 11.5px; }
   .dead { color: var(--red); font-size: 11px; font-weight: 800; }
-  .kind { font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  .kind { font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
           color: var(--paper); background: var(--green);
-          border-radius: 999px; padding: 3px 8px; margin-left: 6px;
-          vertical-align: middle; font-weight: 800; }
-  .envenomed { color: var(--green); font-weight: 700; }
+          border-radius: 6px; padding: 3px 7px; margin-left: 6px;
+          vertical-align: 2px; font-weight: 800; }
+  .envenomed { color: var(--green); font-weight: 800; }
 
-  .block { padding: 0 0 12px; margin-bottom: 12px;
-           border: none; border-bottom: 2px solid var(--line); }
-  .block:last-child { border-bottom: none; }
+  .screen[hidden] { display: none; }
 
-  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
-  .stat-grid div { display: flex; justify-content: space-between; gap: 6px; }
-  .stat-grid span:first-child { color: var(--muted); }
-  .stat-grid b { font-variant-numeric: tabular-nums; }
+  /* --------------------------------------------------------- bug card -- */
+  /* The animal you tapped, and the two things you can do with it. This is the
+     panel's whole job at first launch. */
+  #bugCard {
+    background: var(--paper-2); border-radius: var(--r-lg);
+    padding: 13px 13px 14px; box-shadow: var(--drop-sm);
+    margin-bottom: 12px;
+  }
+  #bugCard .line { font-size: 11.5px; font-weight: 700; color: var(--muted); margin: 3px 0 0; }
+  #bugActions { display: flex; gap: 7px; margin-top: 11px; }
+  #bugActions .btn { flex: 1 1 0; }
+  .vet-state { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin-top: 7px; }
+
+  /* The bug is described, not tabulated. See src/core/impressions.js. */
+  .tells { list-style: none; margin: 9px 0 0; padding: 0; }
+  .tells li { position: relative; padding: 4px 0 4px 16px; font-size: 13px;
+              font-weight: 600; line-height: 1.4; }
+  .tells li::before {
+    content: ''; position: absolute; left: 2px; top: 10px;
+    width: 7px; height: 7px; border-radius: 2px; background: var(--red);
+  }
+
+  .facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+  .fact { font-size: 10.5px; font-weight: 800; letter-spacing: .03em;
+          background: var(--paper); border-radius: 7px; padding: 4px 8px; color: var(--muted); }
+  .fact.trait { color: var(--cream); background: var(--blue); }
+
+  .familiar { font-size: 11.5px; color: var(--muted); font-style: italic; margin-top: 9px; }
+  .moments { font-size: 11.5px; color: var(--muted); margin: 6px 0 0; padding-left: 16px; font-weight: 600; }
+  .unknown { font-size: 12.5px; color: var(--muted); line-height: 1.5; font-weight: 600; margin: 8px 0 0; }
+  .note { font-size: 11.5px; color: var(--red); font-weight: 800; margin: 8px 0 0; }
+
+  /* ------------------------------------------------------- accordions -- */
+  /* Everything that is not the animal in front of you. Closed at launch, and
+     each one holds a whole job rather than a stray control. */
+  .sec { border-radius: var(--r-md); background: var(--paper-2);
+         margin-bottom: 8px; overflow: hidden; box-shadow: var(--drop-sm); }
+  .sec > summary {
+    display: flex; align-items: center; gap: 9px;
+    padding: 12px 13px; cursor: pointer; list-style: none;
+    font: 800 11.5px/1 var(--font); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--text); min-height: 44px;
+  }
+  .sec > summary::-webkit-details-marker { display: none; }
+  .sec > summary::marker { content: ''; }
+  .sec > summary:focus-visible { outline: 3px solid var(--red); outline-offset: -3px; }
+  .sec .swatch { width: 12px; height: 12px; border-radius: 4px; flex: 0 0 auto; }
+  .sec .chev { margin-left: auto; font-size: 10px; color: var(--muted);
+               transition: transform .2s; }
+  .sec[open] .chev { transform: rotate(180deg); }
+  .sec-body { padding: 0 13px 13px; }
+  .sec-body > :first-child { margin-top: 0; }
 
   /* --------------------------------------------------------- controls -- */
-  button, select, input[type=number] {
-    background: var(--paper-2); color: var(--text); border: 0;
-    border-radius: 10px; padding: 9px 12px; font: inherit; font-weight: 700;
-    cursor: pointer;
-    min-height: 40px;                     /* comfortable touch target */
-    touch-action: manipulation;           /* no 300ms delay, no double-tap zoom */
+  select, input[type=number] {
+    background: var(--paper); color: var(--text); border: 0;
+    border-radius: var(--r-sm); padding: 9px 11px;
+    font: 800 13px/1 var(--font);
+    min-height: 40px; touch-action: manipulation;
     -webkit-appearance: none; appearance: none;
     box-shadow: var(--drop-sm);
   }
   select {
-    padding-right: 28px;
+    padding-right: 28px; text-transform: capitalize;
     background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
                       linear-gradient(135deg, var(--muted) 50%, transparent 50%);
     background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
     background-size: 5px 5px, 5px 5px;
     background-repeat: no-repeat;
   }
-  button:active { transform: translateY(3px); box-shadow: none; }
-  button:disabled { opacity: .45; box-shadow: none; cursor: default; transform: none; }
-  @media (hover: hover) { button:not(:disabled):hover { background: var(--cream); } }
-  button:focus-visible, select:focus-visible, input:focus-visible {
-    outline: 3px solid var(--red); outline-offset: 2px;
-  }
-  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
-  .btns button { flex: 1 1 auto; white-space: nowrap; }
-  button.danger { background: var(--red); color: var(--paper); }
-  @media (hover: hover) { button.danger:not(:disabled):hover { background: #c33c27; } }
-
-  .ffn-row { justify-content: flex-start; gap: 8px; }
-  .ffn-row #ffN { margin-left: auto; }
+  select:focus-visible, input:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+  .btns .btn { flex: 1 1 auto; white-space: nowrap; }
+  .btn.danger { background: var(--red); color: var(--paper); }
 
   label { display: flex; align-items: center; justify-content: space-between;
-          gap: 10px; margin: 10px 0 0; color: var(--muted); font-size: 12.5px;
-          font-weight: 700; }
-  label > b { color: var(--text); min-width: 58px; text-align: right;
-              font-variant-numeric: tabular-nums; }
+          gap: 10px; margin: 12px 0 0; color: var(--muted); font-size: 11px;
+          font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+  label > b { color: var(--text); min-width: 54px; text-align: right;
+              font-variant-numeric: tabular-nums; font-size: 13px; }
   input[type=range] {
     flex: 1; min-width: 0; accent-color: var(--red);
-    height: 44px;                         /* full touch target, thin visual track */
+    height: 40px;                         /* full touch target, thin visual track */
     margin: 0; padding: 0;
     touch-action: manipulation; background: transparent;
     -webkit-appearance: none; appearance: none;
@@ -305,55 +389,86 @@
   }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
-    width: 22px; height: 22px; border-radius: 50%;
+    width: 22px; height: 22px; border-radius: 7px;
     background: var(--red); border: none; margin-top: 1px;
   }
   input[type=range]::-moz-range-track {
     height: 6px; border-radius: 3px; background: var(--line); border: none;
   }
   input[type=range]::-moz-range-thumb {
-    width: 22px; height: 22px; border: none; border-radius: 50%; background: var(--red);
+    width: 22px; height: 22px; border: none; border-radius: 7px; background: var(--red);
   }
   @media (pointer: coarse) {
     input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: 0; }
     input[type=range]::-moz-range-thumb { width: 24px; height: 24px; }
   }
-  #ffN { width: 64px; flex: 0 0 auto; text-align: center; }
+  #ffN { width: 68px; flex: 0 0 auto; text-align: center; }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .row .btn { flex: 1 1 auto; }
+  .stat-line { display: flex; justify-content: space-between; gap: 8px;
+               font-size: 11.5px; margin-top: 8px; }
+  .stat-line span { color: var(--muted); font-weight: 800; letter-spacing: .07em;
+                    text-transform: uppercase; font-size: 10px; }
+  .stat-line b { font-variant-numeric: tabular-nums; }
 
-  /* No stat bars and no gene chips live here any more — on purpose. The bug is
-     described, not tabulated. See src/core/impressions.js. */
-  .tells { list-style: none; margin: 6px 0 0; padding: 0; }
-  .tells li { position: relative; padding: 4px 0 4px 16px; font-size: 13px;
-              line-height: 1.45; }
-  .tells li::before {
-    content: ''; position: absolute; left: 2px; top: 11px;
-    width: 7px; height: 7px; border-radius: 50%; background: var(--red);
+  /* ------------------------------------------------------ build menu --- */
+  /* Two steps on purpose. Twenty-six placeable things in one list is a
+     catalogue; six categories that open into four or five is a decision. */
+  .crumb { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; min-height: 30px; }
+  .crumb b { font-size: 11.5px; font-weight: 800; letter-spacing: .1em;
+             text-transform: uppercase; color: var(--muted); }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .tile {
+    -webkit-appearance: none; appearance: none; border: 0; text-align: left;
+    background: var(--paper-2); color: var(--text);
+    border-radius: var(--r-md); padding: 12px 12px 13px;
+    cursor: pointer; touch-action: manipulation;
+    box-shadow: var(--drop-sm); min-height: 66px;
+    display: flex; flex-direction: column; gap: 5px;
+    font: 700 12px/1.3 var(--font);
+    transition: transform .12s cubic-bezier(.34, 1.5, .5, 1), box-shadow .12s ease;
   }
+  .tile:active { transform: translateY(3px); box-shadow: none; }
+  .tile:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  .tile .swatch { width: 20px; height: 20px; border-radius: 6px; }
+  .tile .t-name { font-size: 12.5px; font-weight: 800; letter-spacing: .02em; }
+  .tile .t-sub { font-size: 10.5px; font-weight: 700; color: var(--muted); }
+  /* The one tile that is not a category: the way out of the terrarium. */
+  .tile.feature { grid-column: 1 / -1; background: var(--ink); color: var(--cream);
+                  flex-direction: row; align-items: center; gap: 11px; min-height: 60px; }
+  .tile.feature .t-sub { color: var(--yellow); }
+  .tile.feature .col { display: flex; flex-direction: column; gap: 3px; }
 
-  .facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
-  .fact { font-size: 11px; font-weight: 700; background: var(--paper-2);
-          border-radius: 999px; padding: 4px 10px; color: var(--muted); }
-  .fact.trait { color: var(--paper); background: var(--blue); }
+  .items { display: flex; flex-direction: column; gap: 7px; }
+  .item {
+    -webkit-appearance: none; appearance: none; border: 0; text-align: left;
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--paper-2); border-radius: var(--r-md);
+    padding: 11px 12px; cursor: pointer; touch-action: manipulation;
+    box-shadow: var(--drop-sm); font: 700 12px/1.35 var(--font); color: var(--text);
+    transition: transform .12s cubic-bezier(.34, 1.5, .5, 1), box-shadow .12s ease;
+  }
+  .item:active { transform: translateY(3px); box-shadow: none; }
+  .item:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  .item[aria-pressed="true"] { background: var(--ink); color: var(--cream); }
+  .item[aria-pressed="true"] .i-sub { color: var(--yellow); }
+  .item .swatch { width: 14px; height: 14px; border-radius: 5px; margin-top: 2px; flex: 0 0 auto; }
+  /* The name is the thing you are choosing; the blurb is why. On one line they
+     read as a single sentence and the name stops being scannable. */
+  .i-name { display: block; font-size: 12.5px; font-weight: 800; }
+  .i-sub { display: block; font-size: 11px; font-weight: 600; color: var(--muted);
+           margin-top: 3px; }
 
-  .familiar { font-size: 11.5px; color: var(--muted); font-style: italic;
-              margin-top: 8px; }
-  .moments { font-size: 11.5px; color: var(--muted); margin-top: 6px;
-             padding-left: 16px; }
-  .unknown { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
-  .note { font-size: 11.5px; color: var(--red); font-weight: 700; margin: 6px 0 0; }
-
-  .vet-row { display: flex; align-items: center; gap: 8px; margin-top: 8px;
-             flex-wrap: wrap; }
-  .vet-row button { flex: 0 0 auto; }
-  .vet-state { font-size: 11.5px; color: var(--muted); }
-  .vet-away { font-size: 12px; color: var(--muted); margin: 4px 0 0;
-              padding-left: 14px; }
+  /* --------------------------------------------------- vet + burrow ---- */
+  .vet-away { font-size: 11.5px; color: var(--muted); margin: 8px 0 0; font-weight: 700; }
   .vet-card { margin-top: 10px; padding: 12px; border: 0;
-              border-radius: 16px; background: var(--dirt);
+              border-radius: var(--r-lg); background: var(--dirt);
               box-shadow: var(--drop); }
   .vet-card canvas { image-rendering: auto; }
   .vet-card .muted, .vet-card .unknown, .vet-card .familiar { color: var(--cream); }
   .vet-card .fact { background: rgba(239, 226, 201, .22); color: var(--cream); }
+
+  #burrowFinds li::before { background: var(--yellow); }
 
   /* --------------------------------------------------- sheet handle ---- */
   #handle { display: none; }
@@ -381,54 +496,62 @@
       border-radius: 22px 22px 0 0;
       background: var(--paper);
       box-shadow: 0 -4px 0 rgba(23, 17, 13, .22);
-      padding: 0 16px calc(16px + var(--safe-b));
+      padding: 0 14px calc(14px + var(--safe-b));
       transition: max-height .28s cubic-bezier(.4, 0, .2, 1);
       display: flex; flex-direction: column;
       z-index: 2;
     }
-    body.sheet-collapsed aside { max-height: calc(56px + var(--safe-b)); }
+    body.sheet-collapsed aside { max-height: calc(58px + var(--safe-b)); }
     :root, body { --sheet-now: var(--sheet); }
-    body.sheet-collapsed { --sheet-now: calc(56px + var(--safe-b)); }
+    body.sheet-collapsed { --sheet-now: calc(58px + var(--safe-b)); }
     #sheetBody { transition: opacity .2s ease; }
     body.sheet-collapsed #sheetBody { opacity: 0; pointer-events: none; }
 
-    /* grab bar + always-visible summary */
+    /* grab bar + the one line worth reading with the sheet shut */
     #handle {
       display: block; flex: 0 0 auto;
-      margin: 0 -16px; padding: 10px 16px 8px;
-      background: transparent; border: none; width: calc(100% + 32px);
+      margin: 0 -14px; padding: 9px 16px 8px;
+      background: transparent; border: none; width: calc(100% + 28px);
       min-height: 0; border-radius: 22px 22px 0 0; box-shadow: none;
-      position: sticky; top: 0; z-index: 2;
+      position: sticky; top: 0; z-index: 2; cursor: pointer;
+      -webkit-appearance: none; appearance: none;
     }
-    #handle:active { transform: none; }
     #handle::before {
       content: ''; display: block; width: 44px; height: 5px; margin: 0 auto 8px;
       border-radius: 3px; background: var(--line);
     }
     #handleRow {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 10px; font-size: 12.5px; color: var(--muted); font-weight: 700;
+      gap: 10px; font: 800 11.5px/1 var(--font); letter-spacing: .06em;
+      text-transform: uppercase; color: var(--muted);
     }
-    #handleRow b { color: var(--text); font-variant-numeric: tabular-nums; }
-    #chev { color: var(--muted); transition: transform .28s; font-size: 11px; }
+    #handleRow b { color: var(--text); }
+    #chev { color: var(--muted); transition: transform .28s; font-size: 10px; }
     body.sheet-collapsed #chev { transform: rotate(180deg); }
 
     #sheetBody {
       overflow-y: auto; -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain; flex: 1 1 auto; min-height: 0;
-      padding-top: 4px;
+      padding-top: 2px;
     }
     body.sheet-collapsed #sheetBody { overflow: hidden; }
 
     h1 { display: none; }
-    .lede { display: none; }
-    .block { padding: 0 0 10px; margin-bottom: 10px; }
-    .btns button { flex: 1 1 30%; }
+    #status .cell { padding: 6px 10px; }
+    #status b { font-size: 15px; }
+  }
+
+  /* Three labelled buttons on a 375 px phone run edge to edge. Tighten them
+     rather than dropping the labels: an unlabelled icon is a guess. */
+  @media (max-width: 430px) {
+    #dock { gap: 7px; width: calc(100% - 24px); }
+    #dock .btn { flex: 1 1 0; min-width: 0; padding: 0 8px; gap: 6px; font-size: 11.5px; }
+    #modeBar { width: calc(100% - 24px); }
   }
 
   /* very short landscape phones — trade the sheet for a slim rail */
   @media (max-height: 430px) and (orientation: landscape) {
-    body { grid-template-columns: minmax(0,1fr) 268px; }
+    body { grid-template-columns: minmax(0,1fr) 280px; }
     #stage { grid-column: 1; grid-row: 1; padding-bottom: 0; }
     aside {
       grid-column: 2; grid-row: 1;
@@ -443,26 +566,18 @@
     #handle { display: none; }
     #sheetBody { overflow: visible; opacity: 1; pointer-events: auto; }
     body.sheet-collapsed #sheetBody { opacity: 1; pointer-events: auto; }
-    h1 { display: block; font-size: 14px; margin-bottom: 8px; }
-    .lede { display: none; }
-    /* 268px is tight — stack the stat pairs and shrink the buttons so
-       "02:05 AM" and "Fast-fwd" stop wrapping onto a second line. */
-    .stat-grid { grid-template-columns: 1fr; gap: 2px 8px; font-size: 12px; }
-    .block { padding: 0 0 8px; margin-bottom: 8px; }
-    .btns button { font-size: 12px; padding: 8px 6px; min-height: 38px; }
+    h1 { display: block; font-size: 13px; margin-bottom: 8px; }
     body { --sheet-now: 8px; }
-    #dock { gap: 14px; }
-    #dock .chip { width: 46px; height: 46px; }
-    .chip svg { width: 19px; height: 19px; }
-    .chip span { font-size: 10px; top: calc(100% + 4px); }
-    #genBadge, #pause { width: 50px; height: 50px; }
-    #genBadgeNum { font-size: 21px; }
-    #ffN { width: 52px; }
-    label { font-size: 11.5px; margin-top: 6px; }
+    #dock .btn, #modeBar .btn { min-height: 40px; font-size: 11px; padding: 0 12px; }
+    #dock { gap: 8px; }
+    .tiles { grid-template-columns: 1fr; }
+    #pause { width: 44px; min-height: 44px; }
+    #status b { font-size: 14px; }
+    #status .cell { padding: 5px 9px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    aside, #chev, #dock, .chip, #genBadgeNum { transition: none; animation: none; }
+    aside, #chev, #dock, #modeBar, .btn, .tile, .item, #status b { transition: none; animation: none; }
   }
 </style>
 </head>
@@ -471,91 +586,125 @@
     <div id="canvasHost"></div>
 
     <div id="hud">
-      <div id="genBadge" aria-hidden="true">
-        <b id="genBadgeNum">0</b>
-        <i id="genEye"></i>
+      <!-- clock, generation, how many are still standing: one card -->
+      <div id="status" aria-hidden="true">
+        <span class="cell"><small id="phase">—</small><b><i id="sunDot"></i><span id="clock">--:--</span></b></span>
+        <span class="cell"><small>Gen</small><b id="gen">0</b></span>
+        <span class="cell"><small>Alive</small><b id="alive">0/0</b></span>
       </div>
-      <div id="sunDot" aria-hidden="true"></div>
 
-      <button id="pause" class="chip" aria-label="Pause simulation" aria-pressed="false">
+      <button id="pause" class="btn icon blue" aria-label="Pause simulation" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5h2.6v15H9zM12.4 4.5H15v15h-2.6z"/></svg>
       </button>
 
+      <div id="toasts" aria-live="polite"></div>
+
+      <!-- the three verbs -->
       <div id="dock">
-        <button id="breed" class="chip" aria-label="Breed one generation">
+        <button id="breed" class="btn red" aria-label="Breed one generation">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2a4.4 4.4 0 0 1 4.4 4.4c0 1.6-.9 3-2.2 3.8 2.7.8 4.6 3.2 4.6 6.1v3.3h-3v-3.3c0-2.1-1.7-3.8-3.8-3.8s-3.8 1.7-3.8 3.8v3.3h-3v-3.3c0-2.9 1.9-5.3 4.6-6.1a4.4 4.4 0 0 1-2.2-3.8A4.4 4.4 0 0 1 12 3.2zm0 3a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z"/></svg>
-          <span>Breed</span>
+          Breed
         </button>
-        <button id="ff" class="chip" aria-label="Fast-forward generations">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 5.2 12 12l-8.6 6.8zM12.6 5.2 21.2 12l-8.6 6.8z"/></svg>
-          <span>Fast-fwd</span>
+        <button id="build" class="btn blue" aria-label="Place something in the terrarium">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.6 12 3l8 7.6v2.2h-2.4V21h-4.4v-5.4h-2.4V21H6.4v-8.2H4z"/></svg>
+          Build
         </button>
-        <button id="reseed" class="chip" aria-label="New random population">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.4c4.2 0 7.6 3.4 7.6 7.6s-3.4 7.6-7.6 7.6A7.6 7.6 0 0 1 4.6 13h3.1a4.5 4.5 0 1 0 1.5-4.7l2.3 2.3H4.2V3.4l2.4 2.4A7.5 7.5 0 0 1 12 4.4z"/></svg>
-          <span>Reseed</span>
+        <button id="burrow" class="btn cream" aria-label="Go underground">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.4c4.3 0 7.8 3.5 7.8 7.8V21h-4.3v-9.8a3.5 3.5 0 1 0-7 0V21H4.2v-9.8c0-4.3 3.5-7.8 7.8-7.8z"/></svg>
+          Burrow
         </button>
+      </div>
+
+      <!-- shown instead of the dock while placing or underground -->
+      <div id="modeBar" hidden>
+        <span id="modeText"></span>
+        <button id="modeDone" class="btn sm yellow" type="button">Done</button>
       </div>
     </div>
   </div>
 
   <aside>
-    <button id="handle" aria-label="Toggle control panel" aria-expanded="true">
+    <button id="handle" aria-label="Toggle panel" aria-expanded="true">
       <span id="handleRow">
-        <span><b id="hClock">--:--</b> <span id="hPhase">—</span></span>
-        <span>gen <b id="hGen">0</b> · <b id="hAlive">0/0</b></span>
+        <span><b id="hGen">gen 0</b> · <span id="hAlive">0/0</span></span>
+        <span id="hHint">tap a bug</span>
         <span id="chev">▼</span>
       </span>
     </button>
 
     <div id="sheetBody">
       <h1>Terrarium</h1>
-      <p class="muted small lede">You learn a bug by watching it. Nothing here will tell you a number.</p>
 
-      <div class="block">
-        <div class="stat-grid">
-          <div><span>clock</span><b id="clock">--:--</b></div>
-          <div><span>phase</span><b id="phase">—</b></div>
-          <div><span>gen</span><b id="gen">0</b></div>
-          <div><span>alive</span><b id="alive">0/0</b></div>
-          <div><span>seed</span><b id="seedOut">—</b></div>
-        </div>
-        <p class="muted small" id="trend">too early to say</p>
-        <p class="muted small" id="spread">nothing to compare yet</p>
-        <p class="note" id="breedNote" hidden></p>
-      </div>
-
-      <div class="block">
-        <label class="ffn-row">generations
-          <input id="ffN" type="number" value="10" min="1" max="500"
-                 inputmode="numeric" pattern="[0-9]*"></label>
-        <label>breeding for <select id="preset"></select></label>
-        <label>population <input id="pop" type="range" min="4" max="30" value="12">
-          <b id="popOut">12</b></label>
-        <label>time scale <input id="tscale" type="range" min="1" max="400" value="1">
-          <b id="tscaleOut">real</b></label>
-      </div>
-
-      <div class="block" id="inspect"><p class="muted">Tap a bug.</p></div>
-
-      <div class="block" id="vetBlock">
-        <h4>Vet station</h4>
-        <p class="muted small">The only place you see what a bug actually is —
-          and only ever as a picture. A visit costs you the bug for a while.</p>
-        <div class="vet-row">
-          <button id="vetSend" type="button">Take it in</button>
+      <!-- ---------------------------------------------------- watch ---- -->
+      <section id="screenWatch" class="screen">
+        <div id="bugCard">
+          <div id="inspect"><p class="muted small">Tap a bug to get to know it.</p></div>
+          <div id="bugActions" hidden>
+            <button id="vetSend" class="btn sm green" type="button">Vet</button>
+            <button id="sendDown" class="btn sm cream" type="button">Send down</button>
+          </div>
           <span class="vet-state" id="vetState">—</span>
+          <div id="vetAway"></div>
         </div>
-        <div id="vetAway"></div>
-      </div>
 
-      <div class="block" id="runBlock">
-        <h4>This run</h4>
-        <p class="muted small" id="saveNote">—</p>
-        <div class="vet-row">
-          <button id="forget" class="danger" type="button">Start over</button>
-          <span class="vet-state">clears everything you have learned</span>
+        <details class="sec" id="secBreed">
+          <summary><i class="swatch" style="background:var(--red)"></i>Breeding<span class="chev">▼</span></summary>
+          <div class="sec-body">
+            <label>breeding for <select id="preset"></select></label>
+            <div class="row">
+              <input id="ffN" type="number" value="10" min="1" max="500"
+                     inputmode="numeric" pattern="[0-9]*" aria-label="generations to fast-forward">
+              <button id="ff" class="btn sm green" type="button">Fast-forward</button>
+            </div>
+            <p class="note" id="breedNote" hidden></p>
+            <p class="muted small" id="trend" hidden></p>
+            <p class="muted small" id="spread" hidden></p>
+          </div>
+        </details>
+
+        <details class="sec" id="secTerra">
+          <summary><i class="swatch" style="background:var(--green)"></i>Terrarium<span class="chev">▼</span></summary>
+          <div class="sec-body">
+            <label>population <input id="pop" type="range" min="4" max="30" value="12">
+              <b id="popOut">12</b></label>
+            <label>time scale <input id="tscale" type="range" min="1" max="400" value="1">
+              <b id="tscaleOut">real</b></label>
+            <div class="facts" id="builtList"></div>
+          </div>
+        </details>
+
+        <details class="sec" id="secRun">
+          <summary><i class="swatch" style="background:var(--dirt-deep)"></i>This run<span class="chev">▼</span></summary>
+          <div class="sec-body">
+            <p class="muted small" id="saveNote">—</p>
+            <div class="stat-line"><span>seed</span><b id="seedOut">—</b></div>
+            <div class="btns">
+              <button id="reseed" class="btn sm paper" type="button">New population</button>
+              <button id="forget" class="btn sm danger" type="button">Start over</button>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- ---------------------------------------------------- build ---- -->
+      <section id="screenBuild" class="screen" hidden>
+        <div class="crumb">
+          <button id="buildBack" class="btn xs paper" type="button" hidden>‹ Back</button>
+          <b id="buildTitle">What goes in?</b>
         </div>
-      </div>
+        <div id="buildBody"></div>
+      </section>
+
+      <!-- --------------------------------------------------- burrow ---- -->
+      <section id="screenBurrow" class="screen" hidden>
+        <h3 id="burrowWho">Underground</h3>
+        <p class="unknown" id="burrowHint">Drag on the dirt to steer. It digs as fast as
+          its own body lets it.</p>
+        <ul class="tells" id="burrowFinds"></ul>
+        <div class="btns">
+          <button id="surface" class="btn green wide" type="button">Come back up</button>
+        </div>
+      </section>
     </div>
   </aside>
 

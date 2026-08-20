@@ -14,6 +14,32 @@ the same process. Swapping in a real transport replaces one object.
 | `discovery.js` | the falloff curve, dig radius, borrowed-hole detection |
 | `index.js` | `DirtWorld`, `LocalAuthority`, the authority table |
 
+## Playing it — `src/sim/burrow.js`
+
+The model above is reached through **burrow mode**, and burrow mode is reached
+through a placed **Burrow Entrance** (`src/sim/objects.js`). Where the entrance
+sits inside the terrarium decides where the bug comes out underground, so two
+entrances really are two ways down.
+
+`Burrow` owns the `DirtWorld` client, a `LocalAuthority` in the same process,
+and the view. One dig tick is one `world.burrow()` call — predict, submit,
+claim, roll for a neighbour — and the only things that come back out to the HUD
+are words: *"turned up a shard of amber"*.
+
+Two constants in that file, both playability rather than model:
+
+- `DIG_SPEEDUP` — `digInterval()` is honest as a simulation rate and unwatchable
+  as a control rate.
+- `BITE_AHEAD` — how far ahead of itself a bug bites, **as a fraction of its own
+  dig radius**, so it must stay below 1. `digRadius` bottoms out at 3 px, and a
+  bite centred further out than that opens a pocket that does not touch the hole
+  the bug is standing in: a one-pixel shell, with the animal walled in behind it.
+
+Digging is rendered by painting only the *dug* pixels into a canvas texture over
+the floor photograph — absence is solid on screen exactly as it is in storage, so
+a repaint costs what has been excavated, not what is visible. Chunks dug during a
+session are **not** persisted; the terrarium and everything built in it are.
+
 ---
 
 ## Storage: absence is solid

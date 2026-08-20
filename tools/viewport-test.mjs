@@ -33,8 +33,10 @@ for (const c of CASES) {
     const cr = cv.getBoundingClientRect();
     const st = document.getElementById("canvasHost").getBoundingClientRect();
     const overflow = document.documentElement.scrollWidth > window.innerWidth + 1;
-    // are all controls inside the viewport?
-    const ids = ['breed','ff','reseed','pause','preset','pop','tscale'];
+    // Are all controls inside the viewport? Only the ones that are ALWAYS up:
+    // everything else now lives inside a closed accordion or the build screen,
+    // where a zero-width box means "collapsed", not "broken".
+    const ids = ['breed','build','burrow','pause'];
     const offscreen = ids.filter(id => {
       const r = document.getElementById(id).getBoundingClientRect();
       return r.width===0 || r.right > window.innerWidth+1 || r.left < -1;

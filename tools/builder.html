@@ -1,0 +1,865 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bug builder</title>
+<style>
+/* ============================================================================
+   The builder wears the game's own paint: soil ground, cream paper panels,
+   solid offset shadows, no blur anywhere. It is a workshop, so unlike the HUD
+   it is allowed to show numbers.
+   ========================================================================= */
+:root{
+  --dirt:#a37a4f; --dirt-deep:#6d4f30;
+  --red:#d9452e; --blue:#2f52c4; --yellow:#f2be3c; --green:#1e7b5f;
+  --purple:#7c4bb8; --leaf:#6f7f43; --cream:#efe2c9; --ink:#17110d;
+  --paper:#f3e7d0; --paper-2:#e6d5b6; --text:#2b1f14; --muted:#8a7050; --line:#d9c5a1;
+  --drop:0 4px 0 rgba(23,17,13,.26); --drop-sm:0 3px 0 rgba(23,17,13,.22);
+  --font:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r-lg:18px; --r-md:14px; --r-sm:10px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;padding:0;background:var(--ink);color:var(--text);
+  font:700 14px/1.45 var(--font);-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+h1,h2,h3{margin:0}
+::selection{background:var(--yellow)}
+
+/* ------------------------------------------------------------------ shell */
+.wrap{max-width:1500px;margin:0 auto;padding:14px;display:grid;gap:14px;
+  grid-template-columns:minmax(0,1fr);align-items:start}
+@media(min-width:1000px){
+  /* The library is what you work in, so it takes the left column and the width;
+     the bug it is changing sits on the right where it can never scroll away.
+     DOM order stays preview-first for the stacked layout below this breakpoint. */
+  /* The library is a reading column, not a canvas — it stops widening once the
+     part cards and their five thumbnails fit, and the bug takes the rest. */
+  .wrap{grid-template-columns:minmax(320px,430px) minmax(0,560px);
+        justify-content:center;max-width:1060px;
+        padding:18px;height:100vh;overflow:hidden}
+  .stage{grid-column:2;grid-row:1;position:sticky;top:0;
+         max-height:calc(100vh - 36px);overflow:auto}
+  .desk{grid-column:1;grid-row:1;max-height:calc(100vh - 36px);overflow:hidden;
+        display:flex;flex-direction:column}
+  .desk>.card,.desk>.tabs{flex:0 0 auto}
+}
+.card{background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--drop);
+  padding:14px;margin-bottom:14px}
+.card:last-child{margin-bottom:0}
+.eyebrow{font:700 10px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+
+/* ------------------------------------------------------------------ stage */
+.bugbox{position:relative;background:var(--dirt-deep);border-radius:var(--r-md);
+  overflow:hidden;aspect-ratio:1/.86;max-height:58vh;display:grid;place-items:center}
+.bugbox canvas{width:100%;height:100%;display:block;image-rendering:auto}
+.bugbox .badge{position:absolute;left:10px;top:10px;font:700 10px/1 var(--mono);
+  letter-spacing:.14em;text-transform:uppercase;color:var(--cream);opacity:.7}
+.poses{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}
+.poses button{background:rgba(23,17,13,.55);color:var(--cream);border-radius:999px;
+  padding:6px 11px;font:700 11px/1 var(--mono);letter-spacing:.06em}
+.poses button[aria-pressed=true]{background:var(--yellow);color:var(--ink)}
+
+.idline{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:12px}
+.idline h1{font-size:22px;letter-spacing:-.01em}
+.idline code{font:700 11px/1 var(--mono);color:var(--muted)}
+.tag{display:inline-block;padding:4px 9px;border-radius:999px;font:700 10px/1 var(--mono);
+  letter-spacing:.1em;text-transform:uppercase;background:var(--paper-2);color:var(--text)}
+.tag.hot{background:var(--yellow)}
+.tag.warn{background:var(--red);color:#fff}
+.tag.cool{background:var(--blue);color:#fff}
+.note{color:var(--muted);font-size:12.5px;margin:8px 0 0}
+.note b{color:var(--text)}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:7px 14px}
+.stat{display:grid;grid-template-columns:1fr auto;gap:2px 6px;align-items:center}
+.stat .k{font:700 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font:700 12px/1 var(--mono)}
+.stat .bar{grid-column:1/-1;height:5px;border-radius:999px;background:var(--paper-2);overflow:hidden}
+.stat .bar i{display:block;height:100%;background:var(--leaf)}
+.stat.zero .bar i{background:var(--muted);opacity:.4}
+
+/* ------------------------------------------------------------------- desk */
+.tabs{display:flex;gap:6px;background:var(--paper);border-radius:999px;padding:5px;
+  box-shadow:var(--drop-sm);margin-bottom:12px;overflow:auto}
+.tabs button{flex:1 0 auto;padding:9px 14px;border-radius:999px;font-size:13px;white-space:nowrap}
+.tabs button[aria-pressed=true]{background:var(--ink);color:var(--cream)}
+.tabhint{margin:-6px 4px 10px;color:var(--cream);opacity:.62;font-size:12px;line-height:1.4}
+.panel{background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--drop);
+  padding:14px;overflow:auto;flex:1 1 auto;min-height:0}
+@media(min-width:1000px){.panel{max-height:none}}
+
+/* ------------------------------------------------------------ base picker */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:6px 10px;border-radius:999px;background:var(--paper-2);font-size:12px}
+.chip:hover{background:var(--line)}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--cream)}
+.chip.bad{opacity:.55;text-decoration:line-through}
+select,input[type=text]{font:700 13px/1 var(--font);padding:9px 10px;border-radius:var(--r-sm);
+  border:2px solid var(--line);background:var(--paper);color:var(--text);width:100%}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+/* Five controls on one row at the narrow column width — a wrapped Reset on a
+   line of its own cost more vertical space than the padding was worth. */
+.btn{padding:8px 11px;border-radius:var(--r-sm);background:var(--paper-2);font-size:12.5px;
+  box-shadow:var(--drop-sm)}
+.btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(23,17,13,.22)}
+.btn.dark{background:var(--ink);color:var(--cream)}
+.btn.go{background:var(--yellow)}
+.btn[disabled]{opacity:.4;cursor:not-allowed;box-shadow:none}
+
+/* ---------------------------------------------------------------- library */
+.grouphead{display:flex;align-items:baseline;gap:8px;margin:16px 0 8px}
+.grouphead:first-child{margin-top:2px}
+.grouphead h3{font-size:13px;letter-spacing:.02em}
+.grouphead span{font-size:11.5px;color:var(--muted)}
+
+/* The library is a grid of the parts themselves — each tile is the CURRENT bug
+   framed on that one part, so the catalogue shows your animal rather than a
+   stock one. Tapping a tile expands it in place, full width of the grid. */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.tile{position:relative;border:2px solid var(--line);border-radius:var(--r-md);
+  background:var(--paper);padding:6px 6px 7px;text-align:center;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:flex-start}
+.tile[data-on=true]{border-color:var(--ink)}
+.tile[data-on=false]{background:repeating-linear-gradient(135deg,var(--paper),
+  var(--paper) 7px,var(--paper-2) 7px,var(--paper-2) 8px)}
+.tile[aria-expanded=true]{border-color:var(--ink);background:var(--ink)}
+.tile[aria-expanded=true] .t-name{color:var(--cream)}
+.tile[aria-expanded=true] .t-kind{color:var(--yellow)}
+.tile canvas{width:100%;aspect-ratio:1;display:block;border-radius:8px;
+  background:var(--dirt-deep)}
+.tile[data-on=false] canvas{opacity:.55}
+.t-name{display:block;font-size:11.5px;line-height:1.25;margin-top:5px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t-kind{display:block;font:700 8.5px/1.4 var(--mono);letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t-pill{position:absolute;right:5px;top:5px;width:21px;height:21px;border-radius:50%;
+  font:700 13px/21px var(--mono);background:var(--yellow);color:var(--ink);
+  box-shadow:var(--drop-sm)}
+.t-pill.on{background:var(--ink);color:var(--cream)}
+.t-pill.core{background:var(--paper-2);color:var(--muted);font-size:10px}
+.t-pill.noart{background:var(--purple);color:#fff;font-size:10px}
+.part{grid-column:1/-1;border:2px solid var(--ink);border-radius:var(--r-md);
+  background:var(--paper);overflow:hidden}
+.phead{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;
+  width:100%;text-align:left;padding:11px 12px}
+.dot{width:11px;height:11px;border-radius:50%;background:var(--line)}
+.part[data-on=true] .dot{background:var(--leaf)}
+.part[data-art=false] .dot{background:var(--purple)}
+.pname{font-size:14px}
+.pkind{font:700 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin-left:6px}
+.pact{font:700 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  padding:6px 9px;border-radius:999px;background:var(--yellow)}
+.pact.off{background:var(--paper-2);color:var(--muted)}
+.pact.core{background:transparent;color:var(--muted)}
+.pbody{padding:0 12px 12px;border-top:2px solid var(--line);padding-top:10px}
+.blurb{font-size:12.5px;color:var(--text);margin:0 0 8px}
+.gate{font:700 10.5px/1.5 var(--mono);color:var(--muted);background:var(--paper-2);
+  padding:6px 8px;border-radius:var(--r-sm);word-break:break-word;margin-bottom:10px}
+.vars{display:grid;grid-template-columns:repeat(auto-fit,minmax(58px,1fr));
+  gap:6px;margin-bottom:10px}
+.var{border-radius:var(--r-sm);padding:5px 4px;background:var(--paper-2);text-align:center}
+.var[aria-pressed=true]{background:var(--ink);color:var(--cream)}
+.var canvas{width:100%;aspect-ratio:1;display:block;border-radius:6px;background:var(--dirt-deep)}
+.var b{display:block;font:700 9.5px/1.25 var(--mono);letter-spacing:.04em;margin-top:4px;
+  text-transform:uppercase;overflow:hidden;text-overflow:ellipsis}
+.vhint{font-size:11.5px;color:var(--muted);margin:-4px 0 10px}
+
+/* ------------------------------------------------------------------ genes */
+.gene{padding:9px 0;border-bottom:1px dashed var(--line)}
+.gene:last-child{border-bottom:0}
+.gtop{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.gname{font:700 12px/1 var(--mono);letter-spacing:.02em}
+.gval{font:700 12px/1 var(--mono);color:var(--ink);background:var(--paper-2);
+  padding:4px 7px;border-radius:6px;min-width:52px;text-align:right}
+.gene input[type=range]{width:100%;margin:8px 0 2px;accent-color:var(--ink)}
+.drives{font-size:11.5px;color:var(--muted)}
+.drives em{font-style:normal;color:var(--text)}
+.simonly{display:inline-block;font:700 9px/1 var(--mono);letter-spacing:.1em;
+  text-transform:uppercase;background:var(--purple);color:#fff;padding:4px 6px;border-radius:5px}
+
+/* ----------------------------------------------------------------- export */
+pre{margin:10px 0 0;padding:12px;background:var(--ink);color:var(--cream);
+  border-radius:var(--r-md);overflow:auto;font:600 11.5px/1.6 var(--mono);max-height:52vh}
+pre b{color:var(--yellow);font-weight:600}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);
+  color:var(--cream);padding:10px 16px;border-radius:999px;font:700 12px/1 var(--mono);
+  letter-spacing:.06em;box-shadow:var(--drop);opacity:0;pointer-events:none;transition:opacity .18s}
+.toast.on{opacity:1}
+.err{background:var(--red);color:#fff;padding:12px;border-radius:var(--r-md);
+  font:600 12px/1.5 var(--mono);white-space:pre-wrap}
+
+/* Below the two-column breakpoint the library sits under the preview, so the
+   bug scrolls off the moment you start tapping parts. This follows you down. */
+.mini{position:fixed;right:10px;top:10px;width:92px;height:92px;padding:0;z-index:20;
+  border-radius:var(--r-md);background:var(--dirt-deep);box-shadow:var(--drop);overflow:hidden}
+.mini canvas{width:100%;height:100%;display:block}
+.mini b{position:absolute;left:0;right:0;bottom:0;background:rgba(23,17,13,.62);
+  color:var(--cream);font:700 8.5px/1.9 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+@media(min-width:1000px){.mini{display:none!important}}
+</style>
+</head><body>
+
+<div class="wrap">
+  <!-- ------------------------------------------------------------- stage -->
+  <section class="stage">
+    <div class="card">
+      <div class="bugbox">
+        <span class="badge" id="planBadge">—</span>
+        <canvas id="preview"></canvas>
+        <div class="poses" id="poses">
+          <button data-state="idle" aria-pressed="true">idle</button>
+          <button data-state="walk" aria-pressed="false">walk</button>
+          <button data-state="attack" aria-pressed="false">attack</button>
+        </div>
+      </div>
+      <div class="idline">
+        <h1 id="bugName">—</h1>
+        <code id="bugId"></code>
+        <span class="tag hot" id="taxonTag">—</span>
+        <span class="tag" id="cladeTag"></span>
+      </div>
+      <p class="note" id="taxonNote"></p>
+      <p class="note" id="driftNote"></p>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">Stats — a pure read off the genes</div>
+      <div class="stats" id="stats"></div>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------------- desk -->
+  <section class="desk">
+    <div class="card" style="margin-bottom:12px">
+      <div class="eyebrow">Start from</div>
+      <div class="chips" id="archChips"></div>
+      <div class="row" style="margin-top:10px">
+        <select id="taxonSel" aria-label="taxon"></select>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn go" id="loadTaxon">Load taxon build</button>
+        <button class="btn" id="randomize">Random</button>
+        <button class="btn" id="jitter">Nudge</button>
+        <button class="btn" id="undo">Undo</button>
+        <button class="btn dark" id="reset">Reset</button>
+      </div>
+      <p class="note" id="baseNote"></p>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <button data-tab="library" aria-pressed="true">Part library</button>
+      <button data-tab="genes" aria-pressed="false">All 41 genes</button>
+      <button data-tab="export" aria-pressed="false">Export</button>
+    </div>
+    <p class="tabhint" id="tabHint"></p>
+
+    <div class="panel" id="panel"></div>
+  </section>
+</div>
+
+<button class="mini" id="mini" hidden type="button" aria-label="back to the preview">
+  <canvas id="miniPreview"></canvas><b id="miniTag">—</b>
+</button>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+/* Three ways to run, one loader.
+     served    from the repo root during dev (/tools/…) or the deploy root
+               after staging (/builder.html) — the modules are fetched live
+     file://   dist/builder.html, where tools/build-builder.mjs has already
+               inlined every module and left them on globalThis.BUGSIM
+   The served paths import the real src/, so the tool cannot drift from the
+   game; the single file is a snapshot of it built by the same script. */
+const SRC = location.pathname.includes('/tools/') ? '../src/' : './src/';
+const load = (p) => import(SRC + p);
+
+let M = globalThis.BUGSIM ?? null;
+if (!M) try {
+  const [genes, archetypes, stats, classification, taxonBuild, bugArt, partLibrary, rng] =
+    await Promise.all([
+      load('core/genes.js'), load('core/archetypes.js'), load('core/stats.js'),
+      load('core/classification.js'), load('core/taxonBuild.js'),
+      load('render/bugArt.js'), load('render/partLibrary.js'), load('core/rng.js'),
+    ]);
+  M = { ...genes, ...archetypes, ...stats, ...classification, ...taxonBuild,
+        ...bugArt, ...partLibrary, ...rng };
+} catch (err) {
+  // Both ways this fails look identical from here — the modules are simply not
+  // next to the page — so name the two situations rather than guessing.
+  document.getElementById('panel').innerHTML =
+    `<div class="err">This copy of the builder loads the game's modules from ` +
+    `${SRC} at runtime, and they are not there.\n\n${err}\n\n` +
+    `• Uploaded or opened this file on its own? Use <b>dist/builder.html</b> ` +
+    `instead — run <b>npm run build:builder</b> and deploy that. It has every ` +
+    `module inlined and needs nothing beside it.\n\n` +
+    `• Running the repo? Serve its root (<b>npm run dev</b>) and open ` +
+    `<b>/tools/builder.html</b>, so src/ sits where this page expects it.</div>`;
+  throw err;
+}
+
+const {
+  GENE_SPECS, GENE_ORDER, normalizeGenome, clampGene, randomGenome, genomeId, genomeName,
+  ARCHETYPES, genomeFromArchetype, computeStats, classify, nearestNodes, CLASS_TREE,
+  CLADE_LABEL, TRAITS, buildForTaxon, TAXON_MENU, drawBug, layout, bodyPlan,
+  PARTS, PART_GROUPS, partById, partsInGroup, isPresent, addPart, removePart,
+  setVariant, variantOf, applyPatch, GENE_INFO, isSimOnly, makeRng,
+} = M;
+
+/* ------------------------------------------------------------------ state */
+
+const state = {
+  genome: buildForTaxon('beetle').genome,
+  base: { kind: 'taxon', key: 'beetle', label: 'Beetle', genome: null },
+  pose: 'idle',
+  tab: 'library',
+  open: new Set(['horn']),
+  history: [],
+};
+state.base.genome = state.genome;
+
+const push = (next) => {
+  state.history.push(state.genome);
+  if (state.history.length > 60) state.history.shift();
+  state.genome = normalizeGenome(next);
+  syncHash();
+  paintAll();
+};
+
+/* ------------------------------------------------- share codes in the URL */
+
+// One byte per gene over its own range, in GENE_ORDER. 41 genes -> 56 chars.
+function encodeGenome(g) {
+  const bytes = GENE_ORDER.map((k) => {
+    const s = GENE_SPECS[k];
+    return Math.round(((g[k] - s.min) / ((s.max - s.min) || 1)) * 255);
+  });
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeGenome(str) {
+  const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+  const g = {};
+  GENE_ORDER.forEach((k, i) => {
+    const s = GENE_SPECS[k];
+    g[k] = clampGene(k, s.min + (bin.charCodeAt(i) / 255) * ((s.max - s.min) || 1));
+  });
+  return normalizeGenome(g);
+}
+const syncHash = () => { history.replaceState(null, '', '#b=' + encodeGenome(state.genome)); };
+
+/* ---------------------------------------------------------------- drawing */
+
+/** drawBug centres on the origin; layout() knows the extent, so fit to it. */
+function paintBug(canvas, g, { state: st = 'idle', phase = 0, pad = 0.94, focus = null } = {}) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = canvas.clientWidth || 100, h = canvas.clientHeight || 100;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const L = layout(g, 26);
+  const scale = (Math.min(w, h) * pad) / (L.half * 2) * (focus?.zoom ?? 1);
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(scale, scale);
+  // A horn is four pixels of a 74px thumbnail unless the frame goes to it. The
+  // pose is head-up, so a positive y offset pushes the head into the middle.
+  if (focus) ctx.translate(0, focus.y * L.half);
+  drawBug(ctx, g, { phase, state: st, ppu: 26 });
+  ctx.restore();
+}
+
+const preview = document.getElementById('preview');
+const mini = document.getElementById('mini');
+const miniPreview = document.getElementById('miniPreview');
+
+let t0 = performance.now();
+function frame(now) {
+  const period = state.pose === 'idle' ? 2600 : state.pose === 'walk' ? 900 : 1200;
+  const phase = ((now - t0) % period) / period;
+  paintBug(preview, state.genome, { state: state.pose, phase });
+  if (!mini.hidden) paintBug(miniPreview, state.genome, { state: state.pose, phase });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// Show the pinned copy once the real one has scrolled away. A rect check
+// rather than an IntersectionObserver on purpose: embedded preview panes render
+// off-screen and never deliver IO callbacks, and this has to work everywhere.
+const bugbox = document.querySelector('.bugbox');
+function syncMini() { mini.hidden = bugbox.getBoundingClientRect().bottom > 60; }
+addEventListener('scroll', syncMini, { passive: true });
+addEventListener('resize', syncMini);
+syncMini();
+
+mini.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+/* -------------------------------------------------------------- the stage */
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const UNREACHABLE = new Set(TAXON_MENU.filter((t) => t.unreachable).map((t) => t.id));
+
+const STAT_ROWS = [
+  ['speed', 100], ['agility', 100], ['attack', 100], ['defense', 100],
+  ['health', 100], ['stamina', 100], ['venom', 100], ['grip', 100],
+  ['flight', 100], ['camouflage', 100], ['vision', 340], ['attackRate', 2.6],
+  ['recovery', 8], ['size', 2],
+];
+
+function paintStage() {
+  const g = state.genome;
+  const c = classify(g);
+  document.getElementById('bugName').textContent = genomeName(g);
+  document.getElementById('bugId').textContent = '#' + genomeId(g);
+  document.getElementById('planBadge').textContent = bodyPlan(g) + ' plan';
+
+  document.getElementById('miniTag').textContent = c.name;
+  const tt = document.getElementById('taxonTag');
+  tt.textContent = c.name;
+  tt.className = 'tag ' + (c.hybrid ? 'warn' : 'hot');
+  document.getElementById('cladeTag').textContent =
+    [CLADE_LABEL[c.clade.legPlan], c.clade.wingPlan, c.clade.massClass].join(' · ');
+
+  const traits = c.traits.map((t) => TRAITS[t].name);
+  document.getElementById('taxonNote').innerHTML =
+    `<b>${esc(c.taxon)}</b> · tier ${c.tier}${c.order ? ' · ' + esc(c.order) : ''}` +
+    (c.hybrid ? ' · <b>hybrid</b> — the chassis and the leg bracket disagree' : '') +
+    (traits.length ? ` · traits: <b>${esc(traits.join(', '))}</b>` : '') +
+    `<br>${esc(c.blurb)}`;
+
+  // A taxon whose window contradicts its parent's is unreachable, and pointing a
+  // lineage at one would be a lie — say so on the same line.
+  const near = nearestNodes(g, { limit: 2 });
+  document.getElementById('driftNote').innerHTML = near.length
+    ? 'Closest unreached: ' + near.map((n) => {
+        const need = n.missing.slice(0, 2)
+          .map((m) => `${m.gene} ${m.need === 'more' ? '↑' : '↓'}`).join(', ');
+        const dead = UNREACHABLE.has(n.id) ? ' <span class="tag warn">never</span>' : '';
+        return `<b>${esc(CLASS_TREE[n.id].taxon)}</b>${need ? ` (${esc(need)})` : ''}${dead}`;
+      }).join(' · ')
+    : '';
+
+  const s = computeStats(g);
+  document.getElementById('stats').innerHTML = STAT_ROWS.map(([k, max]) => {
+    const v = s[k];
+    const pct = Math.max(0, Math.min(100, (v / max) * 100));
+    return `<div class="stat${v ? '' : ' zero'}"><span class="k">${k}</span>
+      <span class="v">${v >= 10 ? v.toFixed(0) : v.toFixed(2)}</span>
+      <span class="bar"><i style="width:${pct.toFixed(1)}%"></i></span></div>`;
+  }).join('');
+}
+
+/* ------------------------------------------------------------ base picker */
+
+document.getElementById('archChips').innerHTML = ARCHETYPES.map((a) =>
+  `<button class="chip" data-arch="${a.key}" title="${esc(a.blurb)}">${esc(a.name)}</button>`).join('');
+
+document.getElementById('taxonSel').innerHTML = TAXON_MENU
+  .slice().sort((a, b) => a.tier - b.tier || a.taxon.localeCompare(b.taxon))
+  .map((t) => `<option value="${t.id}"${t.id === 'beetle' ? ' selected' : ''}>` +
+    `${'— '.repeat(t.tier)}${esc(t.taxon)}${t.unreachable ? '  ⚠ unreachable' : ''}</option>`).join('');
+
+function setBase(kind, key, label, genome, note) {
+  state.base = { kind, key, label, genome };
+  push(genome);
+  document.getElementById('baseNote').innerHTML = note ?? '';
+  document.querySelectorAll('[data-arch]').forEach((el) =>
+    el.setAttribute('aria-pressed', String(kind === 'archetype' && el.dataset.arch === key)));
+}
+
+document.getElementById('archChips').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-arch]');
+  if (!el) return;
+  const a = ARCHETYPES.find((x) => x.key === el.dataset.arch);
+  const g = genomeFromArchetype(a, makeRng(Math.floor(Math.random() * 1e9)));
+  setBase('archetype', a.key, a.name, g,
+    `<b>${esc(a.name)}</b> — ${esc(a.blurb)} Drawn around the archetype's biases with jitter, so tap again for another one.`);
+});
+
+document.getElementById('loadTaxon').addEventListener('click', () => {
+  const id = document.getElementById('taxonSel').value;
+  const r = buildForTaxon(id);
+  const node = CLASS_TREE[id];
+  let note = `<b>${esc(node.taxon)}</b> built off the <b>${esc(r.baseName)}</b> plan, ` +
+    `then ${Object.keys(r.window).length} windowed gene(s) pushed into range.`;
+  if (r.conflicts.length) {
+    note += `<br><span class="tag warn">unreachable</span> ` + r.conflicts.map((c) =>
+      `<b>${esc(c.gene)}</b> is asked for ` + c.ranges.map((x) =>
+        `[${x.range[0]}, ${x.range[1]}] by ${esc(x.taxon)}`).join(' and ') +
+      ' — no genome satisfies both, so this taxon can never be reached.').join(' ');
+  }
+  if (r.achieved.id !== id) {
+    note += `<br>Classifies as <b>${esc(r.achieved.name)}</b> instead.`;
+  }
+  setBase('taxon', id, node.taxon, r.genome, note);
+});
+
+document.getElementById('randomize').addEventListener('click', () => {
+  setBase('random', 'random', 'Random', randomGenome(makeRng(Math.floor(Math.random() * 1e9))),
+    'Uniform over every gene — most of these classify as Larva, which is the point of a taxon.');
+});
+
+document.getElementById('jitter').addEventListener('click', () => {
+  const r = makeRng(Math.floor(Math.random() * 1e9));
+  const g = { ...state.genome };
+  for (const k of GENE_ORDER) {
+    if (k.endsWith('_type') || k === 'leg_count' || k === 'wing_count' || k === 'eye_count') continue;
+    const s = GENE_SPECS[k];
+    g[k] = clampGene(k, g[k] + r.normal() * (s.max - s.min) * 0.06);
+  }
+  push(g);
+});
+
+document.getElementById('undo').addEventListener('click', () => {
+  const prev = state.history.pop();
+  if (!prev) return toast('nothing to undo');
+  state.genome = prev; syncHash(); paintAll();
+});
+
+document.getElementById('reset').addEventListener('click', () => {
+  if (state.base.genome) push(state.base.genome);
+});
+
+/* ------------------------------------------------------------------- tabs */
+
+document.getElementById('tabs').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-tab]');
+  if (!el) return;
+  state.tab = el.dataset.tab;
+  paintPanel({ toTop: true });
+});
+
+document.getElementById('poses').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-state]');
+  if (!el) return;
+  state.pose = el.dataset.state;
+  t0 = performance.now();
+  document.querySelectorAll('[data-state]').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b === el)));
+});
+
+/* ---------------------------------------------------------------- library */
+
+/** The tile: this bug, framed on this part. Absent parts preview what adding
+ *  one would give you, hatched and dimmed so the state stays unambiguous. */
+function partTile(part) {
+  const g = state.genome;
+  const on = isPresent(part, g);
+  const open = state.open.has(part.id);
+  const vi = part.variants ? variantOf(part, g) : -1;
+  // The caption carries the one thing the picture can't: which kind is fitted.
+  // "on"/"off" would only repeat the pill and the hatching, so it stays blank.
+  const kind = part.variants?.[vi]?.name ?? (part.art === false ? 'stats only' : '');
+  const pill = part.core ? '<i class="t-pill core">●</i>'
+    : part.art === false ? `<i class="t-pill noart" data-act="${on ? 'remove' : 'add'}">●</i>`
+    : on ? '<i class="t-pill on" data-act="remove">−</i>'
+         : '<i class="t-pill" data-act="add">+</i>';
+
+  return `<button class="tile" data-id="${part.id}" data-on="${on}"
+                  aria-expanded="${open}" type="button" title="${esc(part.blurb)}">
+    <canvas data-thumb="${part.id}"></canvas>
+    ${pill}
+    <span class="t-name">${esc(part.name)}</span>
+    ${kind ? `<span class="t-kind">${esc(kind)}</span>` : ''}
+  </button>`;
+}
+
+/** The expanded section, dropped into the grid directly under its tile. */
+function partDetail(part) {
+  const g = state.genome;
+  const on = isPresent(part, g);
+  const vi = part.variants ? variantOf(part, g) : -1;
+  const action = part.core
+    ? '<span class="pact core">always on</span>'
+    : on ? '<span class="pact" data-act="remove">remove</span>'
+         : '<span class="pact off" data-act="add">add to bug</span>';
+
+  return `<article class="part" data-id="${part.id}" data-on="${on}" data-art="${part.art !== false}">
+    <div class="phead">
+      <i class="dot"></i>
+      <span><span class="pname">${esc(part.name)}</span>
+        ${part.variants ? `<span class="pkind">${esc(part.variants[vi]?.name ?? '')}</span>` : ''}
+        ${part.art === false ? '<span class="pkind" style="color:var(--purple)">stats only</span>' : ''}</span>
+      ${action}
+    </div>
+    <div class="pbody">
+      <p class="blurb">${esc(part.blurb)}</p>
+      ${part.gate ? `<div class="gate">appears when · ${esc(part.gate)}</div>` : ''}
+      ${part.drawnBy ? `<div class="gate">drawn by · ${esc(part.drawnBy)}</div>` : ''}
+      ${part.variants ? `<div class="vars">${part.variants.map((v) => `
+        <button class="var" data-var="${v.index}" aria-pressed="${v.index === vi}" title="${esc(v.blurb)}">
+          <canvas data-thumb="${part.id}:${v.index}"></canvas><b>${esc(v.name)}</b>
+        </button>`).join('')}</div>
+        <p class="vhint">${esc(part.variants[vi]?.blurb ?? '')}</p>` : ''}
+      ${part.genes.map((entry) => geneRow(entry.gene, entry.effect)).join('')}
+    </div>
+  </article>`;
+}
+
+function paintLibrary() {
+  document.getElementById('panel').innerHTML = PART_GROUPS.map((grp) => `
+    <div class="grouphead"><h3>${esc(grp.label)}</h3><span>${esc(grp.blurb)}</span></div>
+    <div class="tiles">${partsInGroup(grp.key).map((p) =>
+      partTile(p) + (state.open.has(p.id) ? partDetail(p) : '')).join('')}</div>`).join('');
+  paintThumbs();
+}
+
+/**
+ * Two kinds of thumbnail, one painter. `horn` is the part on this bug; the
+ * `horn:3` form is the same bug with only that kind swapped, so the five horns
+ * are compared on your animal instead of on a stock one. Either way a part the
+ * bug does not have yet is shown added, so the tile answers "what would this
+ * give me" rather than showing an empty frame.
+ */
+function paintThumbs() {
+  document.querySelectorAll('[data-thumb]').forEach((cv) => {
+    const [id, i] = cv.dataset.thumb.split(':');
+    const part = partById(id);
+    let g = i === undefined ? state.genome : setVariant(state.genome, id, Number(i));
+    if (!isPresent(part, g)) g = addPart(g, id);
+    paintBug(cv, g, { state: 'idle', phase: 0.1, pad: 0.98, focus: part.focus });
+  });
+}
+
+/* ------------------------------------------------------------- gene rows  */
+
+function geneRow(name, effect) {
+  const spec = GENE_SPECS[name];
+  const v = state.genome[name];
+  const step = spec.integer ? (spec.step ?? 1) : 0.01;
+  const info = GENE_INFO[name];
+  const drives = effect
+    ? `<em>${esc(effect)}</em>`
+    : info.parts.length
+      ? info.parts.map((p) => `<em>${esc(p.partName)}</em> ${esc(p.effect)}`).join(' · ')
+      : '';
+  const badge = isSimOnly(name) ? '<span class="simonly">stats only</span> ' : '';
+  return `<div class="gene" data-gene="${name}">
+    <div class="gtop"><span class="gname">${name}</span>
+      <span class="gval" data-val="${name}">${spec.integer ? v : v.toFixed(2)}</span></div>
+    <input type="range" min="${spec.min}" max="${spec.max}" step="${step}" value="${v}"
+           data-slider="${name}" aria-label="${name}">
+    <div class="drives">${badge}${drives}${info.simOnly && isSimOnly(name) ? ' ' + esc(info.simOnly) : ''}</div>
+  </div>`;
+}
+
+const GENE_GROUPS = [
+  ['Body plan', GENE_ORDER.slice(0, 8)],
+  ['Limbs', GENE_ORDER.slice(8, 14)],
+  ['Wings', GENE_ORDER.slice(14, 18)],
+  ['Weapons and defence', GENE_ORDER.slice(18, 26)],
+  ['Sensory', GENE_ORDER.slice(26, 30)],
+  ['Physiology and behaviour', GENE_ORDER.slice(30, 32)],
+  ['Surface and colour', GENE_ORDER.slice(32)],
+];
+
+function paintGenes() {
+  document.getElementById('panel').innerHTML = GENE_GROUPS.map(([label, keys]) => `
+    <div class="grouphead"><h3>${esc(label)}</h3><span>${keys.length} genes</span></div>
+    ${keys.map((k) => geneRow(k, null)).join('')}`).join('');
+}
+
+/* ----------------------------------------------------------------- export */
+
+const EXPORTS = [
+  { key: 'js', label: 'JS genome' },
+  { key: 'json', label: 'JSON' },
+  { key: 'patch', label: 'Patch vs base' },
+  { key: 'archetype', label: 'Archetype entry' },
+  { key: 'link', label: 'Share link' },
+];
+let exportKind = 'js';
+
+const fmt = (k, v) => (GENE_SPECS[k].integer ? String(v) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '.0'));
+
+function exportText(kind) {
+  const g = state.genome;
+  const name = genomeName(g);
+  const KEY = name.toUpperCase();
+  if (kind === 'json') return JSON.stringify(g, null, 2);
+
+  if (kind === 'link') {
+    const url = location.origin + location.pathname + '#b=' + encodeGenome(state.genome);
+    return `${url}\n\n// One byte per gene, so a reloaded build classifies the same and looks the\n` +
+      `// same, but rounds by up to 1/255 — enough to shift the genome id.\n` +
+      `// or decode the code anywhere the gene specs are in scope:\n` +
+      `const CODE = '${encodeGenome(g)}';\n` +
+      `const bin = atob(CODE.replace(/-/g,'+').replace(/_/g,'/'));\n` +
+      `const genome = normalizeGenome(Object.fromEntries(GENE_ORDER.map((k,i) => {\n` +
+      `  const s = GENE_SPECS[k];\n` +
+      `  return [k, s.min + (bin.charCodeAt(i)/255) * ((s.max - s.min) || 1)];\n` +
+      `})));`;
+  }
+
+  if (kind === 'patch') {
+    const base = state.base.genome ?? g;
+    const diff = GENE_ORDER.filter((k) => Math.abs(g[k] - base[k]) > 1e-6);
+    if (!diff.length) return `// identical to the ${state.base.label} build — nothing to patch.`;
+    return `// ${diff.length} gene(s) changed from the ${state.base.label} build\n` +
+      `const ${KEY} = normalizeGenome({\n  ...base,\n` +
+      diff.map((k) => `  ${k}: ${fmt(k, g[k])},`).join('\n') + '\n});';
+  }
+
+  if (kind === 'archetype') {
+    // Only the genes that carry the plan — the rest are left to draw uniformly,
+    // which is what the archetype table means by an unlisted gene.
+    const skip = new Set(['pattern_scale', 'pattern_contrast', 'metabolism']);
+    const keys = GENE_ORDER.filter((k) => !skip.has(k));
+    return `// paste into ARCHETYPES in src/core/archetypes.js\n{\n` +
+      `  key: '${name.toLowerCase()}',\n  name: '${name}',\n` +
+      `  blurb: '${classify(g).blurb.replace(/'/g, "\\'")}',\n  spread: 0.10,\n  bias: {\n` +
+      keys.map((k) => `    ${k}: ${fmt(k, g[k])},`).join('\n') + '\n  },\n},';
+  }
+
+  const rows = GENE_GROUPS.map(([label, keys]) =>
+    `  /* ${label.toLowerCase()} */\n` +
+    keys.map((k) => `  ${k}: ${fmt(k, g[k])},`).join('\n')).join('\n');
+  const c = classify(g);
+  return `import { normalizeGenome } from './src/core/genes.js';\n\n` +
+    `// ${name} — classifies as ${c.name}${c.hybrid ? ' (hybrid)' : ''}, ${bodyPlan(g)} plan\n` +
+    `export const ${KEY} = normalizeGenome({\n${rows}\n});`;
+}
+
+function paintExport() {
+  document.getElementById('panel').innerHTML = `
+    <div class="chips">${EXPORTS.map((e) =>
+      `<button class="chip" data-exp="${e.key}" aria-pressed="${e.key === exportKind}">${e.label}</button>`).join('')}</div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn go" data-act="copy">Copy</button>
+      <button class="btn" data-act="download">Download</button>
+    </div>
+    <pre id="code">${esc(exportText(exportKind))}</pre>`;
+}
+
+/* ------------------------------------------------------------ panel wiring */
+
+/**
+ * Every repaint rebuilds the panel's HTML, and a rebuild resets its scroll — so
+ * tapping "add" on a part near the bottom of the library would throw you back to
+ * the top. Hold the offset across the rebuild unless the tab itself changed.
+ */
+/** The two browsing tabs cut the same 41 genes two ways — say which is which. */
+const TAB_HINT = {
+  library: 'The 20 things the renderer can draw, each tile framed on your bug. ' +
+           'Tap a tile to open it up; the corner pill adds or removes.',
+  genes: 'All 41 genes in GENE_ORDER, including the ten that move stats but ' +
+         'draw nothing. Every slider says which parts it feeds.',
+  export: 'The build you have made, as code you can paste back into the project.',
+};
+
+function paintPanel({ toTop = false } = {}) {
+  const el = document.getElementById('panel');
+  const keep = el.scrollTop;
+  document.getElementById('tabHint').textContent = TAB_HINT[state.tab] ?? '';
+  document.querySelectorAll('[data-tab]').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.tab === state.tab)));
+  if (state.tab === 'library') paintLibrary();
+  else if (state.tab === 'genes') paintGenes();
+  else paintExport();
+  el.scrollTop = toTop ? 0 : keep;
+}
+
+const panel = document.getElementById('panel');
+
+panel.addEventListener('click', (e) => {
+  const expBtn = e.target.closest('[data-exp]');
+  if (expBtn) { exportKind = expBtn.dataset.exp; paintExport(); return; }
+
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'copy' || act === 'download') {
+    const text = exportText(exportKind);
+    if (act === 'copy') {
+      navigator.clipboard?.writeText(text).then(() => toast('copied'), () => toast('copy blocked'));
+    } else {
+      const ext = exportKind === 'json' ? 'json' : exportKind === 'link' ? 'txt' : 'js';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+      a.download = `${genomeName(state.genome).toLowerCase()}.${ext}`;
+      a.click(); URL.revokeObjectURL(a.href); toast('downloaded');
+    }
+    return;
+  }
+
+  const varBtn = e.target.closest('[data-var]');
+  if (varBtn) {
+    const id = varBtn.closest('.part').dataset.id;
+    let g = setVariant(state.genome, id, Number(varBtn.dataset.var));
+    if (!isPresent(partById(id), g)) g = addPart(g, id);
+    push(g);
+    return;
+  }
+
+  const host = e.target.closest('.tile, .part');
+  if (!host) return;
+  const id = host.dataset.id;
+
+  // The corner pill adds or removes without opening anything — one tap from the
+  // grid. Everything else about the part is behind the expansion.
+  const pill = e.target.closest('[data-act="add"], [data-act="remove"]');
+  if (pill) {
+    push(pill.dataset.act === 'add' ? addPart(state.genome, id) : removePart(state.genome, id));
+    return;
+  }
+
+  // One section open at a time: an expanded part is full grid width, and two of
+  // them push the rest of the catalogue off the screen.
+  state.open = state.open.has(id) ? new Set() : new Set([id]);
+  paintPanel();
+});
+
+// Sliders: live-draw while dragging, one history entry when the drag ends.
+let dragging = false;
+panel.addEventListener('input', (e) => {
+  const s = e.target.closest('[data-slider]');
+  if (!s) return;
+  const name = s.dataset.slider;
+  if (!dragging) { state.history.push(state.genome); dragging = true; }
+  state.genome = applyPatch(state.genome, { [name]: Number(s.value) });
+  const spec = GENE_SPECS[name];
+  const v = state.genome[name];
+  document.querySelectorAll(`[data-val="${name}"]`).forEach((el) => {
+    el.textContent = spec.integer ? v : v.toFixed(2);
+  });
+  paintStage();
+});
+panel.addEventListener('change', (e) => {
+  if (!e.target.closest('[data-slider]')) return;
+  dragging = false;
+  syncHash();
+  paintPanel();          // gates may have flipped: a part can appear or vanish
+});
+
+/* ----------------------------------------------------------------- toast  */
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 1400);
+}
+
+/* ------------------------------------------------------------------- boot */
+
+function paintAll() { paintStage(); paintPanel(); }
+
+const hash = new URLSearchParams(location.hash.slice(1)).get('b');
+if (hash) {
+  try {
+    state.genome = decodeGenome(hash);
+    state.base.genome = state.genome;
+    state.base.label = 'shared build';
+  } catch { /* a mangled code should not blank the page */ }
+}
+paintAll();
+syncHash();
+window.addEventListener('resize', () => { if (state.tab === 'library') paintThumbs(); });
+</script>
+</body></html>
