@@ -336,7 +336,7 @@ const push = (next) => {
 
 /* ------------------------------------------------- share codes in the URL */
 
-// One byte per gene over its own range, in GENE_ORDER. 42 genes -> 57 chars.
+// One byte per gene over its own range, in GENE_ORDER — 57 genes, base64-encoded.
 function encodeGenome(g) {
   const bytes = GENE_ORDER.map((k) => {
     const s = GENE_SPECS[k];
@@ -748,7 +748,7 @@ function paintExport() {
  * tapping "add" on a part near the bottom of the library would throw you back to
  * the top. Hold the offset across the rebuild unless the tab itself changed.
  */
-/** The two browsing tabs cut the same 42 genes two ways — say which is which. */
+/** The two browsing tabs cut the same 57 genes two ways — say which is which. */
 const TAB_HINT = {
   genes: 'All 57 genes in GENE_ORDER, including the ten that move stats but ' +
          'draw nothing. Every slider says which parts it feeds.',

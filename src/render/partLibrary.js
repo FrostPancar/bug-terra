@@ -38,7 +38,7 @@ export const PART_GROUPS = [
   { key: 'wings',   label: 'Wings',    blurb: 'three silhouettes fan, one kind covers' },
   { key: 'weapons', label: 'Weapons',  blurb: 'the front end and the back end' },
   { key: 'sensory', label: 'Sensory',  blurb: 'eyes and antennae' },
-  { key: 'surface', label: 'Surface',  blurb: 'colour, speckle, fur' },
+  { key: 'surface', label: 'Surface',  blurb: 'colour, pattern, fur' },
 ];
 
 /* ----------------------------------------------------------------- parts -- */
@@ -543,7 +543,6 @@ const FOCUS = {
   inklimbs:  { zoom: 1.30, y: 0 },
   seglight:  { zoom: 1.55, y: -0.10 },
   setae:     { zoom: 1.55, y: -0.24 },
-  speckle:   { zoom: 1.75, y: -0.12 },
 };
 
 for (const part of PARTS) part.focus = FOCUS[part.id] ?? null;
@@ -633,7 +632,7 @@ export const SIM_ONLY = {
 
 /**
  * gene → every part it touches. Built once, so the parameter panel can answer
- * "what does this slider move" for all 56 genes without a search.
+ * "what does this slider move" for all 57 genes without a search.
  */
 export const GENE_INFO = (() => {
   const map = {};

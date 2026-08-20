@@ -71,7 +71,7 @@ test('every gene a part names actually exists', () => {
   }
 });
 
-test('all 56 genes are accounted for — a part, a sim note, or both', () => {
+test('all genes are accounted for — a part, a sim note, or both', () => {
   for (const gene of GENE_ORDER) {
     const row = GENE_INFO[gene];
     assert.ok(row, `${gene} is missing from GENE_INFO`);

@@ -99,8 +99,8 @@ the build button, and a **never** badge beside that taxon in the drift line.
 ### 2. The part library — `src/render/partLibrary.js`
 
 The **Part library** and **All 57 genes** tabs cut the same data two ways. The
-library is organised by *what you see on the bug* — 20 things the renderer can
-draw, each owning the two to five genes that shape it, with the threshold where
+library is organised by *what you see on the bug* — 23 things the renderer can
+draw, each owning the two to six genes that shape it, with the threshold where
 it appears, a thumbnail per kind, and a grid tile framed on the part itself
 (`FOCUS` in `partLibrary.js` says how each one is framed: the pose is head-up,
 so a positive `y` brings the head into the tile and a negative one the tail). The gene tab is organised by *the vector* —
@@ -110,7 +110,7 @@ go to the genes when you need one specific dial, or the ones no part exposes.
 
 `bugArt.js` knows how to draw a bug. Nothing else knew *what* it draws, so the
 only way to find out whether `spine_density` put anything on the sprite was to
-read 800 lines of canvas code. The catalogue writes that down once: 20 parts,
+read 800 lines of canvas code. The catalogue writes that down once: 23 parts,
 the genes behind each, and the exact threshold at which each appears.
 
 Two rules keep it honest, both enforced by `tests/parts.test.js`, which renders
@@ -169,7 +169,7 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | **Extra eyes** | `eye_count ≥ 4  (extra pairs = clamp(round(eye_count / 2) − 1, 0, 3))` | `eye_count`, `eye_size` |
 | **Antennae** | `antenna_length > 0.104  (the length has to clear 0.15 of the body unit)` | `antenna_length` |
 
-### Surface — colour, speckle, fur
+### Surface — colour, pattern, fur
 
 | Part | Appears when | Genes |
 |---|---|---|
@@ -181,7 +181,7 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 
 #### Genes that move numbers, not pixels
 
-Eight of the 43 reach no part of the sprite. The builder badges them rather
+Eight of the 57 reach no part of the sprite. The builder badges them rather
 than leaving you to wonder why the slider does nothing:
 
 `body_length` · `body_mass` · `carapace_thickness` · `leg_joints` ·
