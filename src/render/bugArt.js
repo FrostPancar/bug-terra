@@ -91,16 +91,23 @@ const SWATCHES = [
  * Sampled hexes, left to right in the reference image.
  */
 const REF_PALETTE = {
-  tan:    '#bb9e7c',
-  brown:  '#594637',
-  rust:   '#bf5640',
-  orange: '#d76334',
-  gold:   '#e7bc53',
-  sage:   '#589873',
-  ink:    '#2b292a',
-  cream:  '#e5dbcf',
-  pink:   '#e2a9af',
-  blue:   '#4255be',
+  tan:      '#bb9e7c',
+  brown:    '#594637',
+  rust:     '#bf5640',
+  orange:   '#d76334',
+  gold:     '#e7bc53',
+  sage:     '#589873',
+  ink:      '#2b292a',
+  cream:    '#e5dbcf',
+  pink:     '#e2a9af',
+  blue:     '#4255be',
+  // Appended, not inserted — REF_PALETTE_ORDER below assigns each swatch a
+  // fixed index, and every hue gene (pattern_horn_hue, wing_tip_hue, ...)
+  // stores that index, so adding a colour anywhere but the end of THAT list
+  // would silently reassign every genome's stored index to a different
+  // swatch. This object's own key order carries no meaning by itself.
+  charcoal: '#2B2A2A',
+  ivory:    '#E8DBCD',
 };
 
 /** '#rrggbb' → 'rgba(r,g,b,a)'. The reference palette is stored as hex. */
@@ -148,6 +155,7 @@ const BLOB_ALPHA = 0.52;
  */
 export const REF_PALETTE_ORDER = [
   'tan', 'brown', 'rust', 'orange', 'gold', 'sage', 'ink', 'cream', 'pink', 'blue',
+  'charcoal', 'ivory',
 ];
 
 /** Wing tip wash colour at alpha `a`. 0 = white, 1..10 = a REF_PALETTE swatch. */
@@ -169,15 +177,23 @@ export function palette(g) {
   // One bright complementary accent — the cyan against red in the reference.
   const accentH = h + 0.5;
 
-  // Limbs are either near-black or a deep tone of the body. Both appear in the
-  // reference set; `pattern_leg` picks, so it is heritable rather than arbitrary.
+  // Limbs are NORMAL, near-black, or GRADIENT (a colour at the foot fading to
+  // the normal limb tone toward the body) — `pattern_leg` picks, so it is
+  // heritable rather than arbitrary.
   //
-  // This used to be a third reading of the single shared `pattern` gene, sat
-  // alongside the horn and mandible treatments it also drove. "Are the legs
-  // inked" is not one of flat/gradient/dots/oval — it is a different body part
-  // asking a different question — so it now has a gene of its own. The 0.5
-  // threshold is unchanged, so a leg that inked before inks at the same value.
-  const inkLimbs = (g.pattern_leg ?? 0) > 0.5;
+  // This used to be a single continuous 0-1 slider read as a threshold ("above
+  // 0.5 the limbs ink"), a leftover of the shared `pattern` gene it was split
+  // off from. There is no continuous reading between "normal" and "inked" —
+  // it was always really a choice of two, wearing a slider that implied a
+  // third option nothing used. It is a stepped 0/1/2 pick now, same convention
+  // as `horn_serration`: 0 stays the exact old "unmarked" leg, 1 is the exact
+  // old "inked" leg (the 0.5 threshold is preserved as the boundary between
+  // the old gene's two readings, so a genome saved under the old scale still
+  // decodes the way it used to — see normalizeGenome's migration in genes.js).
+  const inkLimbs = Math.round(g.pattern_leg ?? 0) === 1;
+  const gradientLimbs = Math.round(g.pattern_leg ?? 0) === 2;
+  const legFootHex = REF_PALETTE[REF_PALETTE_ORDER[
+    clamp(Math.round(g.pattern_leg_hue ?? 4), 0, REF_PALETTE_ORDER.length - 1)]];
 
   /**
    * THE LIGHTING COLOUR — a REF_PALETTE swatch chosen by `light_hue`, not a
@@ -221,10 +237,6 @@ export function palette(g) {
 
   return {
     shell:   hsl(h, s, l),
-    // The one surviving tone of the old airbrush gradient. It is NOT a head
-    // treatment any more (the head is flat `shell`, see drawBug); the elytra
-    // pass is its only consumer, where it separates the two wing covers.
-    deep:    hsl(h, s * 1.02, Math.max(0.20, l - 0.14)),
     // Body-segment bloom. All six stops are now the SAME authored colour —
     // `light_hue`'s hue at `lighting_saturation`/`lighting_lightness` — the core
     // three at full strength and the outer three with the saturation pulled back
@@ -260,6 +272,15 @@ export function palette(g) {
     segBorder: hsl(h, s * 1.05, Math.max(0.16, l - 0.20), TRANSLUCENT_BORDER_ALPHA),
     limb:    inkLimbs ? '#17161c' : hsl(h, s * 0.92, Math.max(0.24, l - 0.16)),
     limbLo:  inkLimbs ? '#0e0d11' : hsl(h, s * 0.95, Math.max(0.18, l - 0.24)),
+    // Gradient leg mode's foot-end colour — a straight REF_PALETTE swatch,
+    // same convention as `crownSolid`/`wingTip`. Unused unless `pattern_leg`
+    // selects the gradient reading; see drawLegs.
+    legFoot: legFootHex,
+    gradientLimbs,
+    // The shell marking's own colour — a straight REF_PALETTE swatch, unused
+    // unless `pattern_shell` selects a marking. See drawShellPattern.
+    shellPattern: REF_PALETTE[REF_PALETTE_ORDER[
+      clamp(Math.round(g.pattern_shell_hue ?? 7), 0, REF_PALETTE_ORDER.length - 1)]],
     accent:  hsl(accentH, 0.72, 0.60),
     horn:    hsl(h, s * 0.90, Math.max(0.26, l - 0.10)),
     sclera:  '#ffffff',
@@ -279,6 +300,12 @@ export function palette(g) {
     // swatch. Same two-stop-into-nothing technique as the blended crown mark.
     wingTip:    wingTipColour(g, 0.78),
     wingTipOut: wingTipColour(g, 0),
+    // Elytra — hard wing covers, so unlike the membrane they stay OPAQUE, but
+    // they are covers FOR wings and should read as kin to `wing`'s neutral
+    // grey rather than as one more body-hue surface. Saturation pulled back
+    // hard and lightness pulled toward the membrane's own value; only a
+    // little hue survives, enough that the cover doesn't look pasted on.
+    elytra:  hsl(h, clamp(s * 0.28, 0, 0.30), clamp(l * 0.35 + 0.42, 0.38, 0.82)),
     h, s, l, inkLimbs,
   };
 }
@@ -441,8 +468,18 @@ export function wingSweep(g, state) {
  *   0 dark      near-black fill with a scatter of small white dots
  *   1 notched   white fill with a dark notch hugging the outer-top corner
  *   2 hooked    white fill with a small dark hook/comma mark near that corner
+ *
+ * A FOURTH style breaks the "one silhouette" rule above on purpose: `flat`
+ * keeps the same asymmetric identity (one rounded corner, one point, on
+ * opposite diagonals — see eyeFlatPath) but pulls the belly in close to the
+ * long axis instead of bulging past it, so the eye reads as set into the head
+ * rather than bulging off it. No interior mark — the flatter shape is the
+ * whole treatment, the way `dark`/`notched`/`hooked` are marks on the SAME
+ * shape.
+ *
+ *   3 flat      plain sclera fill on the flatter silhouette, no interior mark
  */
-export const EYE_FILLS = ['dark', 'notched', 'hooked'];
+export const EYE_FILLS = ['dark', 'notched', 'hooked', 'flat'];
 
 /**
  * CROWN MARK — a flat colour patch capping the top of the head.
@@ -503,7 +540,7 @@ export function layout(g, ppu = 26) {
     hornType: HORN_TYPES[g.horn_type ?? 0],
     wingType: WING_TYPES[clamp(Math.round(g.wing_type ?? 0), 0, WING_TYPES.length - 1)],
     wingShape: wingShape(g),
-    eyeFill: EYE_FILLS[clamp(Math.round(g.eye_type ?? 0), 0, 2)],
+    eyeFill: EYE_FILLS[clamp(Math.round(g.eye_type ?? 0), 0, 3)],
     crownMark: CROWN_MARKS[clamp(Math.round(g.crown_mark_style ?? 0), 0, 2)],
     mandibleType: MANDIBLE_TYPES[clamp(Math.round(g.mandible_type ?? 0), 0, MANDIBLE_TYPES.length - 1)],
     wingPairs: g.wing_count / 2,
@@ -1173,19 +1210,32 @@ function patternedSilhouette(ctx, pieces, base, pat, seed) {
   const bh = Math.max(1, box.maxY - box.minY);
 
   if (pat.mode === 'dots') {
-    // 4. one scatter over the whole silhouette's box. The clip discards
-    // whatever lands off the shape, which is what keeps the density even
-    // across a shaft and its barbs instead of restarting on each.
+    // 4. one scatter over the whole silhouette's box, MIRRORED across the
+    // box's own vertical midline. A horn or a jaw here is always a paired or
+    // centred shape (the crown's three prongs, a pincer's two blades), so an
+    // independently-rolled scatter on each half read as two different
+    // markings rather than one symmetric pattern. Half the rolls, each
+    // mirrored to both sides, keeps the same total dot count but makes the
+    // marking itself symmetric. The clip discards whatever lands off the
+    // shape, which is what keeps the density even across a shaft and its
+    // barbs instead of restarting on each.
     const n = Math.round(lerp(34, 9, pat.scale) * (1 + Math.min(2, pieces.length - 1) * 0.5));
+    const half = Math.max(1, Math.round(n / 2));
     const r = Math.max(0.6, lerp(0.16, 0.40, pat.scale) * widest);
+    const midY = (box.minY + box.maxY) / 2;
     ctx.fillStyle = pat.lite;
-    ctx.globalAlpha = 0.35 + pat.k * 0.6;
-    for (let i = 0; i < n; i++) {
+    // More opaque than before — a dot pattern read as barely-there speckle at
+    // low contrast; the floor is now well past half-strength.
+    ctx.globalAlpha = 0.60 + pat.k * 0.4;
+    for (let i = 0; i < half; i++) {
       const x = box.minX + hash01(i, seed) * bw;
-      const y = box.minY + hash01(i, seed + 11) * bh;
-      ctx.beginPath();
-      ctx.arc(x, y, r * (0.6 + hash01(i, seed + 31)), 0, TAU);
-      ctx.fill();
+      const dy = (hash01(i, seed + 11) - 0.5) * bh;
+      const rr = r * (0.6 + hash01(i, seed + 31));
+      for (const y of [midY + dy, midY - dy]) {
+        ctx.beginPath();
+        ctx.arc(x, y, rr, 0, TAU);
+        ctx.fill();
+      }
     }
     ctx.globalAlpha = 1;
   } else if (pat.mode === 'diagonal') {
@@ -1360,15 +1410,21 @@ function drawElytra(ctx, L, col) {
   const body = L.abdomen ?? L.thorax;
   const cover = lerp(0.62, 1.10, L.wingArea);         // widened both ends
   const rx = body.rx * cover, ry = body.ry * cover;
+  // Both covers take the SAME fill now — they used to split shell/deep, one
+  // cover the body's own colour and the other a darker tone, which read as
+  // two different-coloured plates rather than a mirrored pair. `col.elytra`
+  // is also the one change that moves this closer to `wing`'s neutral grey,
+  // per the redesign: a cover FOR a wing should look like kin to it.
   for (const side of [-1, 1]) {
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(body.x, side * ry * 0.26, rx, ry * 0.78, 0, 0, TAU);
-    ctx.fillStyle = side < 0 ? col.shell : col.deep;
+    ctx.fillStyle = col.elytra;
     ctx.fill();
     ctx.restore();
   }
-  // seam: a thin sliver of the deeper tone, no stroke
+  // seam: a thin sliver of the deeper tone, no stroke — the only place the two
+  // covers differ from each other, which is what actually sells "two plates".
   ctx.fillStyle = col.seam;
   ctx.globalAlpha = 0.9;
   ctx.fillRect(body.x - rx * 0.92, -Math.max(0.6, L.unit * 0.012), rx * 1.84, Math.max(1.2, L.unit * 0.024));
@@ -1403,12 +1459,19 @@ function poseLeg(leg, phase) {
 
 /**
  * `leg_joints` IS BINARY NOW (0/1, see genes.js) and 1 draws a real, minimal
- * kink at the knee instead of the single smooth arc every leg used to get.
- * `KINK` nudges the knee OUTWARD from the smooth curve's own control point,
- * still along a single round-capped stroke (one capsule call, unchanged), so
- * the bend stays a subtle crease rather than a visible two-segment leg —
- * "very slightly sharper, very rounded corners" per the design note, not a
- * jointed limb. 0 renders byte-for-byte the old curve.
+ * kink instead of the single smooth arc every leg used to get, still along a
+ * single round-capped stroke (one capsule call, unchanged), so the bend stays
+ * a subtle crease rather than a visible two-segment leg — "very slightly
+ * sharper, very rounded corners" per the design note, not a jointed limb.
+ * 0 renders byte-for-byte the old curve.
+ *
+ * THE BREAK SITS AT THE LEG'S OWN MIDPOINT, not near the shoulder. The curve's
+ * control point is pinned to `t=0.5` along the straight attach→foot line —
+ * which is where a quadratic curve's own deviation from that line peaks — and
+ * then bowed sideways by `LEG_JOINT_KINK`, in whichever lateral direction the
+ * resting knee already leans, so the kink still reads as "this leg's own
+ * natural direction," just relocated to the middle of the limb where a joint
+ * actually belongs.
  */
 const LEG_JOINT_KINK = 0.22;
 
@@ -1416,11 +1479,30 @@ function drawLegs(ctx, L, col, phase) {
   for (const leg of L.legs) {
     const { knee, foot } = poseLeg(leg, phase);
 
-    const kink = leg.joints >= 1 ? LEG_JOINT_KINK : 0;
-    const cx = lerp(leg.attach.x, foot.x, 0.30 + kink);
-    const cy = lerp(knee.y, foot.y, 0.18 - kink * 0.5);
+    let cx, cy;
+    if (leg.joints >= 1) {
+      const midX = lerp(leg.attach.x, foot.x, 0.5);
+      const midY = lerp(leg.attach.y, foot.y, 0.5);
+      const lean = knee.y - midY;              // the leg's own natural lateral direction
+      cx = midX;
+      cy = midY + lean * LEG_JOINT_KINK * 2.5;  // bowed at the midpoint, not the shoulder
+    } else {
+      cx = lerp(leg.attach.x, foot.x, 0.30);
+      cy = lerp(knee.y, foot.y, 0.18);
+    }
 
-    capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, col.limb);
+    // GRADIENT LEG MODE: a linear gradient along the stroke itself, foot-end
+    // in `col.legFoot`, attach-end in the normal `col.limb` — the leg reads as
+    // fading INTO the body's own colour as it approaches it, not as a solid
+    // tint. Every other mode keeps the flat `col.limb` stroke it always had.
+    let strokeColour = col.limb;
+    if (col.gradientLimbs && ctx.createLinearGradient) {
+      const grad = ctx.createLinearGradient(leg.attach.x, leg.attach.y, foot.x, foot.y);
+      grad.addColorStop(0, col.limb);
+      grad.addColorStop(1, col.legFoot);
+      strokeColour = grad;
+    }
+    capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, strokeColour);
 
     // Foot: a round pad at the tip, FIXED at the maximum the old `foot_size`
     // gene could reach. The gene is gone (see genes.js): every value under this
@@ -1428,12 +1510,13 @@ function drawLegs(ctx, L, col, phase) {
     // "as big as possible" was the only answer the slider had. 0.95 of the leg
     // width is a pad that clearly overhangs the capsule cap.
     //
-    // Colour is `col.limb`, the LEG's own tone — not the darker `col.limbLo` it
-    // used to take. A darker pad read as a separate object stuck on the end; the
-    // foot is part of the leg, so it is the colour of the leg, and the overhang
-    // alone is what makes it visible.
+    // Colour is `col.limb` (or, in gradient mode, the gradient's own foot-end
+    // colour) — not the darker `col.limbLo` it used to take. A darker pad read
+    // as a separate object stuck on the end; the foot is part of the leg, so
+    // it takes the leg's own colour at that point, and the overhang alone is
+    // what makes it visible.
     const fr = leg.w * FOOT_PAD_R;
-    fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limb);
+    fillEllipse(ctx, foot.x, foot.y, fr, fr, col.gradientLimbs ? col.legFoot : col.limb);
   }
 }
 
@@ -1563,17 +1646,22 @@ function drawHorn(ctx, L, col, pat) {
       break;
     }
     default: {
-      // crown — EXEMPT from the redesign, geometry untouched, and deliberately
-      // blind to horn_serration: the sheet drew no SR variants for it. It keeps
-      // measuring its spread off the HEAD radius, which is what it always did.
+      // crown — deliberately blind to horn_serration: the sheet drew no SR
+      // variants for it. It keeps measuring its spread off the HEAD radius,
+      // which is what it always did.
       const h = L.head;
-      // Three prongs, the middle one longest — graphic and symmetric.
+      // Three prongs, the middle one longest — graphic and symmetric. The
+      // side prongs bow outward through the control point but then curve
+      // BACK toward the centreline at the tip — a crown's outer points hook
+      // in, they don't keep splaying away from the head — so the tip sits
+      // closer to the axis than the control point does.
       for (const dy of [-1, 0, 1]) {
         const sc = dy === 0 ? 1 : 0.72;
+        const tipLean = dy === 0 ? 1 : 0.5;
         piece(
           { x: x0, y: dy * h.ry * 0.38 },
-          { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.78 },
-          { x: x0 + len * sc, y: dy * h.ry * 1.00 },
+          { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.85 },
+          { x: x0 + len * sc, y: dy * h.ry * tipLean },
           base * 1.04, base * 0.30, 23 + dy);
       }
       break;
@@ -1795,6 +1883,24 @@ function eyeWedgePath(ctx, R, r, side) {
   ctx.closePath();
 }
 
+/**
+ * THE FLAT eye silhouette — same asymmetric identity as eyeWedgePath (one
+ * broad rounded corner at the outer-top, one point at the inner-lower end),
+ * but every lateral control point is pulled back to roughly half its bulge,
+ * so the belly sits close against the long axis instead of ballooning out
+ * past it. Reads as a flatter, less-protruding eye set into the head.
+ */
+function eyeFlatPath(ctx, R, r, side) {
+  const v = (w) => side * w;
+  ctx.beginPath();
+  ctx.moveTo(-R * 0.90, v(-r * 0.10));
+  ctx.quadraticCurveTo(-R * 0.28, v(r * 0.70), R * 0.30, v(r * 0.86));
+  ctx.quadraticCurveTo(R * 0.92, v(r * 0.92), R * 0.96, v(r * 0.20));
+  ctx.quadraticCurveTo(R * 0.98, v(-r * 0.30), R * 0.42, v(-r * 0.50));
+  ctx.quadraticCurveTo(-R * 0.28, v(-r * 0.66), -R * 0.90, v(-r * 0.10));
+  ctx.closePath();
+}
+
 function drawEyes(ctx, L, col) {
   // THERE IS NO IRIS. Not on any fill treatment, not at any saturation.
   //
@@ -1813,11 +1919,14 @@ function drawEyes(ctx, L, col) {
      * NO interior mark: a notch or a hook at a quarter of the size is two or
      * three pixels of mud, and the array's job is to read as an array.
      */
+    const flat = L.eyeFill === 'flat';
+    const path = flat ? eyeFlatPath : eyeWedgePath;
+
     if (e.minor) {
       ctx.save();
       ctx.translate(e.x, e.y);
       ctx.rotate(e.side * 0.30);
-      eyeWedgePath(ctx, e.ry, e.rx, e.side);
+      path(ctx, e.ry, e.rx, e.side);
       ctx.fillStyle = L.eyeFill === 'dark' ? col.pupil : col.sclera;
       ctx.fill();
       ctx.restore();
@@ -1836,9 +1945,13 @@ function drawEyes(ctx, L, col) {
     // The outer-top corner, where both marked treatments put their mark.
     const cx = R * 0.56, cy = v(r * 0.72);
 
-    eyeWedgePath(ctx, R, r, s);
+    path(ctx, R, r, s);
     ctx.fillStyle = L.eyeFill === 'dark' ? col.pupil : col.sclera;
     ctx.fill();
+
+    // `flat` carries no interior mark — the flatter silhouette IS the whole
+    // treatment (see the EYE_FILLS doc above), same as the array eyes above.
+    if (flat) { ctx.restore(); continue; }
 
     ctx.save();
     ctx.clip();                            // every mark stays inside the wedge
@@ -1929,15 +2042,23 @@ const SPIKE_LEN = [0.18, 0.52];  // fraction of ry, at spikyness 0 / 1
 const SPIKE_BASE = [0.16, 0.26]; // fraction of rx, at spikyness 0 / 1
 
 /**
- * The translucency border. Past `TRANSLUCENT_BORDER_THRESHOLD`, every segment
- * — and the spikes growing off it — takes a thin, low-opacity stroke of the
- * segment's own deep tone (`col.segBorder`), so the shape reads as slightly
- * see-through rather than gaining a hard outline. The threshold matches the
- * `camouflaged` trait's own translucency floor in classification.js, so the
- * two readings — "this bug is see-through" as a trait and as a render — agree.
+ * TRANSLUCENCY. Past `TRANSLUCENT_BORDER_THRESHOLD`, a segment mass loses
+ * opacity toward its own rim — `destination-out` erased in segmentMass(), a
+ * true fade rather than an outline stroke, so the shape reads as thinning out
+ * rather than gaining an edge. `TRANSLUCENT_EDGE_START` is where the fade
+ * begins (as a fraction of the segment's own radius — inside that radius
+ * nothing erases, so the centre always stays solid) and `_ALPHA` is how much
+ * erases at the rim itself, never total. The spikes growing off a translucent
+ * segment keep their own, separate treatment — a thin low-opacity stroke of
+ * `col.segBorder` (see drawOneSpike) — since a fade wouldn't read on a shape
+ * that thin. The threshold matches the `camouflaged` trait's own translucency
+ * floor in classification.js, so the two readings — "this bug is see-through"
+ * as a trait and as a render — agree.
  */
 const TRANSLUCENT_BORDER_THRESHOLD = 0.55;
 const TRANSLUCENT_BORDER_ALPHA = 0.35;
+const TRANSLUCENT_EDGE_START = 0.62;
+const TRANSLUCENT_EDGE_ALPHA = 0.75;
 
 /** One spike, apex pointing away from the segment along its lateral axis. */
 function drawOneSpike(ctx, x, baseY, tipY, halfBase, col, translucent) {
@@ -1967,6 +2088,50 @@ function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
   }
 }
 
+/** `pattern_shell`'s three readings — see the gene's doc in genes.js. */
+export const SHELL_PATTERN_MODES = ['none', 'dots', 'lines'];
+
+/**
+ * A marking on ONE trunk mass, clipped to it. Both marked modes are MIRRORED
+ * across the part's own centreline (`p.y`, since every trunk part sits on the
+ * body's own long axis) rather than independently scattered/spaced per side —
+ * a bilaterally symmetric animal with an asymmetric marking on one segment
+ * reads as noise, not a marking, the same reasoning as the horn/mandible dot
+ * fix (see surfacePattern's dots mode).
+ */
+function drawShellPattern(ctx, p, col, rx, ry, mode) {
+  if (mode === 'none') return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+  ctx.clip();
+  ctx.fillStyle = col.shellPattern;
+
+  if (mode === 'dots') {
+    const half = 4;
+    const seed = Math.round(p.x * 7 + rx * 13);
+    for (let i = 0; i < half; i++) {
+      const dx = (hash01(i, seed) - 0.5) * rx * 1.5;
+      const dy = hash01(i, seed + 17) * ry * 0.82;
+      const r = Math.max(0.8, rx * 0.10 * (0.7 + hash01(i, seed + 29)));
+      for (const yy of [p.y + dy, p.y - dy]) {
+        ctx.beginPath();
+        ctx.arc(p.x + dx, yy, r, 0, TAU);
+        ctx.fill();
+      }
+    }
+  } else if (mode === 'lines') {
+    const stripes = 3;
+    const gap = (ry * 2) / (stripes + 1);
+    const w = Math.max(1, gap * 0.34);
+    for (let i = 1; i <= stripes; i++) {
+      const yy = p.y - ry + gap * i;
+      ctx.fillRect(p.x - rx, yy - w / 2, rx * 2, w);
+    }
+  }
+  ctx.restore();
+}
+
 /**
  * One trunk mass — thorax, abdominal segment, or myriapod ring.
  *
@@ -1982,7 +2147,7 @@ function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
  * threshold) are read once per call, off the genome, by drawBug() — see the
  * trunk-drawing closures there.
  */
-function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false) {
+function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false, shellMode = 'none') {
   const rx = Math.max(0.5, p.rx);
   const ry = Math.max(0.5, p.ry);
 
@@ -1993,10 +2158,11 @@ function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false
   ctx.fill();
   ctx.clip();
 
-  // Work in the part's own unit circle so the blob and the line stretch with it.
+  // The blob, in its own (possibly skewed) unit circle so it stretches with
+  // the part.
+  ctx.save();
   ctx.translate(p.x + rx * (p.kind === 'abdomen' ? ABDOMEN_BLOB_SKEW : 0), p.y);
   ctx.scale(rx, ry);
-
   if (ctx.createRadialGradient) {
     const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, BLOB_R);
     // Six stops, not three. The old ramp had a bright plateau and then a
@@ -2015,18 +2181,35 @@ function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false
   }
   ctx.restore();
 
-  segmentCentreline(ctx, p, col, rx, ry, crease);
-  drawSegmentSpikes(ctx, p, col, spiky, translucent);
-
-  if (translucent) {
+  if (translucent && ctx.createRadialGradient) {
+    // TRANSLUCENCY reads as the segment LOSING OPACITY toward its own rim, not
+    // as an outline drawn around it — an outline is a hard edge, the opposite
+    // of "you can sort of see through this". `destination-out` erases the
+    // fill (shell + blob) already sitting in this clip, more so near the rim
+    // than the centre, so the middle of the segment stays solid and the
+    // silhouette itself fades approaching its own boundary. Its own UNSKEWED
+    // unit circle — concentric with the clip this segment actually traces,
+    // not with the blob's off-centre one — so the fade is even all the way
+    // round rather than heavier on one side.
     ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(rx, ry);
+    const er = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    er.addColorStop(0, 'rgba(0,0,0,0)');
+    er.addColorStop(TRANSLUCENT_EDGE_START, 'rgba(0,0,0,0)');
+    er.addColorStop(1, `rgba(0,0,0,${TRANSLUCENT_EDGE_ALPHA})`);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = er;
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
-    ctx.lineWidth = Math.max(0.6, Math.min(rx, ry) * 0.045);
-    ctx.strokeStyle = col.segBorder;
-    ctx.stroke();
+    ctx.arc(0, 0, 1, 0, TAU);
+    ctx.fill();
     ctx.restore();
   }
+  ctx.restore();
+
+  drawShellPattern(ctx, p, col, rx, ry, shellMode);
+  segmentCentreline(ctx, p, col, rx, ry, crease);
+  drawSegmentSpikes(ctx, p, col, spiky, translucent);
 }
 
 /**
@@ -2318,6 +2501,7 @@ export function drawBug(ctx, g, opts = {}) {
   const breathe = state === 'idle' ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
   const lunge = state === 'attack' ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
   const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
+  const shellPatternMode = SHELL_PATTERN_MODES[clamp(Math.round(g.pattern_shell ?? 0), 0, 2)];
 
   ctx.save();
   ctx.rotate(-Math.PI / 2);                 // head up
@@ -2454,13 +2638,13 @@ export function drawBug(ctx, g, opts = {}) {
     // `elytra` is still the switch that suppresses the dark core — a shell cover
     // hides the joint — so segmentMass() is told which mass wants a crease.
     const creased = L.wingType === 'elytra' ? null : L.abdomen;
-    for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments);
+    for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPatternMode);
     drawElytra(ctx, L, col);                     // covers lie on the abdomen
   };
 
   /** The thorax. */
   const drawTrunkThorax = () => {
-    segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments);
+    segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPatternMode);
   };
 
   if (L.wingPairs > 0) {

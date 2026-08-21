@@ -548,8 +548,16 @@ miniCorner.addEventListener('pointerdown', (e) => {
   e.stopPropagation();
   const corner = miniCorner.dataset.corner;
   miniDrag(e, (dx, dy, s) => {
+    // `corner` is 'bl'/'br'/'tl'/'tr' — vertical (t/b) is the FIRST character,
+    // horizontal (l/r) the second. `endsWith('r')` correctly reads the
+    // horizontal half, but the vertical half needs `startsWith('b')`: no
+    // corner string ever ENDS with 'b' or 't' (they all end in 'l'/'r'), so
+    // `endsWith('b')` was always false and growY always took the -dy branch —
+    // correct for the 'tl'/'tr' corners by coincidence, backwards for 'bl'/
+    // 'br', which is why a pull only ever stretched one axis instead of
+    // growing the box on the diagonal the drag actually followed.
     const growX = corner.endsWith('r') ? dx : -dx;
-    const growY = corner.endsWith('b') ? dy : -dy;
+    const growY = corner.startsWith('b') ? dy : -dy;
     const w = Math.max(MINI_MIN, Math.min(MINI_MAX, s.w + growX));
     const h = Math.max(MINI_MIN, Math.min(MINI_MAX, s.h + growY));
     miniPos = {

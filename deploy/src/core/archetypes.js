@@ -54,7 +54,7 @@ export const ARCHETYPES = [
       eye_count: 2, eye_size: 0.62, antenna_length: 0.50,
       metabolism: 0.85, aggression: 0.85,
       hue: 0.14, saturation: 0.92, lightness: 0.55,
-      pattern_leg: 0.15, pattern_contrast: 0.95, setae: 0.25, translucency: 0.15,
+      pattern_leg: 0, pattern_contrast: 0.95, setae: 0.25, translucency: 0.15,
     },
   },
   {
@@ -96,7 +96,7 @@ export const ARCHETYPES = [
       eye_count: 2, eye_size: 0.35, antenna_length: 0.95,
       metabolism: 0.55, aggression: 0.25,
       hue: 0.08, saturation: 0.35, lightness: 0.24,
-      pattern_leg: 0.9, setae: 0.30, translucency: 0.10,
+      pattern_leg: 1, setae: 0.30, translucency: 0.10,
     },
   },
   {
@@ -140,7 +140,7 @@ export const ARCHETYPES = [
       eye_count: 2, eye_size: 0.72, antenna_length: 0.80,
       metabolism: 0.60, aggression: 0.10,
       saturation: 0.20, lightness: 0.62,
-      pattern_leg: 0.45, setae: 0.95, translucency: 0.30,
+      pattern_leg: 0, setae: 0.95, translucency: 0.30,
     },
   },
   {
@@ -180,7 +180,7 @@ export const ARCHETYPES = [
       eye_count: 2, eye_size: 0.28, antenna_length: 0.55,
       metabolism: 0.28, aggression: 0.30,
       saturation: 0.30, lightness: 0.20,
-      pattern_leg: 0.5, setae: 0.45, translucency: 0.05,
+      pattern_leg: 0, setae: 0.45, translucency: 0.05,
     },
   },
 ];

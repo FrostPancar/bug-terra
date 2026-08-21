@@ -150,7 +150,7 @@ export const GENE_SPECS = {
   // Tip wash colour. 0 = white (the default, and NOT a REF_PALETTE entry — the
   // reference palette has no white); 1–10 select a REF_PALETTE swatch in order:
   // tan/brown/rust/orange/gold/sage/ink/cream/pink/blue.
-  wing_tip_hue:       { min: 0, max: 10, integer: true, default: 0 },
+  wing_tip_hue:       { min: 0, max: 12, integer: true, default: 0 },
   wing_beat:          { min: 0, max: 1, default: 0.15 },
 
   /* ---- weapons & defence ---- */
@@ -179,11 +179,12 @@ export const GENE_SPECS = {
 
   /* ---- sensory ---- */
   eye_count:          { min: 2, max: 12, integer: true, step: 2, default: 2 },
-  // REPURPOSED. There is only one eye SHAPE now (the sketch draws one silhouette
-  // three times); this picks the FILL TREATMENT: dark+white-dots / notched /
-  // hooked. The range narrowed 0–3 → 0–2 with the fourth shape, and clampGene
-  // pulls any stored 3 down to 2.
-  eye_type:           { min: 0, max: 2, integer: true, default: 1 },   // dark/notched/hooked
+  // REPURPOSED, then reopened. This picks the eye's surface treatment: dark
+  // +white-dots / notched / hooked — all three the SAME wedge silhouette,
+  // differing only in fill/mark. A fourth value, `flat`, breaks that on
+  // purpose: same asymmetric identity, but a flatter, less-protruding
+  // silhouette with no interior mark. See EYE_FILLS in bugArt.js.
+  eye_type:           { min: 0, max: 3, integer: true, default: 1 },   // dark/notched/hooked/flat
   eye_size:           { min: 0, max: 1, default: 0.80 },
   antenna_length:     { min: 0, max: 1, default: 0.55 },
 
@@ -248,11 +249,25 @@ export const GENE_SPECS = {
    * hardcoded shift aimed at, so a genome that never touches these is unchanged
    * in spirit.
    */
-  pattern_horn_hue:     { min: 0, max: 9, integer: true, default: 4 },
-  pattern_mandible_hue: { min: 0, max: 9, integer: true, default: 4 },
-  // The old `pattern > 0.5 → black limbs` reading, on its own gene now. Same
-  // threshold, so a leg that was inked before is inked at the same value.
-  pattern_leg:        { min: 0, max: 1, default: 0.20 },   // above 0.5 the limbs ink
+  pattern_horn_hue:     { min: 0, max: 11, integer: true, default: 4 },
+  pattern_mandible_hue: { min: 0, max: 11, integer: true, default: 4 },
+  /**
+   * LEG COLOUR: normal / inked / gradient.
+   *
+   * Used to be the old shared `pattern` gene's third reading, continuous 0-1
+   * and read as a threshold ("above 0.5 the limbs ink") — a slider implying a
+   * spectrum between two states nothing in between ever meant anything. It is
+   * a stepped 0/1/2 pick now, same convention as `horn_serration`: 0 is the
+   * exact old "unmarked" leg, 1 the exact old "inked" leg (clampGene rounds a
+   * stored value to the nearest integer, so the 0.5 threshold survives as the
+   * boundary between them for any old genome). 2 is new: GRADIENT, a colour at
+   * the foot fading to the normal leg tone toward the body — see drawLegs in
+   * bugArt.js.
+   */
+  pattern_leg:        { min: 0, max: 2, integer: true, default: 0 },   // normal/inked/gradient
+  // The gradient leg's foot-end colour. Same REF_PALETTE-index convention as
+  // `pattern_horn_hue`; unused unless `pattern_leg` selects gradient.
+  pattern_leg_hue:    { min: 0, max: 11, integer: true, default: 4 },
   // SHARED, deliberately. These two do not pick a treatment, they modulate
   // whichever treatment each component already picked — how loud it reads, how
   // coarse the dots are. That is a house style, not a per-part decision, and
@@ -271,7 +286,7 @@ export const GENE_SPECS = {
   // computed from the body hue — see the mandate in bugArt.js), but WHICH
   // swatch is now a gene: 0–9 index REF_PALETTE_ORDER. 7 is cream, which is
   // what every bug used to get, so the default is the old fixed behaviour.
-  light_hue:          { min: 0, max: 9, integer: true, default: 7 },
+  light_hue:          { min: 0, max: 11, integer: true, default: 7 },
   /**
    * THE LIGHTING'S OWN SATURATION AND LIGHTNESS.
    *
@@ -314,6 +329,19 @@ export const GENE_SPECS = {
   // bugArt.js) — it is read as part of the shell, not a separate part painted
   // on top. Default 0: opt-in, so an untouched genome is unchanged.
   spikyness:          { min: 0, max: 1, default: 0 },
+  /**
+   * A marking on the trunk masses themselves (thorax, each abdominal segment,
+   * each myriapod ring) — separate from `pattern_horn`/`pattern_mandible`,
+   * which only ever reached the horn and jaws. Stepped, same convention as
+   * `pattern_leg`: 0 none, 1 a symmetric dot scatter, 2 horizontal bands. Both
+   * marked options are mirrored across the segment's own centreline — see
+   * drawShellPattern in bugArt.js — because an independently-rolled scatter on
+   * a bilaterally symmetric animal reads as noise, not a marking.
+   */
+  pattern_shell:      { min: 0, max: 2, integer: true, default: 0 },   // none/dots/lines
+  // The shell marking's own colour. Same REF_PALETTE-index convention as
+  // `pattern_horn_hue`; unused unless `pattern_shell` selects a marking.
+  pattern_shell_hue:  { min: 0, max: 11, integer: true, default: 7 },
 };
 
 export const GENE_ORDER = Object.keys(GENE_SPECS);
