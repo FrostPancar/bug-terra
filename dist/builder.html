@@ -242,7 +242,7 @@ pre b{color:var(--yellow);font-weight:600}
 
 /* Below the two-column breakpoint the library sits under the preview, so the
    bug scrolls off the moment you start tapping parts. This follows you down. */
-.mini{position:fixed;right:10px;top:10px;width:92px;height:92px;padding:0;z-index:20;
+.mini{position:fixed;right:10px;top:10px;width:150px;height:150px;padding:0;z-index:20;
   border-radius:var(--r-md);background:var(--dirt-deep);box-shadow:var(--drop);overflow:hidden;
   touch-action:none;cursor:grab}
 .mini.dragging{opacity:.85}
@@ -250,25 +250,6 @@ pre b{color:var(--yellow);font-weight:600}
 .mini b{position:absolute;left:0;right:0;bottom:0;background:rgba(23,17,13,.62);
   color:var(--cream);font:700 8.5px/1.9 var(--mono);letter-spacing:.1em;text-transform:uppercase;
   pointer-events:none}
-/* ONE resize grab zone — whichever corner of the box currently faces the
-   centre of the screen (the opposite corner from whatever screen edge the
-   box is snapped against), since that is the only corner a thumb can reach
-   without the hand covering the preview. Flush against the box's own two
-   edges, not inset, and its outer corner takes the SAME radius as the box
-   (`--r-md`) so it reads as a rounded piece of the frame rather than a
-   square patch dropped on top of it. */
-.mini i.corner{position:absolute;width:38px;height:38px;touch-action:none;
-  background:rgba(239,226,201,.24)}
-.mini i.corner::after{content:"";position:absolute;width:14px;height:14px;
-  border:3px solid var(--cream);opacity:.85}
-.mini i.corner[data-corner=tl]{left:0;top:0;border-radius:var(--r-md) 0 0 0}
-.mini i.corner[data-corner=tl]::after{left:9px;top:9px;border-right:0;border-bottom:0;border-top-left-radius:5px}
-.mini i.corner[data-corner=tr]{right:0;top:0;border-radius:0 var(--r-md) 0 0}
-.mini i.corner[data-corner=tr]::after{right:9px;top:9px;border-left:0;border-bottom:0;border-top-right-radius:5px}
-.mini i.corner[data-corner=bl]{left:0;bottom:0;border-radius:0 0 0 var(--r-md)}
-.mini i.corner[data-corner=bl]::after{left:9px;bottom:9px;border-right:0;border-top:0;border-bottom-left-radius:5px}
-.mini i.corner[data-corner=br]{right:0;bottom:0;border-radius:0 0 var(--r-md) 0}
-.mini i.corner[data-corner=br]::after{right:9px;bottom:9px;border-left:0;border-top:0;border-bottom-right-radius:5px}
 @media(min-width:1000px){.mini{display:none!important}}
 </style>
 </head><body>
@@ -322,7 +303,6 @@ pre b{color:var(--yellow);font-weight:600}
 
 <div class="mini" id="mini" hidden role="button" tabindex="0" aria-label="drag to move, tap to jump to the preview">
   <canvas id="miniPreview"></canvas><b id="miniTag">—</b>
-  <i class="corner" id="miniCorner" data-corner="bl"></i>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -4701,66 +4681,55 @@ syncMini();
 /**
  * On mobile the pinned mini preview used to be a plain fixed-position button:
  * top-right, one size, tap to jump back to the stage. It now moves by
- * dragging its centre and resizes by dragging a corner, and a drag that
- * actually moved something snaps the box flush to whichever screen corner it
- * ends up nearest — a tap that never moved still jumps to the stage, same as
- * before.
+ * dragging it, and a drag that actually moved something snaps the box flush
+ * to whichever screen corner it ends up nearest — a tap that never moved
+ * still jumps to the stage, same as before. FIXED SIZE, no resize handle —
+ * it used to be resizable from a corner grab zone, which put a second
+ * pointer target on a box already busy being a drag handle and a tap
+ * shortcut; one size, just a bigger one than the old default, is plenty.
  */
 const MINI_MARGIN = 10;
-const MINI_MIN = 64, MINI_MAX = 220;
-let miniSize = { w: 92, h: 92 };
+const miniSize = { w: 150, h: 150 };
 let miniPos = null;      // null = let the CSS default (top-right) hold
-let activeCorner = 'bl'; // the box's own corner facing the screen centre —
-                          // opposite whichever screen edge it's snapped to;
-                          // 'bl' matches the CSS default (screen top-right)
-const miniCorner = document.getElementById('miniCorner');
 
 function placeMini() {
-  mini.style.width = miniSize.w + 'px';
-  mini.style.height = miniSize.h + 'px';
   if (!miniPos) return;
   mini.style.left = miniPos.left + 'px';
   mini.style.top = miniPos.top + 'px';
   mini.style.right = 'auto';
 }
 
-/**
- * Snap {left,top} to whichever of the four viewport corners is nearest, and
- * point the resize handle at the corner of the BOX that now faces the
- * screen's centre — the only one a thumb can reach without covering the
- * preview itself. The other three corners get no handle at all.
- */
+/** Snap {left,top} to whichever of the four viewport corners is nearest. */
 function nearestMiniCorner(left, top) {
   const cx = left + miniSize.w / 2, cy = top + miniSize.h / 2;
   const right = cx > innerWidth / 2, bottom = cy > innerHeight / 2;
-  activeCorner = (bottom ? 't' : 'b') + (right ? 'l' : 'r');
-  miniCorner.dataset.corner = activeCorner;
   return {
     left: right ? innerWidth - miniSize.w - MINI_MARGIN : MINI_MARGIN,
     top: bottom ? innerHeight - miniSize.h - MINI_MARGIN : MINI_MARGIN,
   };
 }
 
-/** Shared pointer-drag plumbing for both the move and the resize handle. */
-function miniDrag(e, onMove, onTap) {
+// Dragging the box moves it; a tap (no real movement) jumps to the stage.
+mini.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   const startX = e.clientX, startY = e.clientY;
   const r = mini.getBoundingClientRect();
-  const start = { left: r.left, top: r.top, w: r.width, h: r.height };
+  const start = { left: r.left, top: r.top };
   mini.setPointerCapture(e.pointerId);
   mini.classList.add('dragging');
   let moved = false;
   const move = (ev) => {
     const dx = ev.clientX - startX, dy = ev.clientY - startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
-    onMove(dx, dy, start);
+    miniPos = { left: start.left + dx, top: start.top + dy };
+    placeMini();
   };
   const up = () => {
     mini.classList.remove('dragging');
     mini.removeEventListener('pointermove', move);
     mini.removeEventListener('pointerup', up);
     mini.removeEventListener('pointercancel', up);
-    if (!moved) { onTap?.(); return; }
+    if (!moved) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const r2 = mini.getBoundingClientRect();
     miniPos = nearestMiniCorner(r2.left, r2.top);
     placeMini();
@@ -4768,42 +4737,6 @@ function miniDrag(e, onMove, onTap) {
   mini.addEventListener('pointermove', move);
   mini.addEventListener('pointerup', up);
   mini.addEventListener('pointercancel', up);
-}
-
-// Dragging the body (not the resize handle) moves the whole box.
-mini.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('.corner')) return;
-  miniDrag(e, (dx, dy, s) => {
-    miniPos = { left: s.left + dx, top: s.top + dy };
-    placeMini();
-  }, () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-});
-
-// Dragging the handle resizes, anchored at the OPPOSITE corner so the box
-// grows outward from the handle under the finger rather than sliding under it.
-miniCorner.addEventListener('pointerdown', (e) => {
-  e.stopPropagation();
-  const corner = miniCorner.dataset.corner;
-  miniDrag(e, (dx, dy, s) => {
-    // `corner` is 'bl'/'br'/'tl'/'tr' — vertical (t/b) is the FIRST character,
-    // horizontal (l/r) the second. `endsWith('r')` correctly reads the
-    // horizontal half, but the vertical half needs `startsWith('b')`: no
-    // corner string ever ENDS with 'b' or 't' (they all end in 'l'/'r'), so
-    // `endsWith('b')` was always false and growY always took the -dy branch —
-    // correct for the 'tl'/'tr' corners by coincidence, backwards for 'bl'/
-    // 'br', which is why a pull only ever stretched one axis instead of
-    // growing the box on the diagonal the drag actually followed.
-    const growX = corner.endsWith('r') ? dx : -dx;
-    const growY = corner.startsWith('b') ? dy : -dy;
-    const w = Math.max(MINI_MIN, Math.min(MINI_MAX, s.w + growX));
-    const h = Math.max(MINI_MIN, Math.min(MINI_MAX, s.h + growY));
-    miniPos = {
-      left: corner.endsWith('r') ? s.left : s.left + (s.w - w),
-      top: corner.endsWith('b') ? s.top : s.top + (s.h - h),
-    };
-    miniSize = { w, h };
-    placeMini();
-  });
 });
 
 addEventListener('resize', () => {
