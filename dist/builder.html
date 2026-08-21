@@ -2703,7 +2703,7 @@ pre b{color:var(--yellow);font-weight:600}
     bump(hornOriginX(L) + L.hornLen * 1.1, L.hornLen * 0.7);
     bump(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
     if (L.wingPairs > 0) bump(L.wingSpan.x, L.wingSpan.y);
-    const shadowPad = unit * (SHADOW_OFFSET_K + SHADOW_BLUR_K * 1.5);
+    const shadowPad = unit * (SHADOW_SPREAD - 1 + SHADOW_BLUR_BODY_K * 1.5);
     L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + shadowPad + 3);
     return L;
   }
@@ -3618,10 +3618,10 @@ pre b{color:var(--yellow);font-weight:600}
   }
   var SHADOW_RGB = "78,68,66";
   var SHADOW_ALPHA = 0.44;
-  var SHADOW_LINE_K = 0.5;
-  var SHADOW_SPREAD = 1.42;
-  var SHADOW_BLUR_K = 0.13;
-  var SHADOW_OFFSET_K = 0.2;
+  var SHADOW_LINE_K = 0.8;
+  var SHADOW_SPREAD = 1.18;
+  var SHADOW_BLUR_BODY_K = 0.22;
+  var SHADOW_BLUR_LEG_K = 0.09;
   function trunkCentre(L) {
     let wx = 0, wy = 0, wsum = 0;
     for (const p of L.parts) {
@@ -3633,37 +3633,54 @@ pre b{color:var(--yellow);font-weight:600}
     return wsum > 0 ? { x: wx / wsum, y: wy / wsum } : { x: L.thorax?.x ?? 0, y: 0 };
   }
   function drawGroundShadow(ctx, L, phase) {
-    const off = L.unit * SHADOW_OFFSET_K;
-    const dx = -off * 0.72;
-    const dy = off;
-    const blur = clamp2(L.unit * SHADOW_BLUR_K, 1.5, 14);
+    const blurLeg = clamp2(L.unit * SHADOW_BLUR_LEG_K, 1, 10);
+    const blurBody = clamp2(L.unit * SHADOW_BLUR_BODY_K, 1.5, 14);
     const centre = trunkCentre(L);
-    ctx.save();
-    ctx.globalCompositeOperation = "multiply";
-    if ("filter" in ctx) ctx.filter = `blur(${blur.toFixed(2)}px)`;
-    ctx.strokeStyle = `rgba(${SHADOW_RGB},${(SHADOW_ALPHA * SHADOW_LINE_K).toFixed(3)})`;
-    ctx.lineCap = "round";
+    const size = L.half * 2;
+    const scratch = typeof document !== "undefined" ? document.createElement("canvas") : null;
+    if (scratch) {
+      scratch.width = size;
+      scratch.height = size;
+    }
+    const sctx = scratch ? scratch.getContext("2d") : ctx;
+    if (scratch) {
+      sctx.translate(L.half, L.half);
+    } else {
+      sctx.save();
+      sctx.globalCompositeOperation = "multiply";
+    }
+    if ("filter" in sctx) sctx.filter = `blur(${blurLeg.toFixed(2)}px)`;
+    sctx.strokeStyle = `rgba(${SHADOW_RGB},${(SHADOW_ALPHA * SHADOW_LINE_K).toFixed(3)})`;
+    sctx.lineCap = "round";
     for (const leg of L.legs) {
       const { foot } = poseLeg(leg, phase);
-      ctx.lineWidth = Math.max(1, leg.w * 0.55);
-      ctx.beginPath();
-      ctx.moveTo(foot.x + dx, foot.y + dy);
-      ctx.lineTo(centre.x + dx, centre.y + dy);
-      ctx.stroke();
+      sctx.lineWidth = Math.max(1, leg.w * 0.55);
+      sctx.beginPath();
+      sctx.moveTo(foot.x, foot.y);
+      sctx.lineTo(centre.x, centre.y);
+      sctx.stroke();
     }
-    ctx.beginPath();
+    if ("filter" in sctx) sctx.filter = `blur(${blurBody.toFixed(2)}px)`;
+    sctx.beginPath();
     const masses = L.head ? [...L.parts, L.head] : L.parts;
     for (const p of masses) {
       const rx = Math.max(0.5, p.rx * SHADOW_SPREAD);
       const ry = Math.max(0.5, p.ry * SHADOW_SPREAD);
-      ctx.moveTo(p.x + dx + rx, p.y + dy);
-      ctx.ellipse(p.x + dx, p.y + dy, rx, ry, 0, 0, TAU);
-      ctx.closePath();
+      sctx.moveTo(p.x + rx, p.y);
+      sctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+      sctx.closePath();
     }
-    ctx.fillStyle = `rgba(${SHADOW_RGB},${SHADOW_ALPHA})`;
-    ctx.fill();
-    if ("filter" in ctx) ctx.filter = "none";
-    ctx.restore();
+    sctx.fillStyle = `rgba(${SHADOW_RGB},${SHADOW_ALPHA})`;
+    sctx.fill();
+    if ("filter" in sctx) sctx.filter = "none";
+    if (scratch) {
+      ctx.save();
+      ctx.globalCompositeOperation = "multiply";
+      ctx.drawImage(scratch, -L.half, -L.half);
+      ctx.restore();
+    } else {
+      sctx.restore();
+    }
   }
   function drawBug(ctx, g, opts = {}) {
     const { phase = 0, state = "idle", ppu = 26 } = opts;
