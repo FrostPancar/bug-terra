@@ -26,10 +26,10 @@ import { HORN_TYPES, WING_TYPES, EYE_FILLS, CROWN_MARKS, MANDIBLE_TYPES, bodyPla
 /** The renderer's three skeletons. Derived from genes, never stored. */
 export const BODY_PLANS = ['insect', 'arachnid', 'myriapod'];
 
-/** bugArt's SWATCHES table — `hue` indexes it, it is not a continuous wheel. */
+/** Body colors — `hue` gene indexes REF_PALETTE order: same as lighting/pattern colors. */
 export const SWATCH_NAMES = [
-  'vermilion', 'orange', 'amber', 'yellow', 'leaf', 'jade',
-  'teal', 'cobalt', 'periwinkle', 'violet', 'magenta', 'rose',
+  'tan', 'brown', 'rust', 'orange', 'gold', 'sage',
+  'teal', 'cream', 'pink', 'blue', 'charcoal', 'lavender',
 ];
 
 export const PART_GROUPS = [
@@ -128,14 +128,29 @@ export const PARTS = [
     id: 'head',
     group: 'body',
     name: 'Head',
-    blurb: 'The capsule the eyes tuck under and the horn, jaws and antennae mount on.',
+    blurb: 'The capsule the eyes tuck under and the horn, jaws and antennae mount on. Three silhouettes — wide, normal, long — picked by proportion, not a type gene.',
     core: true,
     drawnBy: 'buildHead()',
     genes: [
-      { gene: 'head_width', effect: 'lateral half-axis, 0.12–0.80 of body width (× 1.36 on the arachnid plan). Also where the eyes sit laterally' },
-      { gene: 'head_length', effect: 'along-the-body half-axis, same range. Also how far the head stands off the thorax' },
+      { gene: 'head_width', effect: 'lateral half-axis, 0.12–0.80 of body width (× 1.36 on the arachnid plan). Also where the eyes sit laterally. Pulled to the WIDE shape when small' },
+      { gene: 'head_length', effect: 'along-the-body half-axis, same range. Also how far the head stands off the thorax. Pushes toward the LONG shape when large' },
       { gene: 'body_width', effect: 'the overall scale both head axes are fractions of' },
     ],
+    /**
+     * SHAPE COEFFICIENT — the head silhouette is derived, not selected. Must
+     * stay literally in step with headShapeCoefficient() in bugArt.js.
+     * Eye placement changes with the shape: wide pulls eyes forward and wider
+     * apart; long tucks them back and allows forward-staggered inner pairs.
+     */
+    derived: {
+      name: 'head shape',
+      gate: 'clamp(0.5 + 0.50 * head_length - 0.70 * head_width, 0, 1)',
+      buckets: [
+        { name: 'wide', gate: '< 0.34', blurb: 'flattened, wider aspect ratio — broad flat face' },
+        { name: 'normal', gate: '< 0.62', blurb: 'balanced oval — current default behavior' },
+        { name: 'long', gate: '>= 0.62', blurb: 'elongated, tapered, narrower — stretched snout' },
+      ],
+    },
   },
   {
     id: 'segments',
@@ -350,10 +365,10 @@ export const PARTS = [
     id: 'eyes',
     group: 'sensory',
     name: 'Eyes',
-    blurb: 'The wedge — wide and rounded at the outer-top corner, drawn to a point at the inner-lower side, big, set wide, and drawn UNDER the head so its edge crops the inner half — is the silhouette for three of the four treatments. `flat` breaks that on purpose with a wider, sharper, less-protruding silhouette, and now carries its own pupil too.',
+    blurb: 'The wedge — wide and rounded at the outer-top corner, drawn to a point at the inner-lower side, big, set wide, and drawn UNDER the head so its edge crops the inner half — is the silhouette for three of the four treatments. `flat` breaks that on purpose with a wider, sharper, less-protruding silhouette, and now carries its own pupil too. Placement varies by head shape: 2 eyes sit on the sides; 4+ eyes add pairs positioned relative to head geometry.',
     core: true,
-    drawnBy: 'drawEyes() → eyeWedgePath() / eyeFlatPath()',
-    gate: 'no gate — there is nothing optional inside an eye any more. The iris is GONE on every fill treatment (it was a bright complementary disc that read as a coloured dot in the eye)',
+    drawnBy: 'drawEyes() → eyeWedgePath() / eyeFlatPath() via getEyePositions()',
+    gate: 'no gate — there is nothing optional inside an eye any more. The iris is GONE on every fill treatment (it was a bright complementary disc that read as a coloured dot in the eye). 2/4/6 eyes only',
     variantGene: 'eye_type',
     variants: variants(EYE_FILLS, [
       'near-black, with a scatter of small white dots',
@@ -364,7 +379,9 @@ export const PARTS = [
     genes: [
       { gene: 'eye_size', effect: 'radius, 0.45–1.05 of head radius' },
       { gene: 'eye_type', effect: 'dark speckled / notched / hooked — all three the same wedge, differing only in fill/mark — or flat, a wider, sharper silhouette with its own pupil' },
-      { gene: 'eye_count', effect: 'pairs past the first are drawn as a small mirrored eye array in front of the main pair' },
+      { gene: 'eye_count', effect: '2 / 4 / 6 pairs. Placement is driven by head shape: wide faces pull eyes forward and wider; long snouts tuck them back and allow forward-staggered inner pairs' },
+      { gene: 'head_width', effect: 'through head shape derivation, affects whether eyes sit on a wide flat face or a narrow tapered one' },
+      { gene: 'head_length', effect: 'through head shape derivation, affects how far back the eyes tuck and whether inner pairs can stagger forward' },
     ],
   },
   {
@@ -497,24 +514,26 @@ export const PARTS = [
     group: 'surface',
     name: 'Shell pattern',
     core: true,
-    blurb: 'A marking on the trunk masses themselves, separate from the horn/jaw treatment above. `dots` scatters over every trunk mass — thorax, every abdominal segment, every myriapod ring — mirrored across each segment\'s own centreline so it reads as symmetric rather than as a scatter of noise. `lines` draws soft-edged horizontal bands, and only on the abdomen.',
+    blurb: 'A marking on the trunk masses themselves, separate from the horn/jaw treatment above. Five modes: polka is a predetermined grid of evenly-spaced dots (abdomen only, or thorax if no abdomen). Jewel is a saturated radial glow from one side (any trunk mass). Tiger stripes are curved diagonal stripes on both sides (any trunk mass). Line bottom arc draws soft-edged horizontal bands that curve downward (abdomen only, or thorax if no abdomen).',
     drawnBy: 'drawShellPattern()',
-    gate: 'pattern_shell selects: 0 none, 1 dots, 2 lines',
+    gate: 'pattern_shell selects: 0 none, 1 polka, 2 jewel, 3 tiger, 4 lineArc',
     variantGene: 'pattern_shell',
-    variants: variants(['none', 'dots', 'lines'], [
+    variants: variants(['none', 'polka', 'jewel', 'tiger', 'lineArc'], [
       'no marking — the default',
-      'a symmetric scatter of dots over every trunk mass',
-      'soft-edged horizontal bands across the abdomen only',
+      'predetermined grid of evenly-spaced dots, abdomen only (thorax if no abdomen)',
+      'saturated radial glow from one side, any trunk mass',
+      'curved diagonal stripes, both sides, any trunk mass',
+      'soft-edged horizontal bands curving downward, abdomen only (thorax if no abdomen)',
     ]),
-    variantOf: (g) => Math.max(0, Math.min(2, Math.round(g.pattern_shell ?? 0))),
+    variantOf: (g) => Math.max(0, Math.min(4, Math.round(g.pattern_shell ?? 0))),
     setVariant: (_g, i) => ({ pattern_shell: i }),
     genes: [
-      { gene: 'pattern_shell', effect: 'the marking: 0 none, 1 a symmetric dot scatter over every trunk mass, 2 horizontal bands on the abdomen only' },
+      { gene: 'pattern_shell', effect: 'the marking: 0 none, 1 polka (abdomen/thorax), 2 jewel (any), 3 tiger (any), 4 lineArc (abdomen/thorax)' },
       { gene: 'pattern_shell_hue', effect: 'the marking\'s own colour, off the reference palette. Unused unless pattern_shell selects a marking' },
-      { gene: 'pattern_shell_dot_count', effect: 'dots mode: how many dots per side (mirrored, so the rendered total is double this)' },
-      { gene: 'pattern_shell_dot_variance', effect: 'dots mode: how much a dot\'s size varies from the next one — 0 draws every dot the same size' },
-      { gene: 'pattern_shell_line_count', effect: 'lines mode: how many horizontal bands render, 0–4. 0 draws none even with lines selected' },
-      { gene: 'pattern_shell_line_thickness', effect: 'lines mode: how heavy each band is, as a fraction of the gap between them' },
+      { gene: 'pattern_shell_dot_count', effect: 'polka mode: grid columns (evenly spaced); tiger/lineArc: stripe/band count via indirect formula' },
+      { gene: 'pattern_shell_dot_variance', effect: 'polka mode: alternating-row size variation; tiger/lineArc: reused for line weight' },
+      { gene: 'pattern_shell_line_count', effect: 'tiger/lineArc modes: stripe/band count. 0 draws none even with tiger/lineArc selected' },
+      { gene: 'pattern_shell_line_thickness', effect: 'tiger/lineArc modes: how heavy each stripe/band is, as a fraction of the gap between them' },
     ],
   },
   {

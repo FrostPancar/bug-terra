@@ -1045,29 +1045,29 @@
      * drawShellPattern in bugArt.js — because an independently-rolled scatter on
      * a bilaterally symmetric animal reads as noise, not a marking.
      */
-    pattern_shell: { min: 0, max: 2, integer: true, default: 0 },
-    // none/dots/lines
+    pattern_shell: { min: 0, max: 4, integer: true, default: 0 },
+    // none/polka/jewel/tiger/lineArc
     // The shell marking's own colour. Same REF_PALETTE-index convention as
     // `pattern_horn_hue`; unused unless `pattern_shell` selects a marking.
     pattern_shell_hue: { min: 0, max: 11, integer: true, default: 7 },
     /**
-     * SHELL PATTERN `lines`: how many horizontal bands render, restricted to the
-     * ABDOMEN — see drawShellPattern in bugArt.js. Unused unless `pattern_shell`
-     * selects `lines`. 0 draws none even when the mode is selected, same as
-     * every other 0-is-off count gene here. Default 3 reproduces the old
-     * hardcoded band count.
+     * SHELL PATTERN parametrization — shared across multiple modes.
+     *
+     * `pattern_shell_line_count` and `pattern_shell_line_thickness` drive:
+     *   - TIGER STRIPES: stripe count and weight
+     *   - LINE_BOTTOM_ARC: band count and weight (abdomen only, or thorax if body_segments === 1)
+     *
+     * `pattern_shell_dot_variance` and `pattern_shell_dot_count` drive:
+     *   - POLKA: grid columns and alternating-row size variation
+     *             (abdomen only, or thorax if body_segments === 1)
+     *   (old `dots` mode is gone; `polka` replaces it with predetermined grid placement)
+     *
+     * POLKA/TIGER/LINE_BOTTOM_ARC also use `pattern_shell_hue` for their colour.
+     * JEWEL uses it as well (radial gradient glow).
      */
     pattern_shell_line_count: { min: 0, max: 4, integer: true, default: 3 },
-    // SHELL PATTERN `lines`: how heavy each band is, as a fraction of the gap
-    // between them. Default 0.34 reproduces the old fixed thickness.
     pattern_shell_line_thickness: { min: 0, max: 1, default: 0.34 },
-    // SHELL PATTERN `dots`: how much a dot's radius varies from the next one —
-    // 0 draws every dot the SAME size, 1 the widest spread the renderer allows.
-    // Unused unless `pattern_shell` selects `dots`.
     pattern_shell_dot_variance: { min: 0, max: 1, default: 0.5 },
-    // SHELL PATTERN `dots`: how many dots per side (the render mirrors each one
-    // across the segment's centreline, so the drawn total is double this).
-    // Default 4 reproduces the old hardcoded count.
     pattern_shell_dot_count: { min: 0, max: 10, integer: true, default: 4 },
     // THE CROWN MARK'S OWN COLOUR. Same REF_PALETTE-index convention as every
     // other decoration hue (`pattern_horn_hue`, `pattern_shell_hue`, ...) —
@@ -2319,50 +2319,24 @@
     const x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
     return x - Math.floor(x);
   }
-  var SWATCHES = [
-    { h: 0.015, s: 0.66, l: 0.53 },
-    // vermilion  (the reference red)
-    { h: 0.055, s: 0.74, l: 0.55 },
-    // orange
-    { h: 0.11, s: 0.76, l: 0.56 },
-    // amber
-    { h: 0.145, s: 0.72, l: 0.58 },
-    // yellow
-    { h: 0.27, s: 0.48, l: 0.46 },
-    // leaf
-    { h: 0.42, s: 0.52, l: 0.45 },
-    // jade
-    { h: 0.5, s: 0.58, l: 0.48 },
-    // teal
-    { h: 0.57, s: 0.6, l: 0.52 },
-    // cobalt
-    { h: 0.665, s: 0.52, l: 0.55 },
-    // periwinkle
-    { h: 0.755, s: 0.46, l: 0.52 },
-    // violet
-    { h: 0.875, s: 0.54, l: 0.56 },
-    // magenta
-    { h: 0.955, s: 0.6, l: 0.58 }
-    // rose
-  ];
   var REF_PALETTE = {
-    tan: "#bb9e7c",
+    tan: "#C19D76",
     brown: "#594637",
     rust: "#bf5640",
     orange: "#d76334",
-    gold: "#e7bc53",
-    sage: "#589873",
-    ink: "#2b292a",
+    gold: "#EEBA38",
+    sage: "#3F9A6F",
+    teal: "#2CA68A",
     cream: "#e5dbcf",
-    pink: "#e2a9af",
-    blue: "#4255be",
+    pink: "#EDA6AD",
+    blue: "#3D56C6",
     // Appended, not inserted — REF_PALETTE_ORDER below assigns each swatch a
     // fixed index, and every hue gene (pattern_horn_hue, wing_tip_hue, ...)
     // stores that index, so adding a colour anywhere but the end of THAT list
     // would silently reassign every genome's stored index to a different
     // swatch. This object's own key order carries no meaning by itself.
     charcoal: "#2B2A2A",
-    ivory: "#E8DBCD"
+    lavender: "#B98BE3"
   };
   function refA(hex, a) {
     const n = parseInt(hex.slice(1), 16);
@@ -2388,13 +2362,22 @@
     "orange",
     "gold",
     "sage",
-    "ink",
+    "teal",
     "cream",
     "pink",
     "blue",
     "charcoal",
-    "ivory"
+    "lavender"
   ];
+  var BODY_SWATCHES = (() => {
+    const baseS = 0.6;
+    const baseL = 0.52;
+    return REF_PALETTE_ORDER.map((key) => ({
+      h: hexHue(REF_PALETTE[key]),
+      s: baseS,
+      l: baseL
+    }));
+  })();
   function wingTipColour(g, a) {
     const i = clamp2(Math.round(g.wing_tip_hue ?? 0), 0, REF_PALETTE_ORDER.length);
     if (i === 0) return `rgba(255,255,255,${a})`;
@@ -2402,7 +2385,7 @@
   }
   var hsl = (h, s, l, a = 1) => `hsla(${((h % 1 + 1) % 1 * 360).toFixed(1)}, ${(clamp2(s, 0, 1) * 100).toFixed(1)}%, ${(clamp2(l, 0, 1) * 100).toFixed(1)}%, ${a})`;
   function palette(g) {
-    const sw = SWATCHES[Math.floor(clamp2(g.hue, 0, 0.999) * SWATCHES.length)];
+    const sw = BODY_SWATCHES[Math.floor(clamp2(g.hue, 0, 0.999) * BODY_SWATCHES.length)];
     const h = sw.h;
     const s = clamp2(sw.s * (0.8 + g.saturation * 0.35), 0.34, 0.86);
     const l = clamp2(sw.l * (0.86 + g.lightness * 0.3), 0.38, 0.7);
@@ -2520,6 +2503,51 @@
     oval: { lenK: 0.72, widK: 1.06 },
     crescent: { lenK: 1.38, widK: 0.42 }
   };
+  function headShapeCoefficient(g) {
+    return clamp2(
+      0.5 + 0.5 * (g.head_length ?? 0.13) - 0.7 * (g.head_width ?? 0.13),
+      0,
+      1
+    );
+  }
+  function headShape(g) {
+    const c = headShapeCoefficient(g);
+    return c < 0.34 ? "wide" : c < 0.62 ? "normal" : "long";
+  }
+  var HEAD_SHAPES = {
+    wide: { lenK: 0.8, widK: 1.22 },
+    normal: { lenK: 1, widK: 1 },
+    long: { lenK: 1.25, widK: 0.78 }
+  };
+  var EYE_LAYOUT = {
+    wide: {
+      mainXK: -0.05,
+      mainYK: 1,
+      innerXK: -0.05,
+      innerYK: 0.45,
+      rowX0K: 0.95,
+      rowColK: 1.75,
+      rowStepK: 1.3
+    },
+    normal: {
+      mainXK: -0.14,
+      mainYK: 0.98,
+      innerXK: 0,
+      innerYK: 0.55,
+      rowX0K: 1.05,
+      rowColK: 1.55,
+      rowStepK: 2.8
+    },
+    long: {
+      mainXK: -0.22,
+      mainYK: 0.95,
+      innerXK: 0.2,
+      innerYK: 0.5,
+      rowX0K: 1.1,
+      rowColK: 1.3,
+      rowStepK: 2.2
+    }
+  };
   var WING_SWEEP_MIN = 0.61;
   var WING_SWEEP_MAX = 2.88;
   var FLIGHT_SWEEP_OFFSET = 0.3;
@@ -2558,6 +2586,7 @@
       hornType: HORN_TYPES[g.horn_type ?? 0],
       wingType: WING_TYPES[clamp2(Math.round(g.wing_type ?? 0), 0, WING_TYPES.length - 1)],
       wingShape: wingShape(g),
+      headShape: headShape(g),
       eyeFill: EYE_FILLS[clamp2(Math.round(g.eye_type ?? 0), 0, 3)],
       crownMark: CROWN_MARKS[clamp2(Math.round(g.crown_mark_style ?? 0), 0, 2)],
       mandibleType: MANDIBLE_TYPES[clamp2(Math.round(g.mandible_type ?? 0), 0, MANDIBLE_TYPES.length - 1)],
@@ -2686,38 +2715,47 @@
     const fy = ky + out * Math.cos(tilt + bend) * o.len * 0.58;
     return { ...o, tilt, attach: { x: o.ax, y: o.ay }, knee: { x: kx, y: ky }, foot: { x: fx, y: fy } };
   }
-  function buildHead(L) {
-    const { g, plan, bodyWid, unit } = L;
-    const arach = plan === "arachnid";
-    const headW = bodyWid * lerp(0.12, 0.8, g.head_width ?? 0.13) * (arach ? 1.36 : 1);
-    const headL = bodyWid * lerp(0.12, 0.8, g.head_length ?? 0.13) * (arach ? 1.36 : 1);
-    const headR = (headW + headL) * 0.5;
-    const hx = L.trunkFrontX + headL * (arach ? 0.06 : 0.54);
-    L.head = { x: hx, y: 0, rx: headL, ry: headW, kind: "head" };
-    const er = headR * lerp(0.45, 1.05, g.eye_size);
+  function getEyePositions(L, headShape2, eyeCount) {
+    const { head } = L;
+    const layout2 = EYE_LAYOUT[headShape2];
+    const eyes = [];
+    const er = L.eyeRadius;
+    const g = L.g;
     for (const side of [-1, 1]) {
-      L.eyes.push({
-        x: hx - headL * 0.14,
-        y: side * headW * 0.98,
+      eyes.push({
+        x: head.x + head.rx * layout2.mainXK,
+        y: side * head.ry * layout2.mainYK,
         rx: er * 0.55,
         ry: er,
         side
       });
     }
-    const extra = clamp2(Math.round(g.eye_count / 2) - 1, 0, 3);
-    if (extra > 0) {
-      const COL = 1.55;
-      const inner = Math.max(0, headW * 0.98 - er * 0.667);
+    const extra = clamp2(Math.round(eyeCount / 2) - 1, 0, 3);
+    if (extra > 0 && eyeCount >= 4) {
+      for (const side of [-1, 1]) {
+        eyes.push({
+          x: head.x + head.rx * layout2.mainXK + head.rx * layout2.innerXK,
+          y: side * head.ry * layout2.innerYK,
+          rx: er * 0.55,
+          ry: er,
+          side
+        });
+      }
+    }
+    if (extra > 0 && eyeCount >= 6) {
+      const COL = layout2.rowColK;
+      const inner = Math.max(0, head.ry * 0.98 - er * 0.667);
       const mr = clamp2(
         Math.min(er * 0.26, inner * 0.85 / (COL + 1.7)),
         er * 0.09,
         er * 0.26
       );
-      const x0 = hx + headL * 1.05 + mr * 1.6;
+      const x0 = head.x + head.rx * layout2.rowX0K + mr * (COL * 0.19);
+      const step = mr * layout2.rowStepK;
       for (let row = 0; row < extra; row++) {
         for (const side of [-1, 1]) {
-          L.eyes.push({
-            x: x0 + row * mr * 2.8,
+          eyes.push({
+            x: x0 + row * step,
             y: side * mr * COL,
             rx: mr * 0.55,
             ry: mr,
@@ -2727,6 +2765,19 @@
         }
       }
     }
+    return eyes;
+  }
+  function buildHead(L) {
+    const { g, plan, bodyWid, unit } = L;
+    const arach = plan === "arachnid";
+    const fam = HEAD_SHAPES[L.headShape];
+    const headW = bodyWid * lerp(0.12, 0.8, g.head_width ?? 0.13) * (arach ? 1.36 : 1) * fam.widK;
+    const headL = bodyWid * lerp(0.12, 0.8, g.head_length ?? 0.13) * (arach ? 1.36 : 1) * fam.lenK;
+    const headR = (headW + headL) * 0.5;
+    const hx = L.trunkFrontX + headL * (arach ? 0.06 : 0.54);
+    L.head = { x: hx, y: 0, rx: headL, ry: headW, kind: "head" };
+    L.eyeRadius = headR * lerp(0.45, 1.05, g.eye_size);
+    L.eyes.push(...getEyePositions(L, L.headShape, g.eye_count ?? 2));
     const antLen = unit * lerp(0.06, 0.95, g.antenna_length);
     if (antLen > unit * 0.15) for (const side of [-1, 1]) L.antennae.push({ side, len: antLen });
     const hornMax = L.hornType === "nose" ? 1.15 : L.hornType === "split" ? 1.55 : L.hornType === "crown" ? 1.65 : 1.3;
@@ -3057,25 +3108,48 @@
   function drawLegs(ctx, L, col, phase) {
     for (const leg of L.legs) {
       const { knee, foot } = poseLeg(leg, phase);
-      let cx, cy;
       if (leg.joints >= 1) {
+        const kneeR = leg.w * 0.6;
+        let attachColour = col.limb;
+        let kneeColour = col.limb;
+        if (col.gradientLimbs && ctx.createLinearGradient) {
+          const fullGrad = ctx.createLinearGradient(leg.attach.x, leg.attach.y, foot.x, foot.y);
+          fullGrad.addColorStop(0, col.limb);
+          fullGrad.addColorStop(1, col.legFoot);
+          attachColour = fullGrad;
+          kneeColour = fullGrad;
+        }
+        ctx.strokeStyle = attachColour;
+        ctx.lineWidth = leg.w;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(leg.attach.x, leg.attach.y);
+        ctx.lineTo(knee.x, knee.y);
+        ctx.stroke();
+        ctx.strokeStyle = kneeColour;
+        ctx.lineWidth = leg.w;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(knee.x, knee.y);
+        ctx.lineTo(foot.x, foot.y);
+        ctx.stroke();
+        fillEllipse(ctx, knee.x, knee.y, kneeR, kneeR, col.limb);
+      } else {
+        let cx, cy;
         const midX = lerp(leg.attach.x, foot.x, 0.5);
         const midY = lerp(leg.attach.y, foot.y, 0.5);
         const lean = knee.y - midY;
         cx = midX;
         cy = midY + lean * LEG_JOINT_KINK * 2.5;
-      } else {
-        cx = lerp(leg.attach.x, foot.x, 0.3);
-        cy = lerp(knee.y, foot.y, 0.18);
+        let strokeColour = col.limb;
+        if (col.gradientLimbs && ctx.createLinearGradient) {
+          const grad = ctx.createLinearGradient(leg.attach.x, leg.attach.y, foot.x, foot.y);
+          grad.addColorStop(0, col.limb);
+          grad.addColorStop(1, col.legFoot);
+          strokeColour = grad;
+        }
+        capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, strokeColour);
       }
-      let strokeColour = col.limb;
-      if (col.gradientLimbs && ctx.createLinearGradient) {
-        const grad = ctx.createLinearGradient(leg.attach.x, leg.attach.y, foot.x, foot.y);
-        grad.addColorStop(0, col.limb);
-        grad.addColorStop(1, col.legFoot);
-        strokeColour = grad;
-      }
-      capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, strokeColour);
       const fr = leg.w * FOOT_PAD_R;
       fillEllipse(ctx, foot.x, foot.y, fr, fr, col.gradientLimbs ? col.legFoot : col.limb);
     }
@@ -3448,47 +3522,84 @@
       drawOneSpike(ctx, p.x, baseY, baseY + side * len, halfBase, col, translucent);
     }
   }
-  var SHELL_PATTERN_MODES = ["none", "dots", "lines"];
-  function drawShellPattern(ctx, p, col, rx, ry, patShell) {
+  var SHELL_PATTERN_MODES = ["none", "polka", "jewel", "tiger", "lineArc"];
+  function drawShellPattern(ctx, p, col, rx, ry, patShell, soloTrunk = false) {
     const mode = patShell.mode;
     if (mode === "none") return;
-    if (mode === "lines" && p.kind !== "abdomen") return;
+    if (mode === "polka" || mode === "lineArc") {
+      const eligible = p.kind === "abdomen" || soloTrunk && p.kind === "thorax";
+      if (!eligible) return;
+    }
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
     ctx.clip();
     ctx.fillStyle = col.shellPattern;
-    if (mode === "dots") {
-      const half = patShell.dotCount;
-      const seed = Math.round(p.x * 7 + rx * 13);
-      for (let i = 0; i < half; i++) {
-        const dx = (hash01(i, seed) - 0.5) * rx * 1.5;
-        const dy = hash01(i, seed + 17) * ry * 0.82;
-        const mult = 1 + (hash01(i, seed + 29) - 0.5) * 2 * patShell.dotVariance;
-        const r = Math.max(0.8, rx * 0.1 * mult);
-        for (const yy of [p.y + dy, p.y - dy]) {
+    if (mode === "polka") {
+      const cols = Math.max(1, patShell.dotCount);
+      const rows = 2;
+      const marginX = rx * 0.22, marginY = ry * 0.35;
+      for (let c = 0; c < cols; c++) {
+        const tx = cols === 1 ? 0.5 : c / (cols - 1);
+        const dx = lerp(-(rx - marginX), rx - marginX, tx);
+        const mult = 1 + (c % 2 === 0 ? -1 : 1) * 0.5 * patShell.dotVariance;
+        const r = Math.max(0.8, Math.min(rx, ry) * 0.16 * mult);
+        for (const sign of [1, -1]) {
           ctx.beginPath();
-          ctx.arc(p.x + dx, yy, r, 0, TAU);
+          ctx.arc(p.x + dx, p.y + sign * (ry - marginY), r, 0, TAU);
           ctx.fill();
         }
       }
-    } else if (mode === "lines") {
-      const stripes = patShell.lineCount;
-      if (stripes > 0) {
-        const gap = rx * 2 / (stripes + 1);
-        const w = Math.max(1, gap * lerp(0.18, 0.62, patShell.lineThickness));
-        const blur = "filter" in ctx ? Math.max(0.6, w * 0.3) : 0;
+    } else if (mode === "jewel") {
+      const side = Math.round(p.x) % 2 === 0 ? 1 : -1;
+      const cx = p.x + side * rx * 0.65;
+      const grad = ctx.createRadialGradient(cx, p.y, 0, cx, p.y, rx * 1.4);
+      grad.addColorStop(0, refA(col.shellPattern, 0.85));
+      grad.addColorStop(0.5, refA(col.shellPattern, 0.3));
+      grad.addColorStop(1, refA(col.shellPattern, 0));
+      ctx.fillStyle = grad;
+      ctx.fillRect(p.x - rx, p.y - ry, rx * 2, ry * 2);
+    } else if (mode === "tiger") {
+      const stripeCount = clamp2(patShell.lineCount + 1, 1, 5);
+      const gap = rx * 2 / (stripeCount + 1);
+      const thick = Math.max(1, gap * lerp(0.18, 0.5, patShell.lineThickness));
+      ctx.strokeStyle = col.shellPattern;
+      ctx.lineWidth = thick;
+      ctx.lineCap = "round";
+      const drop = ry * 0.5;
+      for (let i = 1; i <= stripeCount; i++) {
+        const xc = p.x - rx + gap * i;
+        for (const side of [1, -1]) {
+          ctx.beginPath();
+          ctx.moveTo(xc - gap * 0.4, p.y - ry * 0.9 * side);
+          ctx.quadraticCurveTo(xc, p.y, xc + gap * 0.4, p.y + ry * 0.9 * side);
+          ctx.stroke();
+        }
+      }
+    } else if (mode === "lineArc") {
+      const bands = patShell.lineCount;
+      if (bands > 0) {
+        const gapY = ry * 2 / (bands + 1);
+        const thick = Math.max(1, gapY * lerp(0.18, 0.62, patShell.lineThickness));
+        const blur = "filter" in ctx ? Math.max(0.6, thick * 0.3) : 0;
         if (blur) ctx.filter = `blur(${blur.toFixed(2)}px)`;
-        for (let i = 1; i <= stripes; i++) {
-          const xx = p.x - rx + gap * i;
-          ctx.fillRect(xx - w / 2, p.y - ry, w, ry * 2);
+        ctx.strokeStyle = col.shellPattern;
+        ctx.lineWidth = thick;
+        ctx.lineCap = "round";
+        for (let i = 1; i <= bands; i++) {
+          const baseY = p.y - ry + gapY * i;
+          const depth = ry * 0.16;
+          ctx.beginPath();
+          ctx.moveTo(p.x - rx, baseY);
+          ctx.quadraticCurveTo(p.x, baseY - depth, p.x + rx, baseY);
+          ctx.stroke();
         }
         if (blur) ctx.filter = "none";
       }
     }
     ctx.restore();
   }
-  function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false, patShell = { mode: "none" }) {
+  function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false, patShell = { mode: "none" }, soloTrunk = false) {
     const rx = Math.max(0.5, p.rx);
     const ry = Math.max(0.5, p.ry);
     ctx.save();
@@ -3530,7 +3641,7 @@
       ctx.restore();
     }
     ctx.restore();
-    drawShellPattern(ctx, p, col, rx, ry, patShell);
+    drawShellPattern(ctx, p, col, rx, ry, patShell, soloTrunk);
     segmentCentreline(ctx, p, col, rx, ry, crease);
     drawSegmentSpikes(ctx, p, col, spiky, translucent);
   }
@@ -3661,12 +3772,13 @@
     const lunge = state === "attack" ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
     const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
     const shellPat = {
-      mode: SHELL_PATTERN_MODES[clamp2(Math.round(g.pattern_shell ?? 0), 0, 2)],
+      mode: SHELL_PATTERN_MODES[clamp2(Math.round(g.pattern_shell ?? 0), 0, 4)],
       lineCount: clamp2(Math.round(g.pattern_shell_line_count ?? 3), 0, 4),
       lineThickness: clamp2(g.pattern_shell_line_thickness ?? 0.34, 0, 1),
       dotVariance: clamp2(g.pattern_shell_dot_variance ?? 0.5, 0, 1),
       dotCount: clamp2(Math.round(g.pattern_shell_dot_count ?? 4), 0, 10)
     };
+    const soloTrunk = !L.abdomen;
     ctx.save();
     ctx.rotate(-Math.PI / 2);
     ctx.translate(lunge * L.unit * 0.12, 0);
@@ -3687,11 +3799,11 @@
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
       const creased = L.wingType === "elytra" ? null : L.abdomen;
-      for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPat);
+      for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPat, soloTrunk);
       drawElytra(ctx, L, col);
     };
     const drawTrunkThorax = () => {
-      segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPat);
+      segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPat, soloTrunk);
     };
     if (L.wingPairs > 0) {
       drawTrunkAbdomen();

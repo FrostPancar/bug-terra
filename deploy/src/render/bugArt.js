@@ -57,28 +57,14 @@ function hash01(i, salt = 0) {
 
 /* ============================================================== colour ==== */
 
-/** Bright, poster-flat hues. A continuous wheel spends its range in olive. */
-const SWATCHES = [
-  { h: 0.015, s: 0.66, l: 0.53 },  // vermilion  (the reference red)
-  { h: 0.055, s: 0.74, l: 0.55 },  // orange
-  { h: 0.110, s: 0.76, l: 0.56 },  // amber
-  { h: 0.145, s: 0.72, l: 0.58 },  // yellow
-  { h: 0.270, s: 0.48, l: 0.46 },  // leaf
-  { h: 0.420, s: 0.52, l: 0.45 },  // jade
-  { h: 0.500, s: 0.58, l: 0.48 },  // teal
-  { h: 0.570, s: 0.60, l: 0.52 },  // cobalt
-  { h: 0.665, s: 0.52, l: 0.55 },  // periwinkle
-  { h: 0.755, s: 0.46, l: 0.52 },  // violet
-  { h: 0.875, s: 0.54, l: 0.56 },  // magenta
-  { h: 0.955, s: 0.60, l: 0.58 },  // rose
-];
-
 /**
  * THE REFERENCE PALETTE — fixed, hand-sampled from `Image References/Palette.jpg`.
  *
- * NOT to be confused with SWATCHES above: that is the 12-hue base-colour wheel a
- * genome's `hue` indexes into, and every tone in palette() is derived from the
- * one swatch it lands on. This table is the opposite idea.
+ * UNIFIED COLOR SYSTEM: Body colors (via BODY_SWATCHES) and all lighting/pattern
+ * accents now draw their hues from this single palette. BODY_SWATCHES extracts
+ * the hue from each colour here; other genes (light_hue, pattern_*_hue, etc.)
+ * index directly into REF_PALETTE_ORDER. This ensures all creature colours —
+ * body and decorations — come from one cohesive set.
  *
  * DESIGN MANDATE: lighting colours are always drawn from this fixed reference
  * palette, never computed from the body hue by lightness math. A procedural
@@ -91,23 +77,23 @@ const SWATCHES = [
  * Sampled hexes, left to right in the reference image.
  */
 const REF_PALETTE = {
-  tan:      '#bb9e7c',
+  tan:      '#C19D76',
   brown:    '#594637',
   rust:     '#bf5640',
   orange:   '#d76334',
-  gold:     '#e7bc53',
-  sage:     '#589873',
-  ink:      '#2b292a',
+  gold:     '#EEBA38',
+  sage:     '#3F9A6F',
+  teal:     '#2CA68A',
   cream:    '#e5dbcf',
-  pink:     '#e2a9af',
-  blue:     '#4255be',
+  pink:     '#EDA6AD',
+  blue:     '#3D56C6',
   // Appended, not inserted — REF_PALETTE_ORDER below assigns each swatch a
   // fixed index, and every hue gene (pattern_horn_hue, wing_tip_hue, ...)
   // stores that index, so adding a colour anywhere but the end of THAT list
   // would silently reassign every genome's stored index to a different
   // swatch. This object's own key order carries no meaning by itself.
   charcoal: '#2B2A2A',
-  ivory:    '#E8DBCD',
+  lavender: '#B98BE3',
 };
 
 /** '#rrggbb' → 'rgba(r,g,b,a)'. The reference palette is stored as hex. */
@@ -154,9 +140,29 @@ const BLOB_ALPHA = 0.52;
  * palette has no white — so the gene's 1..10 map onto this list's 0..9.
  */
 export const REF_PALETTE_ORDER = [
-  'tan', 'brown', 'rust', 'orange', 'gold', 'sage', 'ink', 'cream', 'pink', 'blue',
-  'charcoal', 'ivory',
+  'tan', 'brown', 'rust', 'orange', 'gold', 'sage', 'teal', 'cream', 'pink', 'blue',
+  'charcoal', 'lavender',
 ];
+
+/**
+ * BODY COLOR SWATCHES — hues extracted from REF_PALETTE, with base S/L values.
+ *
+ * The `hue` gene (0-1 continuous) indexes into these 12 colours, which now all
+ * come from the same reference palette as lighting and pattern accents. Hues are
+ * extracted from the hex definitions; S/L are base values that the genes
+ * `saturation` and `lightness` will modify.
+ *
+ * ORDERING: matches REF_PALETTE_ORDER to ensure genomes stay compatible.
+ */
+const BODY_SWATCHES = (() => {
+  const baseS = 0.60;  // base saturation, modified by saturation gene
+  const baseL = 0.52;  // base lightness, modified by lightness gene
+  return REF_PALETTE_ORDER.map(key => ({
+    h: hexHue(REF_PALETTE[key]),
+    s: baseS,
+    l: baseL,
+  }));
+})();
 
 /** Wing tip wash colour at alpha `a`. 0 = white, 1..10 = a REF_PALETTE swatch. */
 function wingTipColour(g, a) {
@@ -169,7 +175,7 @@ const hsl = (h, s, l, a = 1) =>
   `hsla(${(((h % 1) + 1) % 1 * 360).toFixed(1)}, ${(clamp(s, 0, 1) * 100).toFixed(1)}%, ${(clamp(l, 0, 1) * 100).toFixed(1)}%, ${a})`;
 
 export function palette(g) {
-  const sw = SWATCHES[Math.floor(clamp(g.hue, 0, 0.999) * SWATCHES.length)];
+  const sw = BODY_SWATCHES[Math.floor(clamp(g.hue, 0, 0.999) * BODY_SWATCHES.length)];
   const h = sw.h;
   const s = clamp(sw.s * (0.80 + g.saturation * 0.35), 0.34, 0.86);
   const l = clamp(sw.l * (0.86 + g.lightness * 0.30), 0.38, 0.70);
@@ -429,6 +435,83 @@ const WING_FAMILY = {
 };
 
 /**
+ * HEAD SHAPE — derived from head proportions, same pattern as wings.
+ *
+ * THREE HEAD SILHOUETTES, from the sketch:
+ *   wide    flattened, wider aspect ratio — broad flat face
+ *   normal  balanced oval — current default behaviour
+ *   long    elongated, tapered, narrower — stretched snout
+ *
+ * Like wingShapeCoefficient, a single slenderness number derived from
+ * head_length and head_width. The thresholds match wings intentionally so
+ * both systems read the same way at a glance.
+ *
+ *     coefficient = clamp(0.5 + 0.50·head_length − 0.70·head_width, 0, 1)
+ *
+ *     coefficient <  0.34   →  wide       (short, broad, low slenderness)
+ *     coefficient <  0.62   →  normal     (the middle ground)
+ *     otherwise             →  long       (long, thin, high slenderness)
+ *
+ * The gene defaults (width 0.13, length 0.13) evaluate to 0.474,
+ * so an untouched genome wears the `normal` shape.
+ */
+export function headShapeCoefficient(g) {
+  return clamp(
+    0.5 + 0.50 * (g.head_length ?? 0.13)
+        - 0.70 * (g.head_width ?? 0.13),
+    0, 1,
+  );
+}
+
+/** The coefficient's thresholds, as a family name. */
+export function headShape(g) {
+  const c = headShapeCoefficient(g);
+  return c < 0.34 ? 'wide' : c < 0.62 ? 'normal' : 'long';
+}
+
+/**
+ * Per-family proportion multipliers for head shapes. Applied to the already-
+ * computed head_width and head_length axes, same pattern as WING_FAMILY.
+ * `normal` is exactly {1, 1} so untouched genomes render identically to before.
+ */
+const HEAD_SHAPES = {
+  wide:   { lenK: 0.80, widK: 1.22 },
+  normal: { lenK: 1.00, widK: 1.00 },
+  long:   { lenK: 1.25, widK: 0.78 },
+};
+
+/**
+ * EYE PLACEMENT CONSTANTS, per head shape.
+ *
+ * Drives the x/y offsets of the main pair and inner pair (when eye_count ≥ 4),
+ * plus the row geometry for extra eyes (eye_count ≥ 6). Each constant is a
+ * fraction of the head's own semi-axes so it scales with head size.
+ *
+ *   mainXK, mainYK      position of the main/outer eye pair (always drawn)
+ *   innerXK, innerYK    position offset from main pair to inner pair (4+ eyes)
+ *   rowX0K              forward offset of the first extra-eye row (6+ eyes)
+ *   rowColK             lateral column spacing of extra eyes, in small radii
+ *   rowStepK            forward step between rows, in small radii
+ */
+const EYE_LAYOUT = {
+  wide: {
+    mainXK:  -0.05, mainYK: 1.00,
+    innerXK: -0.05, innerYK: 0.45,
+    rowX0K:  0.95,  rowColK: 1.75, rowStepK: 1.30,
+  },
+  normal: {
+    mainXK:  -0.14, mainYK: 0.98,
+    innerXK:  0.00, innerYK: 0.55,
+    rowX0K:  1.05,  rowColK: 1.55, rowStepK: 2.80,
+  },
+  long: {
+    mainXK:  -0.22, mainYK: 0.95,
+    innerXK:  0.20, innerYK: 0.50,
+    rowX0K:  1.10,  rowColK: 1.30, rowStepK: 2.20,
+  },
+};
+
+/**
  * SWEEP ANGLE, calibrated off the sketch rather than guessed.
  *
  * Measured from the body's long axis (0° = straight forward, past the head) to
@@ -558,6 +641,7 @@ export function layout(g, ppu = 26) {
     hornType: HORN_TYPES[g.horn_type ?? 0],
     wingType: WING_TYPES[clamp(Math.round(g.wing_type ?? 0), 0, WING_TYPES.length - 1)],
     wingShape: wingShape(g),
+    headShape: headShape(g),
     eyeFill: EYE_FILLS[clamp(Math.round(g.eye_type ?? 0), 0, 3)],
     crownMark: CROWN_MARKS[clamp(Math.round(g.crown_mark_style ?? 0), 0, 2)],
     mandibleType: MANDIBLE_TYPES[clamp(Math.round(g.mandible_type ?? 0), 0, MANDIBLE_TYPES.length - 1)],
@@ -752,6 +836,66 @@ function buildLeg(o) {
 
 /* ----------------------------------------------------------------- head -- */
 
+/**
+ * GENERATE EYE POSITIONS based on head shape and eye count.
+ *
+ * Driven by EYE_LAYOUT constants per shape. The main pair's placement changes
+ * with the shape; 4+ eyes add an inner pair positioned relative to the main pair;
+ * 6+ eyes add forward-extending rows of extra eyes.
+ *
+ * Returns an array of eye objects with {x, y, rx, ry, side, minor?}.
+ */
+function getEyePositions(L, headShape, eyeCount) {
+  const { head } = L;
+  const layout = EYE_LAYOUT[headShape];
+  const eyes = [];
+  const er = L.eyeRadius;  // pre-computed in buildHead, before this call
+  const g = L.g;
+
+  // Main pair — always present for any eye count >= 2
+  for (const side of [-1, 1]) {
+    eyes.push({
+      x: head.x + head.rx * layout.mainXK,
+      y: side * head.ry * layout.mainYK,
+      rx: er * 0.55, ry: er, side,
+    });
+  }
+
+  // Inner pair — only if eye_count >= 4
+  const extra = clamp(Math.round(eyeCount / 2) - 1, 0, 3);
+  if (extra > 0 && eyeCount >= 4) {
+    for (const side of [-1, 1]) {
+      eyes.push({
+        x: head.x + head.rx * layout.mainXK + head.rx * layout.innerXK,
+        y: side * head.ry * layout.innerYK,
+        rx: er * 0.55, ry: er, side,
+      });
+    }
+  }
+
+  // Extra rows of minor eyes — only if eye_count >= 6
+  if (extra > 0 && eyeCount >= 6) {
+    const COL = layout.rowColK;
+    const inner = Math.max(0, head.ry * 0.98 - er * 0.667);
+    const mr = clamp(Math.min(er * 0.26, inner * 0.85 / (COL + 1.70)),
+                     er * 0.09, er * 0.26);
+    const x0 = head.x + head.rx * layout.rowX0K + mr * (COL * 0.19);
+    const step = mr * layout.rowStepK;
+
+    for (let row = 0; row < extra; row++) {
+      for (const side of [-1, 1]) {
+        eyes.push({
+          x: x0 + row * step,
+          y: side * mr * COL,
+          rx: mr * 0.55, ry: mr, side, minor: true,
+        });
+      }
+    }
+  }
+
+  return eyes;
+}
+
 function buildHead(L) {
   const { g, plan, bodyWid, unit } = L;
   /**
@@ -769,101 +913,21 @@ function buildHead(L) {
    * that want one number for "how big is this head" (mandible reach, eye size).
    */
   const arach = plan === 'arachnid';
-  const headW = bodyWid * lerp(0.12, 0.80, g.head_width ?? 0.13) * (arach ? 1.36 : 1);
-  const headL = bodyWid * lerp(0.12, 0.80, g.head_length ?? 0.13) * (arach ? 1.36 : 1);
+  const fam = HEAD_SHAPES[L.headShape];
+  const headW = bodyWid * lerp(0.12, 0.80, g.head_width ?? 0.13) * (arach ? 1.36 : 1) * fam.widK;
+  const headL = bodyWid * lerp(0.12, 0.80, g.head_length ?? 0.13) * (arach ? 1.36 : 1) * fam.lenK;
   const headR = (headW + headL) * 0.5;
   const hx = L.trunkFrontX + headL * (arach ? 0.06 : 0.54);
   L.head = { x: hx, y: 0, rx: headL, ry: headW, kind: 'head' };
 
-  // The wedge eyes, set wide and tucked under the head edge so it crops the
-  // inner half. `ry` is the long axis, `rx` the short one — the sketch's eye is
-  // clearly taller than it is wide, hence the 0.55 rather than something nearer
-  // a circle, and it is pushed far enough out that the rounded outer-top corner
-  // clears the head silhouette instead of hiding behind it.
-  const er = headR * lerp(0.45, 1.05, g.eye_size);   // widened both ends
-  // BIG EYES DRAWN BACK — was `hx + headL * 0.04`. Past `eye_count` 2 the
-  // extra-eye array needs somewhere forward of the main pair to sit that
-  // ISN'T buried under the head's own opaque fill (see the note below); moving
-  // the main pair back along the head's length is what opens that room up.
-  for (const side of [-1, 1]) {
-    // Placed per-axis — along the head's length in x, across its width in y —
-    // so an eye still sits on the head edge when the two differ.
-    L.eyes.push({
-      x: hx - headL * 0.14,
-      y: side * headW * 0.98,
-      rx: er * 0.55, ry: er, side,
-    });
-  }
-  /*
-   * THE EXTRA EYES ARE AN ARRAY, not a scatter.
-   *
-   * They used to be plain dark circles at 0.17 × the main radius, dropped along
-   * a line that zig-zagged across the midline — one on the left, the next on the
-   * right, each at a different x AND a different y. Three of them read as three
-   * unrelated specks someone had flicked at the head, and at a large `eye_size`
-   * the first one landed inside the main wedge's own footprint.
-   *
-   * Now: one small GRID. Two columns, mirrored about the midline exactly as the
-   * main pair is, and one ROW PER EXTRA PAIR stepping back down the head. So
-   * eye_count 4 is a single row of two, 6 adds a second row behind it, 8 a
-   * third — the ceiling is unchanged, only the arrangement is.
-   *
-   * They are the same eyeWedgePath silhouette as the main pair, scaled down, so
-   * a bug's eyes all look like the same organ.
-   *
-   * THEY USED TO RENDER INVISIBLE, always — this is the fix, not just a
-   * rearrangement. drawBug() draws every eye BEFORE the head (so the head's
-   * edge crops the main pair's inner half — the intended "tucked in" look),
-   * then paints the head as one OPAQUE flat fill over everything drawn so far
-   * (see the Z-ORDER note in drawBug). The array used to sit tucked in near
-   * the head's own centreline at a forward offset of only `headL * 0.44` —
-   * well inside the head ellipse's own front edge (`hx + headL`) — so it was
-   * drawn, then immediately painted over. `eye_count` past 2 was a dead gene
-   * as far as the sprite went, and pushing the array OUT LATERALLY instead
-   * (an earlier pass at this fix) doesn't work either: the main pair's own
-   * wedge already reaches most of the way to the head's lateral edge, so
-   * anything only a little further out than the main pair's own `y` lands
-   * ON TOP of the main pair instead of clear of the head. The one direction
-   * that actually guarantees clearance is FORWARD, past the head's own tip:
-   * the head ellipse never extends past `hx + headL` in x at any y, so an
-   * `x0` beyond that, however small the array's own `y`, is unconditionally
-   * outside the silhouette and immune to the head's opaque fill.
-   *
-   * NON-OVERLAP FROM THE MAIN PAIR IS COMPUTED, not eyeballed. `inner` is how
-   * far the main wedge actually reaches toward the midline: walking
-   * eyeWedgePath's control points through the 0.30 lean, the closest approach
-   * is the outer-edge belly at (−0.30R, −1.10r), i.e.
-   * 0.30·sin(0.30)·R + 1.10·cos(0.30)·r ≈ 0.667 × the main radius once
-   * r = 0.55R is substituted. The array's own half-extent is
-   * mr × (COL + 1.70) — column offset plus the small wedge's outer belly — and
-   * `mr` is solved so that lands inside 85% of the gap. The 0.26 ceiling is the
-   * separate promise that these are always visibly SMALLER than the main pair.
-   * That clearance is about LATERAL reach only (the array sits back near the
-   * centreline, same as it always did), so moving the main pair's `x` doesn't
-   * touch it — and clearing the head's own tip is what keeps the two sets
-   * apart along the head's length instead.
-   */
-  const extra = clamp(Math.round(g.eye_count / 2) - 1, 0, 3);
-  if (extra > 0) {
-    const COL = 1.55;                            // column offset, in small radii
-    const inner = Math.max(0, headW * 0.98 - er * 0.667);
-    const mr = clamp(Math.min(er * 0.26, inner * 0.85 / (COL + 1.70)),
-                     er * 0.09, er * 0.26);
-    // PAST the head's own front tip (`hx + headL`), with a margin of the small
-    // wedge's own reach so the whole shape clears it, not just its centre.
-    // Every further row pushes forward again (never back toward the tip),
-    // so no row can slip back inside the ellipse.
-    const x0 = hx + headL * 1.05 + mr * 1.6;
-    for (let row = 0; row < extra; row++) {
-      for (const side of [-1, 1]) {
-        L.eyes.push({
-          x: x0 + row * mr * 2.8,
-          y: side * mr * COL,
-          rx: mr * 0.55, ry: mr, side, minor: true,
-        });
-      }
-    }
-  }
+  // The wedge eyes, sized by headR. Store eyeRadius on L so getEyePositions()
+  // can compute the eye array without re-deriving all the geometry.
+  L.eyeRadius = headR * lerp(0.45, 1.05, g.eye_size);   // widened both ends
+  // Eyes are now positioned by head shape and eye_count via getEyePositions(),
+  // replacing the old hardcoded placement logic. This lets each head shape have
+  // its own arrangement: wide faces pull eyes forward and wider apart, long
+  // snouts tuck them back and allow forward-staggered inner pairs, etc.
+  L.eyes.push(...getEyePositions(L, L.headShape, g.eye_count ?? 2));
 
   // Antennae read longer: the window was 0.10–0.58 of the body unit, now
   // 0.06–0.95 — shorter at the bottom, far longer at the top, and the calibrated
@@ -1530,30 +1594,64 @@ function drawLegs(ctx, L, col, phase) {
   for (const leg of L.legs) {
     const { knee, foot } = poseLeg(leg, phase);
 
-    let cx, cy;
     if (leg.joints >= 1) {
+      // Two-segment jointed legs: upper segment (attach→knee) + knee joint circle + lower segment (knee→foot).
+      // Knee joint is sized ~0.60 × leg.w (smaller than foot pad) and matches limb colour.
+      const kneeR = leg.w * 0.60;
+
+      // Straight line segments for jointed legs, with gradient if applicable.
+      // In gradient mode, the full gradient spans attach→foot, but we draw two separate segments.
+      let attachColour = col.limb;
+      let kneeColour = col.limb;
+      if (col.gradientLimbs && ctx.createLinearGradient) {
+        // Create a gradient spanning the entire leg from attach to foot.
+        // Sample it at 0.5 (knee) to split the gradient between upper and lower segments.
+        const fullGrad = ctx.createLinearGradient(leg.attach.x, leg.attach.y, foot.x, foot.y);
+        fullGrad.addColorStop(0, col.limb);
+        fullGrad.addColorStop(1, col.legFoot);
+        // For the knee point, use the midpoint colour from the full gradient.
+        // We approximate by creating a gradient at midpoint for visual continuity.
+        attachColour = fullGrad;
+        kneeColour = fullGrad;
+      }
+
+      // Draw two straight line segments using lineTo instead of quadraticCurveTo.
+      ctx.strokeStyle = attachColour;
+      ctx.lineWidth = leg.w;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(leg.attach.x, leg.attach.y);
+      ctx.lineTo(knee.x, knee.y);
+      ctx.stroke();
+
+      ctx.strokeStyle = kneeColour;
+      ctx.lineWidth = leg.w;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(knee.x, knee.y);
+      ctx.lineTo(foot.x, foot.y);
+      ctx.stroke();
+
+      // Knee joint: visible circle at the joint, flat colour (no gradient).
+      fillEllipse(ctx, knee.x, knee.y, kneeR, kneeR, col.limb);
+    } else {
+      // Smooth single-segment leg: original curved rendering.
+      let cx, cy;
       const midX = lerp(leg.attach.x, foot.x, 0.5);
       const midY = lerp(leg.attach.y, foot.y, 0.5);
       const lean = knee.y - midY;              // the leg's own natural lateral direction
       cx = midX;
       cy = midY + lean * LEG_JOINT_KINK * 2.5;  // bowed at the midpoint, not the shoulder
-    } else {
-      cx = lerp(leg.attach.x, foot.x, 0.30);
-      cy = lerp(knee.y, foot.y, 0.18);
-    }
 
-    // GRADIENT LEG MODE: a linear gradient along the stroke itself, foot-end
-    // in `col.legFoot`, attach-end in the normal `col.limb` — the leg reads as
-    // fading INTO the body's own colour as it approaches it, not as a solid
-    // tint. Every other mode keeps the flat `col.limb` stroke it always had.
-    let strokeColour = col.limb;
-    if (col.gradientLimbs && ctx.createLinearGradient) {
-      const grad = ctx.createLinearGradient(leg.attach.x, leg.attach.y, foot.x, foot.y);
-      grad.addColorStop(0, col.limb);
-      grad.addColorStop(1, col.legFoot);
-      strokeColour = grad;
+      let strokeColour = col.limb;
+      if (col.gradientLimbs && ctx.createLinearGradient) {
+        const grad = ctx.createLinearGradient(leg.attach.x, leg.attach.y, foot.x, foot.y);
+        grad.addColorStop(0, col.limb);
+        grad.addColorStop(1, col.legFoot);
+        strokeColour = grad;
+      }
+      capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, strokeColour);
     }
-    capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, strokeColour);
 
     // Foot: a round pad at the tip, FIXED at the maximum the old `foot_size`
     // gene could reach. The gene is gone (see genes.js): every value under this
@@ -2162,8 +2260,8 @@ function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
   }
 }
 
-/** `pattern_shell`'s three readings — see the gene's doc in genes.js. */
-export const SHELL_PATTERN_MODES = ['none', 'dots', 'lines'];
+/** `pattern_shell`'s five readings — see the gene's doc in genes.js. */
+export const SHELL_PATTERN_MODES = ['none', 'polka', 'jewel', 'tiger', 'lineArc'];
 
 /**
  * A marking on ONE trunk mass, clipped to it. `dots` is MIRRORED across the
@@ -2191,10 +2289,16 @@ export const SHELL_PATTERN_MODES = ['none', 'dots', 'lines'];
  * file, degrading to a crisp edge (never a wrong-coloured one) where it's
  * missing.
  */
-function drawShellPattern(ctx, p, col, rx, ry, patShell) {
+function drawShellPattern(ctx, p, col, rx, ry, patShell, soloTrunk = false) {
   const mode = patShell.mode;
   if (mode === 'none') return;
-  if (mode === 'lines' && p.kind !== 'abdomen') return;
+
+  // POLKA and LINE_BOTTOM_ARC: abdomen only, or thorax if there is no abdomen
+  // (body_segments === 1, indicated by soloTrunk). JEWEL and TIGER are unrestricted.
+  if (mode === 'polka' || mode === 'lineArc') {
+    const eligible = p.kind === 'abdomen' || (soloTrunk && p.kind === 'thorax');
+    if (!eligible) return;
+  }
 
   ctx.save();
   ctx.beginPath();
@@ -2202,32 +2306,69 @@ function drawShellPattern(ctx, p, col, rx, ry, patShell) {
   ctx.clip();
   ctx.fillStyle = col.shellPattern;
 
-  if (mode === 'dots') {
-    const half = patShell.dotCount;
-    const seed = Math.round(p.x * 7 + rx * 13);
-    for (let i = 0; i < half; i++) {
-      const dx = (hash01(i, seed) - 0.5) * rx * 1.5;
-      const dy = hash01(i, seed + 17) * ry * 0.82;
-      // `pattern_shell_dot_variance` 0 → every dot the SAME size (mult = 1);
-      // 1 → the widest spread this scatter draws (mult in [0, 2]).
-      const mult = 1 + (hash01(i, seed + 29) - 0.5) * 2 * patShell.dotVariance;
-      const r = Math.max(0.8, rx * 0.10 * mult);
-      for (const yy of [p.y + dy, p.y - dy]) {
+  if (mode === 'polka') {
+    // Predetermined grid of evenly-spaced dots, mirrored across centerline.
+    const cols = Math.max(1, patShell.dotCount);
+    const rows = 2;
+    const marginX = rx * 0.22, marginY = ry * 0.35;
+    for (let c = 0; c < cols; c++) {
+      const tx = cols === 1 ? 0.5 : c / (cols - 1);
+      const dx = lerp(-(rx - marginX), rx - marginX, tx);
+      // Checkerboard size alternation via dotVariance
+      const mult = 1 + (c % 2 === 0 ? -1 : 1) * 0.5 * patShell.dotVariance;
+      const r = Math.max(0.8, Math.min(rx, ry) * 0.16 * mult);
+      for (const sign of [1, -1]) {
         ctx.beginPath();
-        ctx.arc(p.x + dx, yy, r, 0, TAU);
+        ctx.arc(p.x + dx, p.y + sign * (ry - marginY), r, 0, TAU);
         ctx.fill();
       }
     }
-  } else if (mode === 'lines') {
-    const stripes = patShell.lineCount;
-    if (stripes > 0) {
-      const gap = (rx * 2) / (stripes + 1);
-      const w = Math.max(1, gap * lerp(0.18, 0.62, patShell.lineThickness));
-      const blur = ('filter' in ctx) ? Math.max(0.6, w * 0.30) : 0;
+  } else if (mode === 'jewel') {
+    // Radial gradient glow from one side, deterministically chosen by segment position
+    const side = (Math.round(p.x) % 2 === 0) ? 1 : -1;
+    const cx = p.x + side * rx * 0.65;
+    const grad = ctx.createRadialGradient(cx, p.y, 0, cx, p.y, rx * 1.4);
+    grad.addColorStop(0,    refA(col.shellPattern, 0.85));
+    grad.addColorStop(0.5,  refA(col.shellPattern, 0.30));
+    grad.addColorStop(1,    refA(col.shellPattern, 0));
+    ctx.fillStyle = grad;
+    ctx.fillRect(p.x - rx, p.y - ry, rx * 2, ry * 2);
+  } else if (mode === 'tiger') {
+    // Curved diagonal stripes, both sides of centerline
+    const stripeCount = clamp(patShell.lineCount + 1, 1, 5);
+    const gap = (rx * 2) / (stripeCount + 1);
+    const thick = Math.max(1, gap * lerp(0.18, 0.5, patShell.lineThickness));
+    ctx.strokeStyle = col.shellPattern;
+    ctx.lineWidth = thick;
+    ctx.lineCap = 'round';
+    const drop = ry * 0.5;
+    for (let i = 1; i <= stripeCount; i++) {
+      const xc = p.x - rx + gap * i;
+      for (const side of [1, -1]) {
+        ctx.beginPath();
+        ctx.moveTo(xc - gap * 0.4, p.y - ry * 0.9 * side);
+        ctx.quadraticCurveTo(xc, p.y, xc + gap * 0.4, p.y + ry * 0.9 * side);
+        ctx.stroke();
+      }
+    }
+  } else if (mode === 'lineArc') {
+    // Horizontal bands that arc downward
+    const bands = patShell.lineCount;
+    if (bands > 0) {
+      const gapY = (ry * 2) / (bands + 1);
+      const thick = Math.max(1, gapY * lerp(0.18, 0.62, patShell.lineThickness));
+      const blur = ('filter' in ctx) ? Math.max(0.6, thick * 0.30) : 0;
       if (blur) ctx.filter = `blur(${blur.toFixed(2)}px)`;
-      for (let i = 1; i <= stripes; i++) {
-        const xx = p.x - rx + gap * i;
-        ctx.fillRect(xx - w / 2, p.y - ry, w, ry * 2);
+      ctx.strokeStyle = col.shellPattern;
+      ctx.lineWidth = thick;
+      ctx.lineCap = 'round';
+      for (let i = 1; i <= bands; i++) {
+        const baseY = p.y - ry + gapY * i;
+        const depth = ry * 0.16;
+        ctx.beginPath();
+        ctx.moveTo(p.x - rx, baseY);
+        ctx.quadraticCurveTo(p.x, baseY - depth, p.x + rx, baseY);
+        ctx.stroke();
       }
       if (blur) ctx.filter = 'none';
     }
@@ -2251,7 +2392,7 @@ function drawShellPattern(ctx, p, col, rx, ry, patShell) {
  * trunk-drawing closures there.
  */
 function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false,
-    patShell = { mode: 'none' }) {
+    patShell = { mode: 'none' }, soloTrunk = false) {
   const rx = Math.max(0.5, p.rx);
   const ry = Math.max(0.5, p.ry);
 
@@ -2311,7 +2452,7 @@ function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false
   }
   ctx.restore();
 
-  drawShellPattern(ctx, p, col, rx, ry, patShell);
+  drawShellPattern(ctx, p, col, rx, ry, patShell, soloTrunk);
   segmentCentreline(ctx, p, col, rx, ry, crease);
   drawSegmentSpikes(ctx, p, col, spiky, translucent);
 }
@@ -2606,12 +2747,15 @@ export function drawBug(ctx, g, opts = {}) {
   const lunge = state === 'attack' ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
   const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
   const shellPat = {
-    mode: SHELL_PATTERN_MODES[clamp(Math.round(g.pattern_shell ?? 0), 0, 2)],
+    mode: SHELL_PATTERN_MODES[clamp(Math.round(g.pattern_shell ?? 0), 0, 4)],
     lineCount: clamp(Math.round(g.pattern_shell_line_count ?? 3), 0, 4),
     lineThickness: clamp(g.pattern_shell_line_thickness ?? 0.34, 0, 1),
     dotVariance: clamp(g.pattern_shell_dot_variance ?? 0.5, 0, 1),
     dotCount: clamp(Math.round(g.pattern_shell_dot_count ?? 4), 0, 10),
   };
+  // True only when body_segments === 1 (no abdomen exists): pattern gates use this
+  // to apply abdomen-only patterns to the thorax as a fallback.
+  const soloTrunk = !L.abdomen;
 
   ctx.save();
   ctx.rotate(-Math.PI / 2);                 // head up
@@ -2748,13 +2892,13 @@ export function drawBug(ctx, g, opts = {}) {
     // `elytra` is still the switch that suppresses the dark core — a shell cover
     // hides the joint — so segmentMass() is told which mass wants a crease.
     const creased = L.wingType === 'elytra' ? null : L.abdomen;
-    for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPat);
+    for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPat, soloTrunk);
     drawElytra(ctx, L, col);                     // covers lie on the abdomen
   };
 
   /** The thorax. */
   const drawTrunkThorax = () => {
-    segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPat);
+    segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPat, soloTrunk);
   };
 
   if (L.wingPairs > 0) {
