@@ -98,13 +98,13 @@ the build button, and a **never** badge beside that taxon in the drift line.
 
 ### 2. The part library — `src/render/partLibrary.js`
 
-The **Part library** and **All 55 genes** tabs cut the same data two ways. The
+The **Part library** and **All genes** tabs cut the same data two ways. The
 library is organised by *what you see on the bug* — 23 things the renderer can
 draw, each owning the two to six genes that shape it, with the threshold where
 it appears, a thumbnail per kind, and a grid tile framed on the part itself
 (`FOCUS` in `partLibrary.js` says how each one is framed: the pose is head-up,
 so a positive `y` brings the head into the tile and a negative one the tail). The gene tab is organised by *the vector* —
-all 55 in `GENE_ORDER`, including the three that reach no part of the sprite, each
+every gene in `GENE_ORDER`, including the three that reach no part of the sprite, each
 saying which parts it feeds. Start in the library when you are building a bug;
 go to the genes when you need one specific dial, or the ones no part exposes.
 
@@ -181,7 +181,7 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 
 #### Genes that move numbers, not pixels
 
-Three of the 55 reach no part of the sprite. The builder badges them rather
+Three of the genes reach no part of the sprite. The builder badges them rather
 than leaving you to wonder why the slider does nothing:
 
 `body_mass` · `metabolism` · `aggression`

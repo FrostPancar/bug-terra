@@ -342,6 +342,31 @@ export const GENE_SPECS = {
   // The shell marking's own colour. Same REF_PALETTE-index convention as
   // `pattern_horn_hue`; unused unless `pattern_shell` selects a marking.
   pattern_shell_hue:  { min: 0, max: 11, integer: true, default: 7 },
+  /**
+   * SHELL PATTERN `lines`: how many horizontal bands render, restricted to the
+   * ABDOMEN — see drawShellPattern in bugArt.js. Unused unless `pattern_shell`
+   * selects `lines`. 0 draws none even when the mode is selected, same as
+   * every other 0-is-off count gene here. Default 3 reproduces the old
+   * hardcoded band count.
+   */
+  pattern_shell_line_count:     { min: 0, max: 4, integer: true, default: 3 },
+  // SHELL PATTERN `lines`: how heavy each band is, as a fraction of the gap
+  // between them. Default 0.34 reproduces the old fixed thickness.
+  pattern_shell_line_thickness: { min: 0, max: 1, default: 0.34 },
+  // SHELL PATTERN `dots`: how much a dot's radius varies from the next one —
+  // 0 draws every dot the SAME size, 1 the widest spread the renderer allows.
+  // Unused unless `pattern_shell` selects `dots`.
+  pattern_shell_dot_variance:   { min: 0, max: 1, default: 0.5 },
+  // SHELL PATTERN `dots`: how many dots per side (the render mirrors each one
+  // across the segment's centreline, so the drawn total is double this).
+  // Default 4 reproduces the old hardcoded count.
+  pattern_shell_dot_count:      { min: 0, max: 10, integer: true, default: 4 },
+  // THE CROWN MARK'S OWN COLOUR. Same REF_PALETTE-index convention as every
+  // other decoration hue (`pattern_horn_hue`, `pattern_shell_hue`, ...) —
+  // `crown_mark_style` still picks WHETHER a mark is drawn and whether it is
+  // solid or blended, this only picks WHAT COLOUR it is. Default 4 is gold,
+  // which is what the mark was hardcoded to before this gene existed.
+  crown_mark_hue:     { min: 0, max: 11, integer: true, default: 4 },
 };
 
 export const GENE_ORDER = Object.keys(GENE_SPECS);

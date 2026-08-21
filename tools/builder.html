@@ -309,7 +309,7 @@ pre b{color:var(--yellow);font-weight:600}
     <div class="deskBottom">
       <div class="tabs" id="tabs">
         <button data-tab="library" aria-pressed="true">Part library</button>
-        <button data-tab="genes" aria-pressed="false">All 55 genes</button>
+        <button data-tab="genes" aria-pressed="false">All genes</button>
         <button data-tab="start" aria-pressed="false">Start from</button>
         <button data-tab="export" aria-pressed="false">Export</button>
       </div>
@@ -394,7 +394,7 @@ const push = (next) => {
 
 /* ------------------------------------------------- share codes in the URL */
 
-// One byte per gene over its own range, in GENE_ORDER — 55 genes, base64-encoded.
+// One byte per gene over its own range, in GENE_ORDER — all genes, base64-encoded.
 function encodeGenome(g) {
   const bytes = GENE_ORDER.map((k) => {
     const s = GENE_SPECS[k];
@@ -1017,9 +1017,9 @@ function paintExport() {
  * tapping "add" on a part near the bottom of the library would throw you back to
  * the top. Hold the offset across the rebuild unless the tab itself changed.
  */
-/** The two browsing tabs cut the same 55 genes two ways — say which is which. */
+/** The two browsing tabs cut the same all genes two ways — say which is which. */
 const TAB_HINT = {
-  genes: 'All 55 genes in GENE_ORDER, including the three that move stats but ' +
+  genes: 'All genes in GENE_ORDER, including the three that move stats but ' +
          'draw nothing. Every slider says which parts it feeds.',
   export: 'The build you have made, as code you can paste back into the project.',
 };

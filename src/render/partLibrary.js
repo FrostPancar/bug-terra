@@ -333,14 +333,14 @@ export const PARTS = [
     id: 'spikes',
     group: 'body',
     name: 'Segment spikes',
-    blurb: 'A short, rounded spike off the left and right of every trunk segment — thorax, each abdominal segment, each myriapod ring — in the segment\'s own flat colour. `spine_density` is gone; this is its replacement, and it actually draws.',
+    blurb: 'A short, rounded spike off the left and right of every trunk segment — thorax, each abdominal segment, each myriapod ring — in the segment\'s own flat colour. `spine_density` is gone; this is its replacement, and it actually draws. Nothing shows until the gene clears its halfway point, then it grows into a spikier maximum than before.',
     drawnBy: 'segmentMass() → drawSegmentSpikes()',
-    gate: 'spikyness > 0.02',
-    present: (g) => g.spikyness > 0.02,
-    on: { spikyness: 0.7 },
+    gate: 'spikyness > 0.5',
+    present: (g) => g.spikyness > 0.5,
+    on: { spikyness: 0.85 },
     off: { spikyness: 0 },
     genes: [
-      { gene: 'spikyness', effect: 'length and base width of the spike pair on every trunk segment; also required ≥ 0.65 for Centipede, ≥ 0.70 for Millipede' },
+      { gene: 'spikyness', effect: 'nothing draws below 0.5; past it, length and base width of the spike pair ramp through a spikier maximum than before. Also required ≥ 0.65 for Centipede, ≥ 0.70 for Millipede' },
       { gene: 'translucency', effect: 'above 0.55, every segment and its spikes gain a faint thin border' },
     ],
   },
@@ -350,7 +350,7 @@ export const PARTS = [
     id: 'eyes',
     group: 'sensory',
     name: 'Eyes',
-    blurb: 'The wedge — wide and rounded at the outer-top corner, drawn to a point at the inner-lower side, big, set wide, and drawn UNDER the head so its edge crops the inner half — is the silhouette for three of the four treatments. `flat` breaks that on purpose with a genuinely flatter, less-protruding silhouette; the other three only pick how the wedge is FILLED.',
+    blurb: 'The wedge — wide and rounded at the outer-top corner, drawn to a point at the inner-lower side, big, set wide, and drawn UNDER the head so its edge crops the inner half — is the silhouette for three of the four treatments. `flat` breaks that on purpose with a wider, sharper, less-protruding silhouette, and now carries its own pupil too.',
     core: true,
     drawnBy: 'drawEyes() → eyeWedgePath() / eyeFlatPath()',
     gate: 'no gate — there is nothing optional inside an eye any more. The iris is GONE on every fill treatment (it was a bright complementary disc that read as a coloured dot in the eye)',
@@ -358,20 +358,20 @@ export const PARTS = [
     variants: variants(EYE_FILLS, [
       'near-black, with a scatter of small white dots',
       'white, with a dark notch cut into the outer-top corner. Nothing else',
-      'white, with a small dark hook curling in from the outer-top corner. Nothing else',
-      'a flatter, less-protruding silhouette, plain white, no interior mark',
+      'white, with a bigger dark hook curling in from the outer-top corner, pushed closer to the eye\'s own edge',
+      'a wider, sharper, flatter silhouette, plain white, with a pupil in the outer-top corner',
     ]),
     genes: [
       { gene: 'eye_size', effect: 'radius, 0.45–1.05 of head radius' },
-      { gene: 'eye_type', effect: 'dark speckled / notched / hooked — all three the same wedge, differing only in fill/mark — or flat, a genuinely flatter silhouette with no mark' },
-      { gene: 'eye_count', effect: 'pairs past the first are drawn as a small mirrored eye array behind the main pair' },
+      { gene: 'eye_type', effect: 'dark speckled / notched / hooked — all three the same wedge, differing only in fill/mark — or flat, a wider, sharper silhouette with its own pupil' },
+      { gene: 'eye_count', effect: 'pairs past the first are drawn as a small mirrored eye array in front of the main pair' },
     ],
   },
   {
     id: 'crownmark',
     group: 'sensory',
     name: 'Crown mark',
-    blurb: 'A flat colour patch capping the top of the head — gold, off the fixed reference palette, clipped to the head so it never reaches past the silhouette. NOT a horn: `horn_type` has a variant called "nose" and this is unrelated to it, no geometry of its own at all.',
+    blurb: 'A flat colour patch capping the top of the head — off the fixed reference palette, clipped to the head so it never reaches past the silhouette. NOT a horn: `horn_type` has a variant called "nose" and this is unrelated to it, no geometry of its own at all.',
     drawnBy: 'drawCrownMark()',
     gate: 'crown_mark_style ≥ 1  (0 draws nothing)',
     present: (g) => g.crown_mark_style >= 1,
@@ -388,14 +388,15 @@ export const PARTS = [
     variantOf: (g) => Math.max(0, Math.min(1, Math.round(g.crown_mark_style ?? 0) - 1)),
     setVariant: (_g, i) => ({ crown_mark_style: i + 1 }),
     genes: [
-      { gene: 'crown_mark_style', effect: '0 none, 1 solid gold cap, 2 the cap blended into the head' },
+      { gene: 'crown_mark_style', effect: '0 none, 1 solid cap, 2 the cap blended into the head' },
+      { gene: 'crown_mark_hue', effect: 'which of the twelve reference-palette swatches the mark is drawn in — independent of the body\'s own hue. Default gold' },
     ],
   },
   {
     id: 'ocelli',
     group: 'sensory',
     name: 'Extra eyes',
-    blurb: 'Every pair past the first joins a small mirrored array behind the main eyes — the same wedge shape, scaled down, arranged in rows so it reads as a deliberate cluster rather than scattered dots. Sized and positioned so it never overlaps the main pair\'s own footprint. Three extra pairs is the ceiling.',
+    blurb: 'Every pair past the first joins a small mirrored array — the same wedge shape, scaled down, arranged in rows so it reads as a deliberate cluster rather than scattered dots. Drawn out near the head\'s own edge, forward of the main pair (which is set back to make room), so the head\'s opaque fill doesn\'t paint over them — they used to sit near the centreline, entirely under that fill, and never actually rendered. Sized and positioned so it never overlaps the main pair\'s own footprint. Three extra pairs is the ceiling.',
     drawnBy: 'buildHead() → the minor eyes',
     gate: 'eye_count ≥ 4  (extra pairs = clamp(round(eye_count / 2) − 1, 0, 3))',
     present: (g) => g.eye_count >= 4,
@@ -496,20 +497,24 @@ export const PARTS = [
     group: 'surface',
     name: 'Shell pattern',
     core: true,
-    blurb: 'A marking on the trunk masses themselves — the thorax, every abdominal segment, every myriapod ring — separate from the horn/jaw treatment above. Both marked options are mirrored across each segment\'s own centreline, so the marking reads as symmetric rather than as a scatter of noise.',
+    blurb: 'A marking on the trunk masses themselves, separate from the horn/jaw treatment above. `dots` scatters over every trunk mass — thorax, every abdominal segment, every myriapod ring — mirrored across each segment\'s own centreline so it reads as symmetric rather than as a scatter of noise. `lines` draws soft-edged horizontal bands, and only on the abdomen.',
     drawnBy: 'drawShellPattern()',
     gate: 'pattern_shell selects: 0 none, 1 dots, 2 lines',
     variantGene: 'pattern_shell',
     variants: variants(['none', 'dots', 'lines'], [
       'no marking — the default',
       'a symmetric scatter of dots over every trunk mass',
-      'evenly spaced horizontal bands across every trunk mass',
+      'soft-edged horizontal bands across the abdomen only',
     ]),
     variantOf: (g) => Math.max(0, Math.min(2, Math.round(g.pattern_shell ?? 0))),
     setVariant: (_g, i) => ({ pattern_shell: i }),
     genes: [
-      { gene: 'pattern_shell', effect: 'the marking on every trunk mass: 0 none, 1 a symmetric dot scatter, 2 horizontal bands' },
+      { gene: 'pattern_shell', effect: 'the marking: 0 none, 1 a symmetric dot scatter over every trunk mass, 2 horizontal bands on the abdomen only' },
       { gene: 'pattern_shell_hue', effect: 'the marking\'s own colour, off the reference palette. Unused unless pattern_shell selects a marking' },
+      { gene: 'pattern_shell_dot_count', effect: 'dots mode: how many dots per side (mirrored, so the rendered total is double this)' },
+      { gene: 'pattern_shell_dot_variance', effect: 'dots mode: how much a dot\'s size varies from the next one — 0 draws every dot the same size' },
+      { gene: 'pattern_shell_line_count', effect: 'lines mode: how many horizontal bands render, 0–4. 0 draws none even with lines selected' },
+      { gene: 'pattern_shell_line_thickness', effect: 'lines mode: how heavy each band is, as a fraction of the gap between them' },
     ],
   },
   {
@@ -658,7 +663,7 @@ export const SIM_ONLY = {
 
 /**
  * gene → every part it touches. Built once, so the parameter panel can answer
- * "what does this slider move" for all 55 genes without a search.
+ * "what does this slider move" for every gene without a search.
  */
 export const GENE_INFO = (() => {
   const map = {};

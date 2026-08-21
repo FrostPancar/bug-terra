@@ -204,6 +204,11 @@ export function palette(g) {
   const lightHex = REF_PALETTE[REF_PALETTE_ORDER[
     clamp(Math.round(g.light_hue ?? 7), 0, REF_PALETTE_ORDER.length - 1)]];
 
+  /** THE CROWN MARK'S COLOUR — a REF_PALETTE swatch chosen by `crown_mark_hue`,
+   *  same convention as `light_hue` / `pattern_shell_hue`. See genes.js. */
+  const crownHex = REF_PALETTE[REF_PALETTE_ORDER[
+    clamp(Math.round(g.crown_mark_hue ?? 4), 0, REF_PALETTE_ORDER.length - 1)]];
+
   /**
    * THE LIGHTING'S SATURATION AND LIGHTNESS ARE THEIR OWN GENES NOW.
    *
@@ -230,10 +235,21 @@ export function palette(g) {
    * s/l from the lighting genes rather than from the body.
    */
   const lightH = hexHue(lightHex);
-  const lightS = clamp(g.lighting_saturation ?? 0.33, 0, 1);
-  const lightL = clamp(Math.max(g.lighting_lightness ?? 0.85, l), 0, 0.98);
-  const core = (a) => hsl(lightH, lightS, lightL, a);
-  const lift = (a) => hsl(lightH, clamp(lightS * 0.60, 0, 1), lightL, a);
+  // MAX END BOOSTED: the raw gene reaches full saturation at 0.8 rather than
+  // 1.0, so the top of the slider's range reads noticeably richer than a
+  // straight 0-1 mapping would. A more saturated light should also look a
+  // touch more PRESENT, not just more colourful, so the same raw value lifts
+  // the bloom's opacity slightly too (see `lightAlphaMult` below).
+  const lightSRaw = clamp(g.lighting_saturation ?? 0.33, 0, 1);
+  const lightS = clamp(lightSRaw * 1.25, 0, 1);
+  const lightAlphaMult = 1 + lightSRaw * 0.20;
+  // LIGHTNESS IS FIXED AT 0.5 — `lighting_lightness` no longer drives the
+  // render at all, whatever a genome stores in it. Still floored to the
+  // body's own lightness so the bloom can never render darker than the shell
+  // it sits on, which is the one guarantee that survives from before.
+  const lightL = clamp(Math.max(0.5, l), 0, 0.98);
+  const core = (a) => hsl(lightH, lightS, lightL, clamp(a * lightAlphaMult, 0, 1));
+  const lift = (a) => hsl(lightH, clamp(lightS * 0.60, 0, 1), lightL, clamp(a * lightAlphaMult, 0, 1));
 
   return {
     shell:   hsl(h, s, l),
@@ -249,12 +265,14 @@ export function palette(g) {
     segBloomFar:  lift(BLOB_ALPHA * 0.24),
     segBloomFar2: lift(BLOB_ALPHA * 0.10),
     segBloomOut:  lift(0),
-    // The crown mark — a flat colour patch on the head's own surface. Gold and
-    // orange straight off REF_PALETTE, never computed from the body hue.
-    crownSolid:    REF_PALETTE.gold,
-    crownBlendTop: refA(REF_PALETTE.gold, 0.95),
-    crownBlendMid: refA(REF_PALETTE.orange, 0.62),
-    crownBlendOut: refA(REF_PALETTE.orange, 0),
+    // The crown mark — a flat colour patch on the head's own surface. Its own
+    // hue gene now, off REF_PALETTE like every other decoration colour, never
+    // computed from the body hue. Default 4 (gold) reproduces the old
+    // hardcoded gold/orange the mark always used.
+    crownSolid:    crownHex,
+    crownBlendTop: refA(crownHex, 0.95),
+    crownBlendMid: refA(crownHex, 0.62),
+    crownBlendOut: refA(crownHex, 0),
     // The soft centreline. It is the segment's own shell colour and it is drawn
     // ON TOP OF the bloom, so its job is to bring that patch of segment back to
     // `shell`. RAISED 0.30 → 0.72: at 0.30 the result was 70% bloom, i.e. a
@@ -763,11 +781,15 @@ function buildHead(L) {
   // a circle, and it is pushed far enough out that the rounded outer-top corner
   // clears the head silhouette instead of hiding behind it.
   const er = headR * lerp(0.45, 1.05, g.eye_size);   // widened both ends
+  // BIG EYES DRAWN BACK — was `hx + headL * 0.04`. Past `eye_count` 2 the
+  // extra-eye array needs somewhere forward of the main pair to sit that
+  // ISN'T buried under the head's own opaque fill (see the note below); moving
+  // the main pair back along the head's length is what opens that room up.
   for (const side of [-1, 1]) {
     // Placed per-axis — along the head's length in x, across its width in y —
     // so an eye still sits on the head edge when the two differ.
     L.eyes.push({
-      x: hx + headL * 0.04,
+      x: hx - headL * 0.14,
       y: side * headW * 0.98,
       rx: er * 0.55, ry: er, side,
     });
@@ -789,14 +811,37 @@ function buildHead(L) {
    * They are the same eyeWedgePath silhouette as the main pair, scaled down, so
    * a bug's eyes all look like the same organ.
    *
-   * NON-OVERLAP IS COMPUTED, not eyeballed. `inner` is how far the main wedge
-   * actually reaches toward the midline: walking eyeWedgePath's control points
-   * through the 0.30 lean, the closest approach is the outer-edge belly at
-   * (−0.30R, −1.10r), i.e. 0.30·sin(0.30)·R + 1.10·cos(0.30)·r ≈ 0.667 × the
-   * main radius once r = 0.55R is substituted. The array's own half-extent is
+   * THEY USED TO RENDER INVISIBLE, always — this is the fix, not just a
+   * rearrangement. drawBug() draws every eye BEFORE the head (so the head's
+   * edge crops the main pair's inner half — the intended "tucked in" look),
+   * then paints the head as one OPAQUE flat fill over everything drawn so far
+   * (see the Z-ORDER note in drawBug). The array used to sit tucked in near
+   * the head's own centreline at a forward offset of only `headL * 0.44` —
+   * well inside the head ellipse's own front edge (`hx + headL`) — so it was
+   * drawn, then immediately painted over. `eye_count` past 2 was a dead gene
+   * as far as the sprite went, and pushing the array OUT LATERALLY instead
+   * (an earlier pass at this fix) doesn't work either: the main pair's own
+   * wedge already reaches most of the way to the head's lateral edge, so
+   * anything only a little further out than the main pair's own `y` lands
+   * ON TOP of the main pair instead of clear of the head. The one direction
+   * that actually guarantees clearance is FORWARD, past the head's own tip:
+   * the head ellipse never extends past `hx + headL` in x at any y, so an
+   * `x0` beyond that, however small the array's own `y`, is unconditionally
+   * outside the silhouette and immune to the head's opaque fill.
+   *
+   * NON-OVERLAP FROM THE MAIN PAIR IS COMPUTED, not eyeballed. `inner` is how
+   * far the main wedge actually reaches toward the midline: walking
+   * eyeWedgePath's control points through the 0.30 lean, the closest approach
+   * is the outer-edge belly at (−0.30R, −1.10r), i.e.
+   * 0.30·sin(0.30)·R + 1.10·cos(0.30)·r ≈ 0.667 × the main radius once
+   * r = 0.55R is substituted. The array's own half-extent is
    * mr × (COL + 1.70) — column offset plus the small wedge's outer belly — and
    * `mr` is solved so that lands inside 85% of the gap. The 0.26 ceiling is the
    * separate promise that these are always visibly SMALLER than the main pair.
+   * That clearance is about LATERAL reach only (the array sits back near the
+   * centreline, same as it always did), so moving the main pair's `x` doesn't
+   * touch it — and clearing the head's own tip is what keeps the two sets
+   * apart along the head's length instead.
    */
   const extra = clamp(Math.round(g.eye_count / 2) - 1, 0, 3);
   if (extra > 0) {
@@ -804,11 +849,15 @@ function buildHead(L) {
     const inner = Math.max(0, headW * 0.98 - er * 0.667);
     const mr = clamp(Math.min(er * 0.26, inner * 0.85 / (COL + 1.70)),
                      er * 0.09, er * 0.26);
-    const x0 = hx + headL * 0.44;
+    // PAST the head's own front tip (`hx + headL`), with a margin of the small
+    // wedge's own reach so the whole shape clears it, not just its centre.
+    // Every further row pushes forward again (never back toward the tip),
+    // so no row can slip back inside the ellipse.
+    const x0 = hx + headL * 1.05 + mr * 1.6;
     for (let row = 0; row < extra; row++) {
       for (const side of [-1, 1]) {
         L.eyes.push({
-          x: x0 - row * mr * 2.8,
+          x: x0 + row * mr * 2.8,
           y: side * mr * COL,
           rx: mr * 0.55, ry: mr, side, minor: true,
         });
@@ -823,7 +872,9 @@ function buildHead(L) {
   if (antLen > unit * 0.15) for (const side of [-1, 1]) L.antennae.push({ side, len: antLen });
 
   // Horns read bigger: bases lowered (0.26 → 0.18) and every ceiling raised.
-  const hornMax = L.hornType === 'nose' ? 1.15 : L.hornType === 'split' ? 1.55 : 1.30;
+  // `crown` raised again on its own — it read small next to `split`'s reach.
+  const hornMax = L.hornType === 'nose' ? 1.15 : L.hornType === 'split' ? 1.55
+    : L.hornType === 'crown' ? 1.65 : 1.30;
   L.hornLen = g.horn_size < 0.12 ? 0 : unit * lerp(0.18, hornMax, g.horn_size);
   L.mandible = g.mandible_size < 0.10 ? 0 : headR * lerp(0.38, 1.22, g.mandible_size);
 
@@ -1658,11 +1709,14 @@ function drawHorn(ctx, L, col, pat) {
       for (const dy of [-1, 0, 1]) {
         const sc = dy === 0 ? 1 : 0.72;
         const tipLean = dy === 0 ? 1 : 0.5;
+        // Base spread and prong thickness raised alongside hornMax (0.38 →
+        // 0.44 spread, base×1.04 → ×1.32 mass) so the crown reads bigger all
+        // round, not just longer along its own axis.
         piece(
-          { x: x0, y: dy * h.ry * 0.38 },
-          { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.85 },
+          { x: x0, y: dy * h.ry * 0.44 },
+          { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.92 },
           { x: x0 + len * sc, y: dy * h.ry * tipLean },
-          base * 1.04, base * 0.30, 23 + dy);
+          base * 1.32, base * 0.34, 23 + dy);
       }
       break;
     }
@@ -1885,19 +1939,25 @@ function eyeWedgePath(ctx, R, r, side) {
 
 /**
  * THE FLAT eye silhouette — same asymmetric identity as eyeWedgePath (one
- * broad rounded corner at the outer-top, one point at the inner-lower end),
- * but every lateral control point is pulled back to roughly half its bulge,
- * so the belly sits close against the long axis instead of ballooning out
- * past it. Reads as a flatter, less-protruding eye set into the head.
+ * broad rounded corner at the outer-top, one point at the inner-lower end).
+ *
+ * WIDENED and SHARPENED. The belly along the outer edge is wider than it used
+ * to be (0.70/0.86 → 0.92/1.05) — this is the "wider" half of the fix. The
+ * outer-TOP CORNER — the single highest-protruding control point, formerly
+ * (R×0.92, r×0.92) — is pulled back IN toward the long axis instead (down to
+ * r×0.78) so that corner reads as a sharp, tight turn rather than a second
+ * rounded bulge: sharper overall even though the shape is wider everywhere
+ * else. Still flatter and less-protruding than eyeWedgePath — every reach here
+ * stays well under that path's own — so the two silhouettes remain distinct.
  */
 function eyeFlatPath(ctx, R, r, side) {
   const v = (w) => side * w;
   ctx.beginPath();
   ctx.moveTo(-R * 0.90, v(-r * 0.10));
-  ctx.quadraticCurveTo(-R * 0.28, v(r * 0.70), R * 0.30, v(r * 0.86));
-  ctx.quadraticCurveTo(R * 0.92, v(r * 0.92), R * 0.96, v(r * 0.20));
-  ctx.quadraticCurveTo(R * 0.98, v(-r * 0.30), R * 0.42, v(-r * 0.50));
-  ctx.quadraticCurveTo(-R * 0.28, v(-r * 0.66), -R * 0.90, v(-r * 0.10));
+  ctx.quadraticCurveTo(-R * 0.26, v(r * 0.92), R * 0.30, v(r * 1.05));
+  ctx.quadraticCurveTo(R * 0.90, v(r * 0.78), R * 0.98, v(r * 0.22));
+  ctx.quadraticCurveTo(R * 1.00, v(-r * 0.34), R * 0.42, v(-r * 0.58));
+  ctx.quadraticCurveTo(-R * 0.26, v(-r * 0.80), -R * 0.90, v(-r * 0.10));
   ctx.closePath();
 }
 
@@ -1949,13 +2009,14 @@ function drawEyes(ctx, L, col) {
     ctx.fillStyle = L.eyeFill === 'dark' ? col.pupil : col.sclera;
     ctx.fill();
 
-    // `flat` carries no interior mark — the flatter silhouette IS the whole
-    // treatment (see the EYE_FILLS doc above), same as the array eyes above.
-    if (flat) { ctx.restore(); continue; }
-
     ctx.save();
     ctx.clip();                            // every mark stays inside the wedge
-    if (L.eyeFill === 'dark') {
+    if (flat) {
+      // FLAT now carries a pupil too, the same corner-notch treatment as
+      // `notched` — scaled down to the flatter silhouette's own, smaller
+      // reach so it still sits inside it.
+      fillEllipse(ctx, R * 0.42, v(r * 0.48), R * 0.34, r * 0.52, col.pupil);
+    } else if (L.eyeFill === 'dark') {
       // scattered small white dots
       ctx.fillStyle = col.sclera;
       const dots = [[-0.42, -0.10], [-0.06, 0.42], [0.24, -0.30], [0.52, 0.46], [0.72, -0.16]];
@@ -1967,12 +2028,14 @@ function drawEyes(ctx, L, col) {
       // so the clip leaves a crisp crescent hugging the edge
       fillEllipse(ctx, cx + R * 0.22, cy + v(r * 0.42), R * 0.44, r * 0.72, col.pupil);
     } else {
-      // a dark hook/comma near that corner: a tapered stroke curling inward
+      // a dark hook/comma near that corner — BIGGER now and pushed CLOSER TO
+      // THE EYE'S OWN EDGE: every offset from the shared corner anchor grew,
+      // and the stroke itself widened at both ends.
       taperedCurve(ctx,
-        { x: cx + R * 0.26, y: cy + v(r * 0.30) },
-        { x: cx - R * 0.16, y: cy + v(r * 0.16) },
-        { x: cx - R * 0.20, y: cy - v(r * 0.62) },
-        r * 0.62, r * 0.18, col.pupil);
+        { x: cx + R * 0.34, y: cy + v(r * 0.38) },
+        { x: cx - R * 0.12, y: cy + v(r * 0.20) },
+        { x: cx - R * 0.16, y: cy - v(r * 0.70) },
+        r * 0.78, r * 0.24, col.pupil);
     }
     ctx.restore();
     ctx.restore();
@@ -2037,9 +2100,19 @@ const CENTRELINE_RATIO = 1.18;
  * The apex is a quadratic curve, not a straight point, which is what keeps it
  * "rounded" rather than a thorn.
  */
-const SPIKE_MIN = 0.02;          // below this, nothing is drawn at all
-const SPIKE_LEN = [0.18, 0.52];  // fraction of ry, at spikyness 0 / 1
-const SPIKE_BASE = [0.16, 0.26]; // fraction of rx, at spikyness 0 / 1
+/**
+ * RAISED 0.02 → 0.5, and the surviving range REMAPPED rather than just offset.
+ * At 0.02, a genome barely off its 0 default already grew a visible spike —
+ * the gate was so low it didn't read as a gate at all. Nothing draws until
+ * `spikyness` clears the halfway point now; past it, `spiky` below is
+ * rescaled back to a fresh 0..1 so the spike still grows through its whole
+ * shape range rather than only ever reaching the bottom half of it. The top
+ * end grew SPIKIER alongside the remap (longer, narrower) so the gene's new,
+ * smaller usable window still reaches a dramatic maximum.
+ */
+const SPIKE_THRESHOLD = 0.5;
+const SPIKE_LEN = [0.18, 0.66];  // fraction of ry, at the remapped spiky 0 / 1
+const SPIKE_BASE = [0.16, 0.22]; // fraction of rx, at the remapped spiky 0 / 1
 
 /**
  * TRANSLUCENCY. Past `TRANSLUCENT_BORDER_THRESHOLD`, a segment mass loses
@@ -2077,11 +2150,12 @@ function drawOneSpike(ctx, x, baseY, tipY, halfBase, col, translucent) {
 }
 
 function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
-  if (!(spiky > SPIKE_MIN)) return;
+  if (!(spiky > SPIKE_THRESHOLD)) return;
+  const eff = (spiky - SPIKE_THRESHOLD) / (1 - SPIKE_THRESHOLD);
   const rx = Math.max(0.5, p.rx);
   const ry = Math.max(0.5, p.ry);
-  const len = ry * lerp(SPIKE_LEN[0], SPIKE_LEN[1], spiky);
-  const halfBase = rx * lerp(SPIKE_BASE[0], SPIKE_BASE[1], spiky);
+  const len = ry * lerp(SPIKE_LEN[0], SPIKE_LEN[1], eff);
+  const halfBase = rx * lerp(SPIKE_BASE[0], SPIKE_BASE[1], eff);
   for (const side of [-1, 1]) {
     const baseY = p.y + side * ry * 0.92;
     drawOneSpike(ctx, p.x, baseY, baseY + side * len, halfBase, col, translucent);
@@ -2092,15 +2166,36 @@ function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
 export const SHELL_PATTERN_MODES = ['none', 'dots', 'lines'];
 
 /**
- * A marking on ONE trunk mass, clipped to it. Both marked modes are MIRRORED
- * across the part's own centreline (`p.y`, since every trunk part sits on the
- * body's own long axis) rather than independently scattered/spaced per side —
- * a bilaterally symmetric animal with an asymmetric marking on one segment
- * reads as noise, not a marking, the same reasoning as the horn/mandible dot
- * fix (see surfacePattern's dots mode).
+ * A marking on ONE trunk mass, clipped to it. `dots` is MIRRORED across the
+ * part's own centreline (`p.y`, since every trunk part sits on the body's own
+ * long axis) rather than independently scattered/spaced per side — a
+ * bilaterally symmetric animal with an asymmetric marking on one segment reads
+ * as noise, not a marking, the same reasoning as the horn/mandible dot fix
+ * (see surfacePattern's dots mode).
+ *
+ * `lines` is HORIZONTAL BANDS — full width, stacked front-to-back along the
+ * part's own length — and ABDOMEN ONLY. It used to draw the opposite of that:
+ * each `fillRect` spanned the part's full LENGTH (`rx`, the along-the-body
+ * axis) at a narrow LATERAL position, which is a set of bars running
+ * head-to-tail stacked side by side across the width — vertical stripes, not
+ * horizontal ones, whatever the gene's own doc said they were. Swapping which
+ * axis is the bar's long side and which is its stacking step is the entire
+ * fix; nothing else about the geometry changes. Restricting it to the abdomen
+ * (`p.kind !== 'abdomen'` bails) matches the reference sheet, where banding
+ * reads as an abdominal marking, not something the thorax or a myriapod ring
+ * carries too — `dots` is unrestricted and still marks every trunk mass.
+ * `pattern_shell_line_count` sets how many bands draw (0 draws none even with
+ * `lines` selected); `pattern_shell_line_thickness` sets how heavy each one
+ * is. Both edges are softened with a real blur rather than left hard-edged —
+ * same `'filter' in ctx` feature-detection softStreak() uses elsewhere in this
+ * file, degrading to a crisp edge (never a wrong-coloured one) where it's
+ * missing.
  */
-function drawShellPattern(ctx, p, col, rx, ry, mode) {
+function drawShellPattern(ctx, p, col, rx, ry, patShell) {
+  const mode = patShell.mode;
   if (mode === 'none') return;
+  if (mode === 'lines' && p.kind !== 'abdomen') return;
+
   ctx.save();
   ctx.beginPath();
   ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
@@ -2108,12 +2203,15 @@ function drawShellPattern(ctx, p, col, rx, ry, mode) {
   ctx.fillStyle = col.shellPattern;
 
   if (mode === 'dots') {
-    const half = 4;
+    const half = patShell.dotCount;
     const seed = Math.round(p.x * 7 + rx * 13);
     for (let i = 0; i < half; i++) {
       const dx = (hash01(i, seed) - 0.5) * rx * 1.5;
       const dy = hash01(i, seed + 17) * ry * 0.82;
-      const r = Math.max(0.8, rx * 0.10 * (0.7 + hash01(i, seed + 29)));
+      // `pattern_shell_dot_variance` 0 → every dot the SAME size (mult = 1);
+      // 1 → the widest spread this scatter draws (mult in [0, 2]).
+      const mult = 1 + (hash01(i, seed + 29) - 0.5) * 2 * patShell.dotVariance;
+      const r = Math.max(0.8, rx * 0.10 * mult);
       for (const yy of [p.y + dy, p.y - dy]) {
         ctx.beginPath();
         ctx.arc(p.x + dx, yy, r, 0, TAU);
@@ -2121,12 +2219,17 @@ function drawShellPattern(ctx, p, col, rx, ry, mode) {
       }
     }
   } else if (mode === 'lines') {
-    const stripes = 3;
-    const gap = (ry * 2) / (stripes + 1);
-    const w = Math.max(1, gap * 0.34);
-    for (let i = 1; i <= stripes; i++) {
-      const yy = p.y - ry + gap * i;
-      ctx.fillRect(p.x - rx, yy - w / 2, rx * 2, w);
+    const stripes = patShell.lineCount;
+    if (stripes > 0) {
+      const gap = (rx * 2) / (stripes + 1);
+      const w = Math.max(1, gap * lerp(0.18, 0.62, patShell.lineThickness));
+      const blur = ('filter' in ctx) ? Math.max(0.6, w * 0.30) : 0;
+      if (blur) ctx.filter = `blur(${blur.toFixed(2)}px)`;
+      for (let i = 1; i <= stripes; i++) {
+        const xx = p.x - rx + gap * i;
+        ctx.fillRect(xx - w / 2, p.y - ry, w, ry * 2);
+      }
+      if (blur) ctx.filter = 'none';
     }
   }
   ctx.restore();
@@ -2147,7 +2250,8 @@ function drawShellPattern(ctx, p, col, rx, ry, mode) {
  * threshold) are read once per call, off the genome, by drawBug() — see the
  * trunk-drawing closures there.
  */
-function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false, shellMode = 'none') {
+function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false,
+    patShell = { mode: 'none' }) {
   const rx = Math.max(0.5, p.rx);
   const ry = Math.max(0.5, p.ry);
 
@@ -2207,7 +2311,7 @@ function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false
   }
   ctx.restore();
 
-  drawShellPattern(ctx, p, col, rx, ry, shellMode);
+  drawShellPattern(ctx, p, col, rx, ry, patShell);
   segmentCentreline(ctx, p, col, rx, ry, crease);
   drawSegmentSpikes(ctx, p, col, spiky, translucent);
 }
@@ -2501,7 +2605,13 @@ export function drawBug(ctx, g, opts = {}) {
   const breathe = state === 'idle' ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
   const lunge = state === 'attack' ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
   const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
-  const shellPatternMode = SHELL_PATTERN_MODES[clamp(Math.round(g.pattern_shell ?? 0), 0, 2)];
+  const shellPat = {
+    mode: SHELL_PATTERN_MODES[clamp(Math.round(g.pattern_shell ?? 0), 0, 2)],
+    lineCount: clamp(Math.round(g.pattern_shell_line_count ?? 3), 0, 4),
+    lineThickness: clamp(g.pattern_shell_line_thickness ?? 0.34, 0, 1),
+    dotVariance: clamp(g.pattern_shell_dot_variance ?? 0.5, 0, 1),
+    dotCount: clamp(Math.round(g.pattern_shell_dot_count ?? 4), 0, 10),
+  };
 
   ctx.save();
   ctx.rotate(-Math.PI / 2);                 // head up
@@ -2638,13 +2748,13 @@ export function drawBug(ctx, g, opts = {}) {
     // `elytra` is still the switch that suppresses the dark core — a shell cover
     // hides the joint — so segmentMass() is told which mass wants a crease.
     const creased = L.wingType === 'elytra' ? null : L.abdomen;
-    for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPatternMode);
+    for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPat);
     drawElytra(ctx, L, col);                     // covers lie on the abdomen
   };
 
   /** The thorax. */
   const drawTrunkThorax = () => {
-    segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPatternMode);
+    segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPat);
   };
 
   if (L.wingPairs > 0) {

@@ -309,7 +309,7 @@ pre b{color:var(--yellow);font-weight:600}
     <div class="deskBottom">
       <div class="tabs" id="tabs">
         <button data-tab="library" aria-pressed="true">Part library</button>
-        <button data-tab="genes" aria-pressed="false">All 55 genes</button>
+        <button data-tab="genes" aria-pressed="false">All genes</button>
         <button data-tab="start" aria-pressed="false">Start from</button>
         <button data-tab="export" aria-pressed="false">Export</button>
       </div>
@@ -699,7 +699,32 @@ pre b{color:var(--yellow);font-weight:600}
     // none/dots/lines
     // The shell marking's own colour. Same REF_PALETTE-index convention as
     // `pattern_horn_hue`; unused unless `pattern_shell` selects a marking.
-    pattern_shell_hue: { min: 0, max: 11, integer: true, default: 7 }
+    pattern_shell_hue: { min: 0, max: 11, integer: true, default: 7 },
+    /**
+     * SHELL PATTERN `lines`: how many horizontal bands render, restricted to the
+     * ABDOMEN — see drawShellPattern in bugArt.js. Unused unless `pattern_shell`
+     * selects `lines`. 0 draws none even when the mode is selected, same as
+     * every other 0-is-off count gene here. Default 3 reproduces the old
+     * hardcoded band count.
+     */
+    pattern_shell_line_count: { min: 0, max: 4, integer: true, default: 3 },
+    // SHELL PATTERN `lines`: how heavy each band is, as a fraction of the gap
+    // between them. Default 0.34 reproduces the old fixed thickness.
+    pattern_shell_line_thickness: { min: 0, max: 1, default: 0.34 },
+    // SHELL PATTERN `dots`: how much a dot's radius varies from the next one —
+    // 0 draws every dot the SAME size, 1 the widest spread the renderer allows.
+    // Unused unless `pattern_shell` selects `dots`.
+    pattern_shell_dot_variance: { min: 0, max: 1, default: 0.5 },
+    // SHELL PATTERN `dots`: how many dots per side (the render mirrors each one
+    // across the segment's centreline, so the drawn total is double this).
+    // Default 4 reproduces the old hardcoded count.
+    pattern_shell_dot_count: { min: 0, max: 10, integer: true, default: 4 },
+    // THE CROWN MARK'S OWN COLOUR. Same REF_PALETTE-index convention as every
+    // other decoration hue (`pattern_horn_hue`, `pattern_shell_hue`, ...) —
+    // `crown_mark_style` still picks WHETHER a mark is drawn and whether it is
+    // solid or blended, this only picks WHAT COLOUR it is. Default 4 is gold,
+    // which is what the mark was hardcoded to before this gene existed.
+    crown_mark_hue: { min: 0, max: 11, integer: true, default: 4 }
   };
   var GENE_ORDER = Object.keys(GENE_SPECS);
   function clampGene(name, value) {
@@ -2584,11 +2609,14 @@ pre b{color:var(--yellow);font-weight:600}
     const gradientLimbs = Math.round(g.pattern_leg ?? 0) === 2;
     const legFootHex = REF_PALETTE[REF_PALETTE_ORDER[clamp2(Math.round(g.pattern_leg_hue ?? 4), 0, REF_PALETTE_ORDER.length - 1)]];
     const lightHex = REF_PALETTE[REF_PALETTE_ORDER[clamp2(Math.round(g.light_hue ?? 7), 0, REF_PALETTE_ORDER.length - 1)]];
+    const crownHex = REF_PALETTE[REF_PALETTE_ORDER[clamp2(Math.round(g.crown_mark_hue ?? 4), 0, REF_PALETTE_ORDER.length - 1)]];
     const lightH = hexHue(lightHex);
-    const lightS = clamp2(g.lighting_saturation ?? 0.33, 0, 1);
-    const lightL = clamp2(Math.max(g.lighting_lightness ?? 0.85, l), 0, 0.98);
-    const core = (a) => hsl(lightH, lightS, lightL, a);
-    const lift = (a) => hsl(lightH, clamp2(lightS * 0.6, 0, 1), lightL, a);
+    const lightSRaw = clamp2(g.lighting_saturation ?? 0.33, 0, 1);
+    const lightS = clamp2(lightSRaw * 1.25, 0, 1);
+    const lightAlphaMult = 1 + lightSRaw * 0.2;
+    const lightL = clamp2(Math.max(0.5, l), 0, 0.98);
+    const core = (a) => hsl(lightH, lightS, lightL, clamp2(a * lightAlphaMult, 0, 1));
+    const lift = (a) => hsl(lightH, clamp2(lightS * 0.6, 0, 1), lightL, clamp2(a * lightAlphaMult, 0, 1));
     return {
       shell: hsl(h, s, l),
       // Body-segment bloom. All six stops are now the SAME authored colour —
@@ -2603,12 +2631,14 @@ pre b{color:var(--yellow);font-weight:600}
       segBloomFar: lift(BLOB_ALPHA * 0.24),
       segBloomFar2: lift(BLOB_ALPHA * 0.1),
       segBloomOut: lift(0),
-      // The crown mark — a flat colour patch on the head's own surface. Gold and
-      // orange straight off REF_PALETTE, never computed from the body hue.
-      crownSolid: REF_PALETTE.gold,
-      crownBlendTop: refA(REF_PALETTE.gold, 0.95),
-      crownBlendMid: refA(REF_PALETTE.orange, 0.62),
-      crownBlendOut: refA(REF_PALETTE.orange, 0),
+      // The crown mark — a flat colour patch on the head's own surface. Its own
+      // hue gene now, off REF_PALETTE like every other decoration colour, never
+      // computed from the body hue. Default 4 (gold) reproduces the old
+      // hardcoded gold/orange the mark always used.
+      crownSolid: crownHex,
+      crownBlendTop: refA(crownHex, 0.95),
+      crownBlendMid: refA(crownHex, 0.62),
+      crownBlendOut: refA(crownHex, 0),
       // The soft centreline. It is the segment's own shell colour and it is drawn
       // ON TOP OF the bloom, so its job is to bring that patch of segment back to
       // `shell`. RAISED 0.30 → 0.72: at 0.30 the result was 70% bloom, i.e. a
@@ -2866,7 +2896,7 @@ pre b{color:var(--yellow);font-weight:600}
     const er = headR * lerp(0.45, 1.05, g.eye_size);
     for (const side of [-1, 1]) {
       L.eyes.push({
-        x: hx + headL * 0.04,
+        x: hx - headL * 0.14,
         y: side * headW * 0.98,
         rx: er * 0.55,
         ry: er,
@@ -2882,11 +2912,11 @@ pre b{color:var(--yellow);font-weight:600}
         er * 0.09,
         er * 0.26
       );
-      const x0 = hx + headL * 0.44;
+      const x0 = hx + headL * 1.05 + mr * 1.6;
       for (let row = 0; row < extra; row++) {
         for (const side of [-1, 1]) {
           L.eyes.push({
-            x: x0 - row * mr * 2.8,
+            x: x0 + row * mr * 2.8,
             y: side * mr * COL,
             rx: mr * 0.55,
             ry: mr,
@@ -2898,7 +2928,7 @@ pre b{color:var(--yellow);font-weight:600}
     }
     const antLen = unit * lerp(0.06, 0.95, g.antenna_length);
     if (antLen > unit * 0.15) for (const side of [-1, 1]) L.antennae.push({ side, len: antLen });
-    const hornMax = L.hornType === "nose" ? 1.15 : L.hornType === "split" ? 1.55 : 1.3;
+    const hornMax = L.hornType === "nose" ? 1.15 : L.hornType === "split" ? 1.55 : L.hornType === "crown" ? 1.65 : 1.3;
     L.hornLen = g.horn_size < 0.12 ? 0 : unit * lerp(0.18, hornMax, g.horn_size);
     L.mandible = g.mandible_size < 0.1 ? 0 : headR * lerp(0.38, 1.22, g.mandible_size);
     const rear = L.parts[0];
@@ -3366,11 +3396,11 @@ pre b{color:var(--yellow);font-weight:600}
           const sc = dy === 0 ? 1 : 0.72;
           const tipLean = dy === 0 ? 1 : 0.5;
           piece(
-            { x: x0, y: dy * h.ry * 0.38 },
-            { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.85 },
+            { x: x0, y: dy * h.ry * 0.44 },
+            { x: x0 + len * 0.5 * sc, y: dy * h.ry * 0.92 },
             { x: x0 + len * sc, y: dy * h.ry * tipLean },
-            base * 1.04,
-            base * 0.3,
+            base * 1.32,
+            base * 0.34,
             23 + dy
           );
         }
@@ -3501,10 +3531,10 @@ pre b{color:var(--yellow);font-weight:600}
     const v = (w) => side * w;
     ctx.beginPath();
     ctx.moveTo(-R * 0.9, v(-r * 0.1));
-    ctx.quadraticCurveTo(-R * 0.28, v(r * 0.7), R * 0.3, v(r * 0.86));
-    ctx.quadraticCurveTo(R * 0.92, v(r * 0.92), R * 0.96, v(r * 0.2));
-    ctx.quadraticCurveTo(R * 0.98, v(-r * 0.3), R * 0.42, v(-r * 0.5));
-    ctx.quadraticCurveTo(-R * 0.28, v(-r * 0.66), -R * 0.9, v(-r * 0.1));
+    ctx.quadraticCurveTo(-R * 0.26, v(r * 0.92), R * 0.3, v(r * 1.05));
+    ctx.quadraticCurveTo(R * 0.9, v(r * 0.78), R * 0.98, v(r * 0.22));
+    ctx.quadraticCurveTo(R * 1, v(-r * 0.34), R * 0.42, v(-r * 0.58));
+    ctx.quadraticCurveTo(-R * 0.26, v(-r * 0.8), -R * 0.9, v(-r * 0.1));
     ctx.closePath();
   }
   function drawEyes(ctx, L, col) {
@@ -3531,13 +3561,11 @@ pre b{color:var(--yellow);font-weight:600}
       path(ctx, R, r, s);
       ctx.fillStyle = L.eyeFill === "dark" ? col.pupil : col.sclera;
       ctx.fill();
-      if (flat) {
-        ctx.restore();
-        continue;
-      }
       ctx.save();
       ctx.clip();
-      if (L.eyeFill === "dark") {
+      if (flat) {
+        fillEllipse(ctx, R * 0.42, v(r * 0.48), R * 0.34, r * 0.52, col.pupil);
+      } else if (L.eyeFill === "dark") {
         ctx.fillStyle = col.sclera;
         const dots = [[-0.42, -0.1], [-0.06, 0.42], [0.24, -0.3], [0.52, 0.46], [0.72, -0.16]];
         for (const [dx, dy] of dots) {
@@ -3548,11 +3576,11 @@ pre b{color:var(--yellow);font-weight:600}
       } else {
         taperedCurve(
           ctx,
-          { x: cx + R * 0.26, y: cy + v(r * 0.3) },
-          { x: cx - R * 0.16, y: cy + v(r * 0.16) },
-          { x: cx - R * 0.2, y: cy - v(r * 0.62) },
-          r * 0.62,
-          r * 0.18,
+          { x: cx + R * 0.34, y: cy + v(r * 0.38) },
+          { x: cx - R * 0.12, y: cy + v(r * 0.2) },
+          { x: cx - R * 0.16, y: cy - v(r * 0.7) },
+          r * 0.78,
+          r * 0.24,
           col.pupil
         );
       }
@@ -3586,9 +3614,9 @@ pre b{color:var(--yellow);font-weight:600}
   var BLOB_R = 0.88;
   var ABDOMEN_BLOB_SKEW = -0.3;
   var CENTRELINE_RATIO = 1.18;
-  var SPIKE_MIN = 0.02;
-  var SPIKE_LEN = [0.18, 0.52];
-  var SPIKE_BASE = [0.16, 0.26];
+  var SPIKE_THRESHOLD = 0.5;
+  var SPIKE_LEN = [0.18, 0.66];
+  var SPIKE_BASE = [0.16, 0.22];
   var TRANSLUCENT_BORDER_THRESHOLD = 0.55;
   var TRANSLUCENT_BORDER_ALPHA = 0.35;
   var TRANSLUCENT_EDGE_START = 0.62;
@@ -3608,31 +3636,35 @@ pre b{color:var(--yellow);font-weight:600}
     }
   }
   function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
-    if (!(spiky > SPIKE_MIN)) return;
+    if (!(spiky > SPIKE_THRESHOLD)) return;
+    const eff = (spiky - SPIKE_THRESHOLD) / (1 - SPIKE_THRESHOLD);
     const rx = Math.max(0.5, p.rx);
     const ry = Math.max(0.5, p.ry);
-    const len = ry * lerp(SPIKE_LEN[0], SPIKE_LEN[1], spiky);
-    const halfBase = rx * lerp(SPIKE_BASE[0], SPIKE_BASE[1], spiky);
+    const len = ry * lerp(SPIKE_LEN[0], SPIKE_LEN[1], eff);
+    const halfBase = rx * lerp(SPIKE_BASE[0], SPIKE_BASE[1], eff);
     for (const side of [-1, 1]) {
       const baseY = p.y + side * ry * 0.92;
       drawOneSpike(ctx, p.x, baseY, baseY + side * len, halfBase, col, translucent);
     }
   }
   var SHELL_PATTERN_MODES = ["none", "dots", "lines"];
-  function drawShellPattern(ctx, p, col, rx, ry, mode) {
+  function drawShellPattern(ctx, p, col, rx, ry, patShell) {
+    const mode = patShell.mode;
     if (mode === "none") return;
+    if (mode === "lines" && p.kind !== "abdomen") return;
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
     ctx.clip();
     ctx.fillStyle = col.shellPattern;
     if (mode === "dots") {
-      const half = 4;
+      const half = patShell.dotCount;
       const seed = Math.round(p.x * 7 + rx * 13);
       for (let i = 0; i < half; i++) {
         const dx = (hash01(i, seed) - 0.5) * rx * 1.5;
         const dy = hash01(i, seed + 17) * ry * 0.82;
-        const r = Math.max(0.8, rx * 0.1 * (0.7 + hash01(i, seed + 29)));
+        const mult = 1 + (hash01(i, seed + 29) - 0.5) * 2 * patShell.dotVariance;
+        const r = Math.max(0.8, rx * 0.1 * mult);
         for (const yy of [p.y + dy, p.y - dy]) {
           ctx.beginPath();
           ctx.arc(p.x + dx, yy, r, 0, TAU);
@@ -3640,17 +3672,22 @@ pre b{color:var(--yellow);font-weight:600}
         }
       }
     } else if (mode === "lines") {
-      const stripes = 3;
-      const gap = ry * 2 / (stripes + 1);
-      const w = Math.max(1, gap * 0.34);
-      for (let i = 1; i <= stripes; i++) {
-        const yy = p.y - ry + gap * i;
-        ctx.fillRect(p.x - rx, yy - w / 2, rx * 2, w);
+      const stripes = patShell.lineCount;
+      if (stripes > 0) {
+        const gap = rx * 2 / (stripes + 1);
+        const w = Math.max(1, gap * lerp(0.18, 0.62, patShell.lineThickness));
+        const blur = "filter" in ctx ? Math.max(0.6, w * 0.3) : 0;
+        if (blur) ctx.filter = `blur(${blur.toFixed(2)}px)`;
+        for (let i = 1; i <= stripes; i++) {
+          const xx = p.x - rx + gap * i;
+          ctx.fillRect(xx - w / 2, p.y - ry, w, ry * 2);
+        }
+        if (blur) ctx.filter = "none";
       }
     }
     ctx.restore();
   }
-  function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false, shellMode = "none") {
+  function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false, patShell = { mode: "none" }) {
     const rx = Math.max(0.5, p.rx);
     const ry = Math.max(0.5, p.ry);
     ctx.save();
@@ -3692,7 +3729,7 @@ pre b{color:var(--yellow);font-weight:600}
       ctx.restore();
     }
     ctx.restore();
-    drawShellPattern(ctx, p, col, rx, ry, shellMode);
+    drawShellPattern(ctx, p, col, rx, ry, patShell);
     segmentCentreline(ctx, p, col, rx, ry, crease);
     drawSegmentSpikes(ctx, p, col, spiky, translucent);
   }
@@ -3822,7 +3859,13 @@ pre b{color:var(--yellow);font-weight:600}
     const breathe = state === "idle" ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
     const lunge = state === "attack" ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
     const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
-    const shellPatternMode = SHELL_PATTERN_MODES[clamp2(Math.round(g.pattern_shell ?? 0), 0, 2)];
+    const shellPat = {
+      mode: SHELL_PATTERN_MODES[clamp2(Math.round(g.pattern_shell ?? 0), 0, 2)],
+      lineCount: clamp2(Math.round(g.pattern_shell_line_count ?? 3), 0, 4),
+      lineThickness: clamp2(g.pattern_shell_line_thickness ?? 0.34, 0, 1),
+      dotVariance: clamp2(g.pattern_shell_dot_variance ?? 0.5, 0, 1),
+      dotCount: clamp2(Math.round(g.pattern_shell_dot_count ?? 4), 0, 10)
+    };
     ctx.save();
     ctx.rotate(-Math.PI / 2);
     ctx.translate(lunge * L.unit * 0.12, 0);
@@ -3843,11 +3886,11 @@ pre b{color:var(--yellow);font-weight:600}
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
       const creased = L.wingType === "elytra" ? null : L.abdomen;
-      for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPatternMode);
+      for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments, shellPat);
       drawElytra(ctx, L, col);
     };
     const drawTrunkThorax = () => {
-      segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPatternMode);
+      segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments, shellPat);
     };
     if (L.wingPairs > 0) {
       drawTrunkAbdomen();
@@ -4200,14 +4243,14 @@ pre b{color:var(--yellow);font-weight:600}
       id: "spikes",
       group: "body",
       name: "Segment spikes",
-      blurb: "A short, rounded spike off the left and right of every trunk segment \u2014 thorax, each abdominal segment, each myriapod ring \u2014 in the segment's own flat colour. `spine_density` is gone; this is its replacement, and it actually draws.",
+      blurb: "A short, rounded spike off the left and right of every trunk segment \u2014 thorax, each abdominal segment, each myriapod ring \u2014 in the segment's own flat colour. `spine_density` is gone; this is its replacement, and it actually draws. Nothing shows until the gene clears its halfway point, then it grows into a spikier maximum than before.",
       drawnBy: "segmentMass() \u2192 drawSegmentSpikes()",
-      gate: "spikyness > 0.02",
-      present: (g) => g.spikyness > 0.02,
-      on: { spikyness: 0.7 },
+      gate: "spikyness > 0.5",
+      present: (g) => g.spikyness > 0.5,
+      on: { spikyness: 0.85 },
       off: { spikyness: 0 },
       genes: [
-        { gene: "spikyness", effect: "length and base width of the spike pair on every trunk segment; also required \u2265 0.65 for Centipede, \u2265 0.70 for Millipede" },
+        { gene: "spikyness", effect: "nothing draws below 0.5; past it, length and base width of the spike pair ramp through a spikier maximum than before. Also required \u2265 0.65 for Centipede, \u2265 0.70 for Millipede" },
         { gene: "translucency", effect: "above 0.55, every segment and its spikes gain a faint thin border" }
       ]
     },
@@ -4216,7 +4259,7 @@ pre b{color:var(--yellow);font-weight:600}
       id: "eyes",
       group: "sensory",
       name: "Eyes",
-      blurb: "The wedge \u2014 wide and rounded at the outer-top corner, drawn to a point at the inner-lower side, big, set wide, and drawn UNDER the head so its edge crops the inner half \u2014 is the silhouette for three of the four treatments. `flat` breaks that on purpose with a genuinely flatter, less-protruding silhouette; the other three only pick how the wedge is FILLED.",
+      blurb: "The wedge \u2014 wide and rounded at the outer-top corner, drawn to a point at the inner-lower side, big, set wide, and drawn UNDER the head so its edge crops the inner half \u2014 is the silhouette for three of the four treatments. `flat` breaks that on purpose with a wider, sharper, less-protruding silhouette, and now carries its own pupil too.",
       core: true,
       drawnBy: "drawEyes() \u2192 eyeWedgePath() / eyeFlatPath()",
       gate: "no gate \u2014 there is nothing optional inside an eye any more. The iris is GONE on every fill treatment (it was a bright complementary disc that read as a coloured dot in the eye)",
@@ -4224,20 +4267,20 @@ pre b{color:var(--yellow);font-weight:600}
       variants: variants(EYE_FILLS, [
         "near-black, with a scatter of small white dots",
         "white, with a dark notch cut into the outer-top corner. Nothing else",
-        "white, with a small dark hook curling in from the outer-top corner. Nothing else",
-        "a flatter, less-protruding silhouette, plain white, no interior mark"
+        "white, with a bigger dark hook curling in from the outer-top corner, pushed closer to the eye's own edge",
+        "a wider, sharper, flatter silhouette, plain white, with a pupil in the outer-top corner"
       ]),
       genes: [
         { gene: "eye_size", effect: "radius, 0.45\u20131.05 of head radius" },
-        { gene: "eye_type", effect: "dark speckled / notched / hooked \u2014 all three the same wedge, differing only in fill/mark \u2014 or flat, a genuinely flatter silhouette with no mark" },
-        { gene: "eye_count", effect: "pairs past the first are drawn as a small mirrored eye array behind the main pair" }
+        { gene: "eye_type", effect: "dark speckled / notched / hooked \u2014 all three the same wedge, differing only in fill/mark \u2014 or flat, a wider, sharper silhouette with its own pupil" },
+        { gene: "eye_count", effect: "pairs past the first are drawn as a small mirrored eye array in front of the main pair" }
       ]
     },
     {
       id: "crownmark",
       group: "sensory",
       name: "Crown mark",
-      blurb: 'A flat colour patch capping the top of the head \u2014 gold, off the fixed reference palette, clipped to the head so it never reaches past the silhouette. NOT a horn: `horn_type` has a variant called "nose" and this is unrelated to it, no geometry of its own at all.',
+      blurb: 'A flat colour patch capping the top of the head \u2014 off the fixed reference palette, clipped to the head so it never reaches past the silhouette. NOT a horn: `horn_type` has a variant called "nose" and this is unrelated to it, no geometry of its own at all.',
       drawnBy: "drawCrownMark()",
       gate: "crown_mark_style \u2265 1  (0 draws nothing)",
       present: (g) => g.crown_mark_style >= 1,
@@ -4254,14 +4297,15 @@ pre b{color:var(--yellow);font-weight:600}
       variantOf: (g) => Math.max(0, Math.min(1, Math.round(g.crown_mark_style ?? 0) - 1)),
       setVariant: (_g, i) => ({ crown_mark_style: i + 1 }),
       genes: [
-        { gene: "crown_mark_style", effect: "0 none, 1 solid gold cap, 2 the cap blended into the head" }
+        { gene: "crown_mark_style", effect: "0 none, 1 solid cap, 2 the cap blended into the head" },
+        { gene: "crown_mark_hue", effect: "which of the twelve reference-palette swatches the mark is drawn in \u2014 independent of the body's own hue. Default gold" }
       ]
     },
     {
       id: "ocelli",
       group: "sensory",
       name: "Extra eyes",
-      blurb: "Every pair past the first joins a small mirrored array behind the main eyes \u2014 the same wedge shape, scaled down, arranged in rows so it reads as a deliberate cluster rather than scattered dots. Sized and positioned so it never overlaps the main pair's own footprint. Three extra pairs is the ceiling.",
+      blurb: "Every pair past the first joins a small mirrored array \u2014 the same wedge shape, scaled down, arranged in rows so it reads as a deliberate cluster rather than scattered dots. Drawn out near the head's own edge, forward of the main pair (which is set back to make room), so the head's opaque fill doesn't paint over them \u2014 they used to sit near the centreline, entirely under that fill, and never actually rendered. Sized and positioned so it never overlaps the main pair's own footprint. Three extra pairs is the ceiling.",
       drawnBy: "buildHead() \u2192 the minor eyes",
       gate: "eye_count \u2265 4  (extra pairs = clamp(round(eye_count / 2) \u2212 1, 0, 3))",
       present: (g) => g.eye_count >= 4,
@@ -4361,20 +4405,24 @@ pre b{color:var(--yellow);font-weight:600}
       group: "surface",
       name: "Shell pattern",
       core: true,
-      blurb: "A marking on the trunk masses themselves \u2014 the thorax, every abdominal segment, every myriapod ring \u2014 separate from the horn/jaw treatment above. Both marked options are mirrored across each segment's own centreline, so the marking reads as symmetric rather than as a scatter of noise.",
+      blurb: "A marking on the trunk masses themselves, separate from the horn/jaw treatment above. `dots` scatters over every trunk mass \u2014 thorax, every abdominal segment, every myriapod ring \u2014 mirrored across each segment's own centreline so it reads as symmetric rather than as a scatter of noise. `lines` draws soft-edged horizontal bands, and only on the abdomen.",
       drawnBy: "drawShellPattern()",
       gate: "pattern_shell selects: 0 none, 1 dots, 2 lines",
       variantGene: "pattern_shell",
       variants: variants(["none", "dots", "lines"], [
         "no marking \u2014 the default",
         "a symmetric scatter of dots over every trunk mass",
-        "evenly spaced horizontal bands across every trunk mass"
+        "soft-edged horizontal bands across the abdomen only"
       ]),
       variantOf: (g) => Math.max(0, Math.min(2, Math.round(g.pattern_shell ?? 0))),
       setVariant: (_g, i) => ({ pattern_shell: i }),
       genes: [
-        { gene: "pattern_shell", effect: "the marking on every trunk mass: 0 none, 1 a symmetric dot scatter, 2 horizontal bands" },
-        { gene: "pattern_shell_hue", effect: "the marking's own colour, off the reference palette. Unused unless pattern_shell selects a marking" }
+        { gene: "pattern_shell", effect: "the marking: 0 none, 1 a symmetric dot scatter over every trunk mass, 2 horizontal bands on the abdomen only" },
+        { gene: "pattern_shell_hue", effect: "the marking's own colour, off the reference palette. Unused unless pattern_shell selects a marking" },
+        { gene: "pattern_shell_dot_count", effect: "dots mode: how many dots per side (mirrored, so the rendered total is double this)" },
+        { gene: "pattern_shell_dot_variance", effect: "dots mode: how much a dot's size varies from the next one \u2014 0 draws every dot the same size" },
+        { gene: "pattern_shell_line_count", effect: "lines mode: how many horizontal bands render, 0\u20134. 0 draws none even with lines selected" },
+        { gene: "pattern_shell_line_thickness", effect: "lines mode: how heavy each band is, as a fraction of the gap between them" }
       ]
     },
     {
@@ -4583,7 +4631,7 @@ const push = (next) => {
 
 /* ------------------------------------------------- share codes in the URL */
 
-// One byte per gene over its own range, in GENE_ORDER — 55 genes, base64-encoded.
+// One byte per gene over its own range, in GENE_ORDER — all genes, base64-encoded.
 function encodeGenome(g) {
   const bytes = GENE_ORDER.map((k) => {
     const s = GENE_SPECS[k];
@@ -5206,9 +5254,9 @@ function paintExport() {
  * tapping "add" on a part near the bottom of the library would throw you back to
  * the top. Hold the offset across the rebuild unless the tab itself changed.
  */
-/** The two browsing tabs cut the same 55 genes two ways — say which is which. */
+/** The two browsing tabs cut the same all genes two ways — say which is which. */
 const TAB_HINT = {
-  genes: 'All 55 genes in GENE_ORDER, including the three that move stats but ' +
+  genes: 'All genes in GENE_ORDER, including the three that move stats but ' +
          'draw nothing. Every slider says which parts it feeds.',
   export: 'The build you have made, as code you can paste back into the project.',
 };
