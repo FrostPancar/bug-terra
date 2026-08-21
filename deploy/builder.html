@@ -77,6 +77,10 @@ h1,h2,h3{margin:0}
 .note{color:var(--muted);font-size:12.5px;margin:8px 0 0}
 .note b{color:var(--text)}
 
+.statsCard .eyebrow{cursor:pointer;user-select:none}
+.statsCard .eyebrow::after{content:"–";float:right;font-size:13px}
+.statsCard.min .eyebrow::after{content:"+"}
+.statsCard.min .stats{display:none}
 .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:7px 14px}
 .stat{display:grid;grid-template-columns:1fr auto;gap:2px 6px;align-items:center}
 .stat .k{font:700 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -188,11 +192,42 @@ select,input[type=text]{font:700 13px/1 var(--font);padding:9px 10px;border-radi
 .gname{font:700 12px/1 var(--mono);letter-spacing:.02em}
 .gval{font:700 12px/1 var(--mono);color:var(--ink);background:var(--paper-2);
   padding:4px 7px;border-radius:6px;min-width:52px;text-align:right}
-.gene input[type=range]{width:100%;margin:8px 0 2px;accent-color:var(--ink)}
-.drives{font-size:11.5px;color:var(--muted)}
-.drives em{font-style:normal;color:var(--text)}
-.simonly{display:inline-block;font:700 9px/1 var(--mono);letter-spacing:.1em;
-  text-transform:uppercase;background:var(--purple);color:#fff;padding:4px 6px;border-radius:5px}
+/* Sliders: a plain pill track by default, a tapered wedge for anything that
+   adjusts a physical size (thicker toward the high end — a visual echo of
+   what the slider actually does), and a ticked track for anything that snaps
+   to discrete notches rather than gliding continuously. Colour genes swap the
+   flat track for a gradient sampled from the actual palette, so the track
+   itself previews what the slider is about to do. The thumb is always a
+   plain circle; a thick, generously rounded one, same as the track under it. */
+.gene input[type=range]{-webkit-appearance:none;appearance:none;width:100%;
+  margin:12px 0 2px;height:26px;background:none;cursor:pointer}
+.gene input[type=range]::-webkit-slider-runnable-track{height:22px;border-radius:999px;
+  background:var(--paper-2)}
+.gene input[type=range]::-moz-range-track{height:22px;border-radius:999px;background:var(--paper-2)}
+.gene input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:26px;height:26px;border-radius:50%;background:var(--ink);margin-top:-2px;
+  border:3px solid var(--paper);box-shadow:var(--drop-sm)}
+.gene input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;
+  background:var(--ink);border:3px solid var(--paper);box-shadow:var(--drop-sm)}
+/* The wedge: thin end near-round, thick end near-round, tapering between —
+   a rounded-capped trapezoid rather than a sharp-cornered one. Extra points
+   at each end approximate the round instead of cutting a hard vertical edge. */
+.gene input[type=range].sizeSlider::-webkit-slider-runnable-track{
+  clip-path:polygon(5% 30%,95% 4%,98% 6%,100% 12%,100% 88%,98% 94%,95% 96%,5% 70%,2% 66%,0 58%,0 42%,2% 34%)}
+.gene input[type=range].sizeSlider::-moz-range-track{
+  clip-path:polygon(5% 30%,95% 4%,98% 6%,100% 12%,100% 88%,98% 94%,95% 96%,5% 70%,2% 66%,0 58%,0 42%,2% 34%)}
+.gene input[type=range].stepped::-webkit-slider-runnable-track{
+  background-image:repeating-linear-gradient(90deg,var(--ink) 0 3px,var(--paper-2) 3px calc(100%/var(--notches,8)))}
+.gene input[type=range].stepped::-moz-range-track{
+  background-image:repeating-linear-gradient(90deg,var(--ink) 0 3px,var(--paper-2) 3px calc(100%/var(--notches,8)))}
+.gene input[type=range].stepped::-webkit-slider-thumb{box-shadow:0 0 0 3px var(--yellow),var(--drop-sm)}
+.gene input[type=range].stepped::-moz-range-thumb{box-shadow:0 0 0 3px var(--yellow),var(--drop-sm)}
+/* Colour genes: the gradient comes in as an inline style (it depends on the
+   rest of the genome), so these just clear the flat fallback out of the way. */
+.gene input[type=range].colorSlider::-webkit-slider-runnable-track{background:var(--track-bg,var(--paper-2))}
+.gene input[type=range].colorSlider::-moz-range-track{background:var(--track-bg,var(--paper-2))}
+.gene input[type=range].colorSlider::-webkit-slider-thumb{box-shadow:0 0 0 3px var(--paper),var(--drop-sm)}
+.gene input[type=range].colorSlider::-moz-range-thumb{box-shadow:0 0 0 3px var(--paper),var(--drop-sm)}
 
 /* ----------------------------------------------------------------- export */
 pre{margin:10px 0 0;padding:12px;background:var(--ink);color:var(--cream);
@@ -208,10 +243,32 @@ pre b{color:var(--yellow);font-weight:600}
 /* Below the two-column breakpoint the library sits under the preview, so the
    bug scrolls off the moment you start tapping parts. This follows you down. */
 .mini{position:fixed;right:10px;top:10px;width:92px;height:92px;padding:0;z-index:20;
-  border-radius:var(--r-md);background:var(--dirt-deep);box-shadow:var(--drop);overflow:hidden}
-.mini canvas{width:100%;height:100%;display:block}
+  border-radius:var(--r-md);background:var(--dirt-deep);box-shadow:var(--drop);overflow:hidden;
+  touch-action:none;cursor:grab}
+.mini.dragging{opacity:.85}
+.mini canvas{width:100%;height:100%;display:block;pointer-events:none}
 .mini b{position:absolute;left:0;right:0;bottom:0;background:rgba(23,17,13,.62);
-  color:var(--cream);font:700 8.5px/1.9 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+  color:var(--cream);font:700 8.5px/1.9 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  pointer-events:none}
+/* ONE resize grab zone — whichever corner of the box currently faces the
+   centre of the screen (the opposite corner from whatever screen edge the
+   box is snapped against), since that is the only corner a thumb can reach
+   without the hand covering the preview. Flush against the box's own two
+   edges, not inset, and its outer corner takes the SAME radius as the box
+   (`--r-md`) so it reads as a rounded piece of the frame rather than a
+   square patch dropped on top of it. */
+.mini i.corner{position:absolute;width:38px;height:38px;touch-action:none;
+  background:rgba(239,226,201,.24)}
+.mini i.corner::after{content:"";position:absolute;width:14px;height:14px;
+  border:3px solid var(--cream);opacity:.85}
+.mini i.corner[data-corner=tl]{left:0;top:0;border-radius:var(--r-md) 0 0 0}
+.mini i.corner[data-corner=tl]::after{left:9px;top:9px;border-right:0;border-bottom:0;border-top-left-radius:5px}
+.mini i.corner[data-corner=tr]{right:0;top:0;border-radius:0 var(--r-md) 0 0}
+.mini i.corner[data-corner=tr]::after{right:9px;top:9px;border-left:0;border-bottom:0;border-top-right-radius:5px}
+.mini i.corner[data-corner=bl]{left:0;bottom:0;border-radius:0 0 0 var(--r-md)}
+.mini i.corner[data-corner=bl]::after{left:9px;bottom:9px;border-right:0;border-top:0;border-bottom-left-radius:5px}
+.mini i.corner[data-corner=br]{right:0;bottom:0;border-radius:0 0 var(--r-md) 0}
+.mini i.corner[data-corner=br]::after{right:9px;bottom:9px;border-left:0;border-top:0;border-bottom-right-radius:5px}
 @media(min-width:1000px){.mini{display:none!important}}
 </style>
 </head><body>
@@ -236,8 +293,8 @@ pre b{color:var(--yellow);font-weight:600}
       </div>
     </div>
 
-    <div class="card">
-      <div class="eyebrow">Stats — a pure read off the genes</div>
+    <div class="card statsCard" id="statsCard">
+      <div class="eyebrow" id="statsToggle">Stats — a pure read off the genes</div>
       <div class="stats" id="stats"></div>
     </div>
   </section>
@@ -252,7 +309,7 @@ pre b{color:var(--yellow);font-weight:600}
     <div class="deskBottom">
       <div class="tabs" id="tabs">
         <button data-tab="library" aria-pressed="true">Part library</button>
-        <button data-tab="genes" aria-pressed="false">All 57 genes</button>
+        <button data-tab="genes" aria-pressed="false">All 55 genes</button>
         <button data-tab="start" aria-pressed="false">Start from</button>
         <button data-tab="export" aria-pressed="false">Export</button>
       </div>
@@ -263,9 +320,10 @@ pre b{color:var(--yellow);font-weight:600}
   </section>
 </div>
 
-<button class="mini" id="mini" hidden type="button" aria-label="back to the preview">
+<div class="mini" id="mini" hidden role="button" tabindex="0" aria-label="drag to move, tap to jump to the preview">
   <canvas id="miniPreview"></canvas><b id="miniTag">—</b>
-</button>
+  <i class="corner" id="miniCorner" data-corner="bl"></i>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -307,7 +365,7 @@ if (!M) try {
 const {
   GENE_SPECS, GENE_ORDER, normalizeGenome, clampGene, randomGenome, genomeId, genomeName,
   ARCHETYPES, genomeFromArchetype, computeStats, classify, CLASS_TREE,
-  CLADE_LABEL, TRAITS, buildForTaxon, TAXON_MENU, drawBug, layout, bodyPlan,
+  CLADE_LABEL, TRAITS, buildForTaxon, TAXON_MENU, drawBug, layout, bodyPlan, palette,
   PARTS, PART_GROUPS, partById, partsInGroup, isPresent, addPart, removePart,
   setVariant, variantOf, applyPatch, GENE_INFO, isSimOnly, makeRng,
 } = M;
@@ -336,7 +394,7 @@ const push = (next) => {
 
 /* ------------------------------------------------- share codes in the URL */
 
-// One byte per gene over its own range, in GENE_ORDER — 57 genes, base64-encoded.
+// One byte per gene over its own range, in GENE_ORDER — 55 genes, base64-encoded.
 function encodeGenome(g) {
   const bytes = GENE_ORDER.map((k) => {
     const s = GENE_SPECS[k];
@@ -399,15 +457,164 @@ requestAnimationFrame(frame);
 const bugbox = document.querySelector('.bugbox');
 function syncMini() { mini.hidden = bugbox.getBoundingClientRect().bottom > 60; }
 addEventListener('scroll', syncMini, { passive: true });
-addEventListener('resize', syncMini);
 syncMini();
 
-mini.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+/* -------------------------------------------------- mini preview: drag/resize */
+
+/**
+ * On mobile the pinned mini preview used to be a plain fixed-position button:
+ * top-right, one size, tap to jump back to the stage. It now moves by
+ * dragging its centre and resizes by dragging a corner, and a drag that
+ * actually moved something snaps the box flush to whichever screen corner it
+ * ends up nearest — a tap that never moved still jumps to the stage, same as
+ * before.
+ */
+const MINI_MARGIN = 10;
+const MINI_MIN = 64, MINI_MAX = 220;
+let miniSize = { w: 92, h: 92 };
+let miniPos = null;      // null = let the CSS default (top-right) hold
+let activeCorner = 'bl'; // the box's own corner facing the screen centre —
+                          // opposite whichever screen edge it's snapped to;
+                          // 'bl' matches the CSS default (screen top-right)
+const miniCorner = document.getElementById('miniCorner');
+
+function placeMini() {
+  mini.style.width = miniSize.w + 'px';
+  mini.style.height = miniSize.h + 'px';
+  if (!miniPos) return;
+  mini.style.left = miniPos.left + 'px';
+  mini.style.top = miniPos.top + 'px';
+  mini.style.right = 'auto';
+}
+
+/**
+ * Snap {left,top} to whichever of the four viewport corners is nearest, and
+ * point the resize handle at the corner of the BOX that now faces the
+ * screen's centre — the only one a thumb can reach without covering the
+ * preview itself. The other three corners get no handle at all.
+ */
+function nearestMiniCorner(left, top) {
+  const cx = left + miniSize.w / 2, cy = top + miniSize.h / 2;
+  const right = cx > innerWidth / 2, bottom = cy > innerHeight / 2;
+  activeCorner = (bottom ? 't' : 'b') + (right ? 'l' : 'r');
+  miniCorner.dataset.corner = activeCorner;
+  return {
+    left: right ? innerWidth - miniSize.w - MINI_MARGIN : MINI_MARGIN,
+    top: bottom ? innerHeight - miniSize.h - MINI_MARGIN : MINI_MARGIN,
+  };
+}
+
+/** Shared pointer-drag plumbing for both the move and the resize handle. */
+function miniDrag(e, onMove, onTap) {
+  e.preventDefault();
+  const startX = e.clientX, startY = e.clientY;
+  const r = mini.getBoundingClientRect();
+  const start = { left: r.left, top: r.top, w: r.width, h: r.height };
+  mini.setPointerCapture(e.pointerId);
+  mini.classList.add('dragging');
+  let moved = false;
+  const move = (ev) => {
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+    onMove(dx, dy, start);
+  };
+  const up = () => {
+    mini.classList.remove('dragging');
+    mini.removeEventListener('pointermove', move);
+    mini.removeEventListener('pointerup', up);
+    mini.removeEventListener('pointercancel', up);
+    if (!moved) { onTap?.(); return; }
+    const r2 = mini.getBoundingClientRect();
+    miniPos = nearestMiniCorner(r2.left, r2.top);
+    placeMini();
+  };
+  mini.addEventListener('pointermove', move);
+  mini.addEventListener('pointerup', up);
+  mini.addEventListener('pointercancel', up);
+}
+
+// Dragging the body (not the resize handle) moves the whole box.
+mini.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.corner')) return;
+  miniDrag(e, (dx, dy, s) => {
+    miniPos = { left: s.left + dx, top: s.top + dy };
+    placeMini();
+  }, () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+});
+
+// Dragging the handle resizes, anchored at the OPPOSITE corner so the box
+// grows outward from the handle under the finger rather than sliding under it.
+miniCorner.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  const corner = miniCorner.dataset.corner;
+  miniDrag(e, (dx, dy, s) => {
+    const growX = corner.endsWith('r') ? dx : -dx;
+    const growY = corner.endsWith('b') ? dy : -dy;
+    const w = Math.max(MINI_MIN, Math.min(MINI_MAX, s.w + growX));
+    const h = Math.max(MINI_MIN, Math.min(MINI_MAX, s.h + growY));
+    miniPos = {
+      left: corner.endsWith('r') ? s.left : s.left + (s.w - w),
+      top: corner.endsWith('b') ? s.top : s.top + (s.h - h),
+    };
+    miniSize = { w, h };
+    placeMini();
+  });
+});
+
+addEventListener('resize', () => {
+  syncMini();
+  if (miniPos) { miniPos = nearestMiniCorner(miniPos.left, miniPos.top); placeMini(); }
+});
 
 /* -------------------------------------------------------------- the stage */
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** snake_case / SCREAMING_SNAKE -> "Title case", for anything user-facing. */
+const friendly = (s) => String(s).toLowerCase().replace(/_/g, ' ')
+  .replace(/\b\w/g, (c) => c.toUpperCase());
+
+/* --------------------------------------------------------- slider styling */
+
+/** Sliders that adjust a physical size get a track that tapers thicker toward
+ *  the high end — a visual echo of what turning them up actually does. */
+const SIZE_GENES = new Set(GENE_ORDER.filter((k) =>
+  /width|length|size|thick|area|mass/i.test(k) || k === 'spikyness'));
+
+/* -------------------------------------------------- one-slider-per-gene -- */
+
+/**
+ * The part editor used to show a gene wherever ANY part happened to list it,
+ * so `body_width` had three identical sliders (abdomen, thorax, head) and
+ * every `_type` gene had a slider sitting right next to the visual picker
+ * that already sets it. One gene, one slider, on whichever part is the most
+ * appropriate home for it.
+ *
+ * `VARIANT_GENES` — anything a part's own swatch/kind picker already sets —
+ * is hidden everywhere, not just on that part, since a raw slider next to a
+ * five-button picker for the same value is the definition of a dupe.
+ * `pattern_mandible` rides along: `hornpattern`'s picker sets it too, even
+ * though it isn't formally that part's `variantGene`.
+ */
+const VARIANT_GENES = new Set(PARTS.filter((p) => p.variantGene).map((p) => p.variantGene));
+const HIDDEN_GENES = new Set([...VARIANT_GENES, 'pattern_mandible']);
+const FORCE_OWNER = {
+  body_width: 'plan', body_segments: 'plan', leg_count: 'legs',
+  pattern_scale: 'hornpattern', pattern_contrast: 'hornpattern',
+};
+const EXTRA_FOR_PART = { plan: ['body_width'] };
+const GENE_OWNER = {};
+for (const part of PARTS) for (const e of part.genes) {
+  if (!(e.gene in GENE_OWNER)) GENE_OWNER[e.gene] = part.id;
+}
+for (const [gene, owner] of Object.entries(FORCE_OWNER)) GENE_OWNER[gene] = owner;
+
+function ownedGenesFor(part) {
+  const names = new Set(part.genes.map((e) => e.gene));
+  for (const g of (EXTRA_FOR_PART[part.id] ?? [])) names.add(g);
+  return [...names].filter((g) => !HIDDEN_GENES.has(g) && GENE_OWNER[g] === part.id);
+}
 
 const STAT_ROWS = [
   ['speed', 100], ['agility', 100], ['attack', 100], ['defense', 100],
@@ -531,6 +738,10 @@ document.getElementById('tabs').addEventListener('click', (e) => {
   paintPanel({ toTop: true });
 });
 
+document.getElementById('statsToggle').addEventListener('click', () => {
+  document.getElementById('statsCard').classList.toggle('min');
+});
+
 document.getElementById('poses').addEventListener('click', (e) => {
   const el = e.target.closest('[data-state]');
   if (!el) return;
@@ -551,18 +762,18 @@ function partTile(part) {
   const vi = part.variants ? variantOf(part, g) : -1;
   // The caption carries the one thing the picture can't: which kind is fitted.
   // "on"/"off" would only repeat the pill and the hatching, so it stays blank.
-  const kind = part.variants?.[vi]?.name ?? (part.art === false ? 'stats only' : '');
+  const kind = part.variants?.[vi]?.name ?? '';
   const pill = part.core ? '<i class="t-pill core">●</i>'
     : part.art === false ? `<i class="t-pill noart" data-act="${on ? 'remove' : 'add'}">●</i>`
     : on ? '<i class="t-pill on" data-act="remove">−</i>'
          : '<i class="t-pill" data-act="add">+</i>';
 
   return `<button class="tile" data-id="${part.id}" data-on="${on}"
-                  aria-expanded="${open}" type="button" title="${esc(part.blurb)}">
+                  aria-expanded="${open}" type="button" title="${esc(part.name)}">
     <canvas data-thumb="${part.id}"></canvas>
     ${pill}
     <span class="t-name">${esc(part.name)}</span>
-    ${kind ? `<span class="t-kind">${esc(kind)}</span>` : ''}
+    ${kind ? `<span class="t-kind">${esc(friendly(kind))}</span>` : ''}
   </button>`;
 }
 
@@ -580,20 +791,15 @@ function partDetail(part) {
     <div class="phead">
       <i class="dot"></i>
       <span><span class="pname">${esc(part.name)}</span>
-        ${part.variants ? `<span class="pkind">${esc(part.variants[vi]?.name ?? '')}</span>` : ''}
-        ${part.art === false ? '<span class="pkind" style="color:var(--purple)">stats only</span>' : ''}</span>
+        ${part.variants ? `<span class="pkind">${esc(friendly(part.variants[vi]?.name ?? ''))}</span>` : ''}</span>
       ${action}
     </div>
     <div class="pbody">
-      <p class="blurb">${esc(part.blurb)}</p>
       ${part.variants ? `<div class="vars">${part.variants.map((v) => `
-        <button class="var" data-var="${v.index}" aria-pressed="${v.index === vi}" title="${esc(v.blurb)}">
-          <canvas data-thumb="${part.id}:${v.index}"></canvas><b>${esc(v.name)}</b>
-        </button>`).join('')}</div>
-        <p class="vhint">${esc(part.variants[vi]?.blurb ?? '')}</p>` : ''}
-      ${part.genes.map((entry) => geneRow(entry.gene, entry.effect)).join('')}
-      ${part.gate ? `<div class="gate">appears when · ${esc(part.gate)}</div>` : ''}
-      ${part.drawnBy ? `<div class="gate">drawn by · ${esc(part.drawnBy)}</div>` : ''}
+        <button class="var" data-var="${v.index}" aria-pressed="${v.index === vi}" title="${esc(friendly(v.name))}">
+          <canvas data-thumb="${part.id}:${v.index}"></canvas><b>${esc(friendly(v.name))}</b>
+        </button>`).join('')}</div>` : ''}
+      ${ownedGenesFor(part).map((gene) => geneRow(gene)).join('')}
     </div>
   </article>`;
 }
@@ -633,40 +839,95 @@ function paintThumbs() {
 
 /* ------------------------------------------------------------- gene rows  */
 
-function geneRow(name, effect) {
+/**
+ * Colour genes get a track sampled from the real palette instead of a flat
+ * fill, so the track previews what turning the slider does to the bug.
+ *
+ * `hue` is 12 hard-edged bands — the same swatches the shell-colour and
+ * horn/jaw pattern pickers already index into — rather than a smooth wheel,
+ * because the gene itself is a swatch INDEX, not a continuous hue; a smooth
+ * rainbow would show colours the gene can never actually land on between
+ * bands. `saturation`/`lightness` stay smooth, since those genes really are
+ * continuous multipliers on whichever swatch `hue` picked.
+ */
+function hueTrackGradient() {
+  const n = 12;
+  const stops = [];
+  for (let i = 0; i < n; i++) {
+    const c = palette({ ...state.genome, hue: (i + 0.5) / n }).shell;
+    stops.push(`${c} ${(i / n * 100).toFixed(3)}%`, `${c} ${((i + 1) / n * 100).toFixed(3)}%`);
+  }
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
+}
+function toneTrackGradient(name) {
+  const n = 6;
+  const stops = [];
+  for (let i = 0; i <= n; i++) stops.push(palette({ ...state.genome, [name]: i / n }).shell);
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
+}
+const COLOR_TRACK = { hue: hueTrackGradient, saturation: () => toneTrackGradient('saturation'),
+  lightness: () => toneTrackGradient('lightness') };
+
+/** The slider itself: a circular thumb, a wedge track for size genes, a
+ *  ticked track for anything that snaps to notches, a palette-sampled
+ *  gradient for colour genes. Shared by both tabs. */
+function sliderInput(name) {
   const spec = GENE_SPECS[name];
   const v = state.genome[name];
   const step = spec.integer ? (spec.step ?? 1) : 0.01;
+  const isColor = name in COLOR_TRACK;
+  const notches = !isColor && spec.integer ? Math.round((spec.max - spec.min) / step) : 0;
+  const cls = [SIZE_GENES.has(name) ? 'sizeSlider' : '', notches > 0 ? 'stepped' : '',
+    isColor ? 'colorSlider' : ''].filter(Boolean).join(' ');
+  const style = isColor ? ` style="--track-bg:${COLOR_TRACK[name]()}"`
+    : notches > 0 ? ` style="--notches:${notches}"` : '';
+  return `<input type="range" min="${spec.min}" max="${spec.max}" step="${step}" value="${v}"
+           class="${cls}"${style} data-slider="${name}" aria-label="${esc(friendly(name))}">`;
+}
+
+/** Minimal row for the part editor — name, value, slider. Nothing else. */
+function geneRow(name) {
+  const spec = GENE_SPECS[name];
+  const v = state.genome[name];
+  return `<div class="gene" data-gene="${name}">
+    <div class="gtop"><span class="gname">${esc(friendly(name))}</span>
+      <span class="gval" data-val="${name}">${spec.integer ? v : v.toFixed(2)}</span></div>
+    ${sliderInput(name)}
+  </div>`;
+}
+
+/** The fuller row for the "All genes" tab — it exists precisely to say what
+ *  a slider does, so it keeps that text; only the naming gets friendlier. */
+function geneRowFull(name) {
+  const spec = GENE_SPECS[name];
+  const v = state.genome[name];
   const info = GENE_INFO[name];
-  const drives = effect
-    ? `<em>${esc(effect)}</em>`
-    : info.parts.length
-      ? info.parts.map((p) => `<em>${esc(p.partName)}</em> ${esc(p.effect)}`).join(' · ')
-      : '';
+  const drives = info.parts.length
+    ? info.parts.map((p) => `<em>${esc(p.partName)}</em> ${esc(p.effect)}`).join(' · ')
+    : '';
   const badge = isSimOnly(name) ? '<span class="simonly">stats only</span> ' : '';
   return `<div class="gene" data-gene="${name}">
-    <div class="gtop"><span class="gname">${name}</span>
+    <div class="gtop"><span class="gname">${esc(friendly(name))}</span>
       <span class="gval" data-val="${name}">${spec.integer ? v : v.toFixed(2)}</span></div>
-    <input type="range" min="${spec.min}" max="${spec.max}" step="${step}" value="${v}"
-           data-slider="${name}" aria-label="${name}">
+    ${sliderInput(name)}
     <div class="drives">${badge}${drives}${info.simOnly && isSimOnly(name) ? ' ' + esc(info.simOnly) : ''}</div>
   </div>`;
 }
 
 const GENE_GROUPS = [
-  ['Body plan', GENE_ORDER.slice(0, 8)],
-  ['Limbs', GENE_ORDER.slice(8, 14)],
-  ['Wings', GENE_ORDER.slice(14, 18)],
-  ['Weapons and defence', GENE_ORDER.slice(18, 27)],
-  ['Sensory', GENE_ORDER.slice(27, 31)],
-  ['Physiology and behaviour', GENE_ORDER.slice(31, 33)],
-  ['Surface and colour', GENE_ORDER.slice(33)],
+  ['Body plan', GENE_ORDER.slice(0, 10)],
+  ['Limbs', GENE_ORDER.slice(10, 15)],
+  ['Wings', GENE_ORDER.slice(15, 24)],
+  ['Weapons and defence', GENE_ORDER.slice(24, 32)],
+  ['Sensory', GENE_ORDER.slice(32, 36)],
+  ['Physiology and behaviour', GENE_ORDER.slice(36, 38)],
+  ['Surface and colour', GENE_ORDER.slice(38)],
 ];
 
 function paintGenes() {
   document.getElementById('panel').innerHTML = GENE_GROUPS.map(([label, keys]) => `
     <div class="grouphead"><h3>${esc(label)}</h3><span>${keys.length} genes</span></div>
-    ${keys.map((k) => geneRow(k, null)).join('')}`).join('');
+    ${keys.map((k) => geneRowFull(k)).join('')}`).join('');
 }
 
 /* ----------------------------------------------------------------- export */
@@ -748,9 +1009,9 @@ function paintExport() {
  * tapping "add" on a part near the bottom of the library would throw you back to
  * the top. Hold the offset across the rebuild unless the tab itself changed.
  */
-/** The two browsing tabs cut the same 57 genes two ways — say which is which. */
+/** The two browsing tabs cut the same 55 genes two ways — say which is which. */
 const TAB_HINT = {
-  genes: 'All 57 genes in GENE_ORDER, including the ten that move stats but ' +
+  genes: 'All 55 genes in GENE_ORDER, including the three that move stats but ' +
          'draw nothing. Every slider says which parts it feeds.',
   export: 'The build you have made, as code you can paste back into the project.',
 };

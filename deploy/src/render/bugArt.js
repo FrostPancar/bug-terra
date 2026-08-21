@@ -254,6 +254,10 @@ export function palette(g) {
     shellClear:  hsl(h, s, l, 0),
     seam:      hsl(h, s * 1.05, Math.max(0.16, l - 0.20)),
     seamClear: hsl(h, s * 1.05, Math.max(0.16, l - 0.20), 0),
+    // The translucency border — same deep tone as the seam, at a low, fixed
+    // alpha, so it reads as a thin, less-opaque edge rather than an outline.
+    // See TRANSLUCENT_BORDER_ALPHA/THRESHOLD.
+    segBorder: hsl(h, s * 1.05, Math.max(0.16, l - 0.20), TRANSLUCENT_BORDER_ALPHA),
     limb:    inkLimbs ? '#17161c' : hsl(h, s * 0.92, Math.max(0.24, l - 0.16)),
     limbLo:  inkLimbs ? '#0e0d11' : hsl(h, s * 0.95, Math.max(0.18, l - 0.24)),
     accent:  hsl(accentH, 0.72, 0.60),
@@ -523,12 +527,12 @@ export function layout(g, ppu = 26) {
   bump(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
   if (L.wingPairs > 0) bump(L.wingSpan.x, L.wingSpan.y);
 
-  // The ground shadow is offset and blurred outward from the trunk, so the frame
-  // has to leave room for its falloff or the baked sprite crops it into a
-  // straight edge. Trunk masses sit well inside the leg reach that sets the
-  // bound, but the head-plus-offset case can reach it, so the pad covers both
-  // terms — see SHADOW_OFFSET_K / SHADOW_BLUR_K.
-  const shadowPad = unit * (SHADOW_OFFSET_K + SHADOW_BLUR_K * 1.5);
+  // The ground shadow is blurred outward from the trunk, so the frame has to
+  // leave room for its falloff or the baked sprite crops it into a straight
+  // edge. The spread factor covers the blob growing past the silhouette it
+  // traces; the blur term covers the soft edge past that — see SHADOW_SPREAD
+  // / SHADOW_BLUR_BODY_K.
+  const shadowPad = unit * (SHADOW_SPREAD - 1 + SHADOW_BLUR_BODY_K * 1.5);
   L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + shadowPad + 3);
   return L;
 }
@@ -672,6 +676,7 @@ function buildLegs(L) {
         // The foot pad is a fixed size now (FOOT_PAD_R), so there is nothing
         // per-leg to carry here any more — `footSize` is gone with its gene.
         len: len * lerp(1.05, 0.92, t), w, fan,
+        joints: g.leg_joints,
       }));
     }
   }
@@ -1396,13 +1401,26 @@ function poseLeg(leg, phase) {
   return { knee: rel(leg.knee), foot: rel(leg.foot) };
 }
 
+/**
+ * `leg_joints` IS BINARY NOW (0/1, see genes.js) and 1 draws a real, minimal
+ * kink at the knee instead of the single smooth arc every leg used to get.
+ * `KINK` nudges the knee OUTWARD from the smooth curve's own control point,
+ * still along a single round-capped stroke (one capsule call, unchanged), so
+ * the bend stays a subtle crease rather than a visible two-segment leg —
+ * "very slightly sharper, very rounded corners" per the design note, not a
+ * jointed limb. 0 renders byte-for-byte the old curve.
+ */
+const LEG_JOINT_KINK = 0.22;
+
 function drawLegs(ctx, L, col, phase) {
   for (const leg of L.legs) {
     const { knee, foot } = poseLeg(leg, phase);
 
-    capsule(ctx, leg.attach.x, leg.attach.y,
-            lerp(leg.attach.x, foot.x, 0.30), lerp(knee.y, foot.y, 0.18),
-            foot.x, foot.y, leg.w, col.limb);
+    const kink = leg.joints >= 1 ? LEG_JOINT_KINK : 0;
+    const cx = lerp(leg.attach.x, foot.x, 0.30 + kink);
+    const cy = lerp(knee.y, foot.y, 0.18 - kink * 0.5);
+
+    capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, col.limb);
 
     // Foot: a round pad at the tip, FIXED at the maximum the old `foot_size`
     // gene could reach. The gene is gone (see genes.js): every value under this
@@ -1898,6 +1916,58 @@ const ABDOMEN_BLOB_SKEW = -0.30;
 const CENTRELINE_RATIO = 1.18;
 
 /**
+ * SEGMENT SPIKES — `spikyness`. A short, rounded spike off the LEFT and RIGHT
+ * of every trunk segment (thorax, each abdominal segment, each myriapod
+ * ring), flush against the segment's own side wall. Filled with `col.shell`,
+ * the segment's own flat colour and nothing else — no bloom, no gradient — so
+ * a spike reads as part of the shell rather than a separate part stuck on.
+ * The apex is a quadratic curve, not a straight point, which is what keeps it
+ * "rounded" rather than a thorn.
+ */
+const SPIKE_MIN = 0.02;          // below this, nothing is drawn at all
+const SPIKE_LEN = [0.18, 0.52];  // fraction of ry, at spikyness 0 / 1
+const SPIKE_BASE = [0.16, 0.26]; // fraction of rx, at spikyness 0 / 1
+
+/**
+ * The translucency border. Past `TRANSLUCENT_BORDER_THRESHOLD`, every segment
+ * — and the spikes growing off it — takes a thin, low-opacity stroke of the
+ * segment's own deep tone (`col.segBorder`), so the shape reads as slightly
+ * see-through rather than gaining a hard outline. The threshold matches the
+ * `camouflaged` trait's own translucency floor in classification.js, so the
+ * two readings — "this bug is see-through" as a trait and as a render — agree.
+ */
+const TRANSLUCENT_BORDER_THRESHOLD = 0.55;
+const TRANSLUCENT_BORDER_ALPHA = 0.35;
+
+/** One spike, apex pointing away from the segment along its lateral axis. */
+function drawOneSpike(ctx, x, baseY, tipY, halfBase, col, translucent) {
+  ctx.beginPath();
+  ctx.moveTo(x - halfBase, baseY);
+  ctx.quadraticCurveTo(x, tipY, x + halfBase, baseY);
+  ctx.closePath();
+  ctx.fillStyle = col.shell;
+  ctx.fill();
+  if (translucent) {
+    ctx.lineWidth = Math.max(0.6, halfBase * 0.28);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = col.segBorder;
+    ctx.stroke();
+  }
+}
+
+function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
+  if (!(spiky > SPIKE_MIN)) return;
+  const rx = Math.max(0.5, p.rx);
+  const ry = Math.max(0.5, p.ry);
+  const len = ry * lerp(SPIKE_LEN[0], SPIKE_LEN[1], spiky);
+  const halfBase = rx * lerp(SPIKE_BASE[0], SPIKE_BASE[1], spiky);
+  for (const side of [-1, 1]) {
+    const baseY = p.y + side * ry * 0.92;
+    drawOneSpike(ctx, p.x, baseY, baseY + side * len, halfBase, col, translucent);
+  }
+}
+
+/**
  * One trunk mass — thorax, abdominal segment, or myriapod ring.
  *
  * FLAT, not a shaded ball. A solid `shell` fill with a soft warm blob dropped
@@ -1907,8 +1977,12 @@ const CENTRELINE_RATIO = 1.18;
  *
  * NOTE the head does NOT come through here, and no longer has an equivalent of
  * its own: it is a single flat `col.shell` fill in drawBug(), with no lighting.
+ *
+ * `spiky` (from `spikyness`) and `translucent` (from `translucency` past its
+ * threshold) are read once per call, off the genome, by drawBug() — see the
+ * trunk-drawing closures there.
  */
-function segmentMass(ctx, p, col, crease = false) {
+function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false) {
   const rx = Math.max(0.5, p.rx);
   const ry = Math.max(0.5, p.ry);
 
@@ -1942,6 +2016,17 @@ function segmentMass(ctx, p, col, crease = false) {
   ctx.restore();
 
   segmentCentreline(ctx, p, col, rx, ry, crease);
+  drawSegmentSpikes(ctx, p, col, spiky, translucent);
+
+  if (translucent) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+    ctx.lineWidth = Math.max(0.6, Math.min(rx, ry) * 0.045);
+    ctx.strokeStyle = col.segBorder;
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 /**
@@ -2067,13 +2152,19 @@ function softStreak(ctx, p, rx, ry, halfL, halfW, blur, fill, clear, alpha) {
  * THE GROUND SHADOW — traced from `Image References/Shadow.jpg`.
  *
  * The reference is one bug on flat dirt with a soft, edgeless, cool brown-grey
- * darkening sitting under the trunk mass and pushed slightly DOWN AND RIGHT of
- * it, i.e. a light from the upper left. It is faint: the dirt's own value still
- * reads straight through it, so it is a shadow rather than a silhouette. The
- * only other detail in the image is a very faint smudge below the tail end —
- * the same blob's outer falloff running past the abdomen, not a second shape.
+ * darkening sitting directly under the trunk mass. It is faint: the dirt's own
+ * value still reads straight through it, so it is a shadow rather than a
+ * silhouette.
  *
- * THREE decisions worth writing down:
+ * DECISIONS worth writing down:
+ *
+ * DEAD CENTRE, not offset. An earlier pass leaned the blob toward the bug's
+ * rear-right to fake a fixed light direction, but the sheet is baked once,
+ * head-up, and the sim then rotates the sprite by the bug's facing — so a
+ * body-space lean reads as the intended light direction at exactly one heading
+ * and as a shadow drifting out from under the bug at every other one. Sitting
+ * it dead centre is correct at every heading, which matters more than
+ * matching the reference's one lighting angle.
  *
  * MULTIPLY, drawn HERE, in drawBug()'s local space. The sprite is baked into a
  * transparent frame (see bakeSpritesheet) and Phaser then draws that frame over
@@ -2082,41 +2173,49 @@ function softStreak(ctx, p, rx, ry, halfL, halfW, blur, fill, clear, alpha) {
  * destination `multiply` degrades exactly to source-over, which is the correct
  * fallback: a faint desaturated brown at ~0.3 alpha laid over dirt reads as a
  * shadow either way. Where the shadow IS composited in-canvas over something —
- * the vet portrait in terrarium.js, and the shadow's own overlapping pieces —
- * the multiply does real work and keeps the overlaps from stacking into a flat
- * opaque patch. Doing it "properly" would mean drawing the shadow at
- * ground-composite time in the sim, which is a sim change for a difference no
- * one can see at this alpha; it stays here, where the geometry lives.
+ * the vet portrait in terrarium.js — the multiply does real work. Doing it
+ * "properly" would mean drawing the shadow at ground-composite time in the
+ * sim, which is a sim change for a difference no one can see at this alpha;
+ * it stays here, where the geometry lives.
  *
- * THE OFFSET IS IN BODY SPACE, not screen space. The sheet is baked once,
- * head-up, and the sim rotates the sprite by the bug's facing — so there is no
- * frame in which a fixed screen-space light direction could survive. The offset
- * is therefore a constant lean toward the bug's rear-right, which reads as the
- * reference's light-from-upper-left whenever the bug faces up and as a plain
- * soft contact shadow at every other heading.
+ * THE FOOT LINES AND THE BODY BLOB NEVER MULTIPLY AGAINST EACH OTHER. They are
+ * drawn to a scratch canvas with plain source-over first, and ONLY the
+ * resulting flat shape is multiplied onto the destination, in one pass — see
+ * shadowLayer(). Multiplying them directly against each other (the previous
+ * approach) was fine on a transparent destination, per the note above, but
+ * wherever the destination WASN'T transparent — the vet portrait, this
+ * shadow drawn over a previous frame — the foot line's own alpha became
+ * "destination" for the blob's multiply pass, and wherever a leg happened to
+ * cross under the body blob the two stacked into a visibly darker patch that
+ * had nothing to do with the actual light. A shadow's own pieces overlapping
+ * should never read as extra shadow.
  *
- * FOOT LINES. Faint strokes from each animated foot back to the trunk centroid,
- * at well under half the blob's alpha, thin relative to the leg capsules drawn
- * over them. They are the "the bug is standing on something" cue; they must
- * never read as a second set of legs.
+ * FOOT LINES. Faint strokes from each animated foot to the trunk centroid, at
+ * well under the blob's alpha, thin relative to the leg capsules drawn over
+ * them. They are the "the bug is standing on something" cue, so their OUTER
+ * end is pinned to the actual foot position — a contact shadow cannot drift
+ * from the thing making contact — and only the inner end reaches for the
+ * centroid. They must never read as a second set of legs.
  */
 
 /** Cool brown-grey, sampled off the reference's shadow — NOT black, NOT warm. */
 const SHADOW_RGB = '78,68,66';
 /** Peak alpha of the body blob. Everything else is a fraction of this. */
 const SHADOW_ALPHA = 0.44;
-/** Foot lines, relative to the blob. Deliberately a supporting detail. */
-const SHADOW_LINE_K = 0.50;
+/** Foot lines, relative to the blob — a supporting detail, but a dark one. */
+const SHADOW_LINE_K = 0.80;
 /**
  * How much bigger than the body the blob is. At 1.0 the sprite covers its own
- * shadow completely and only the offset crescent survives, which reads as a
- * smear rather than a shadow — the reference's shadow clearly spreads past the
- * silhouette on every side.
+ * shadow completely and nothing survives at all, which reads as no shadow —
+ * the reference's shadow clearly spreads a little past the silhouette on
+ * every side, just not by much; this stays close to the body on purpose.
  */
-const SHADOW_SPREAD = 1.42;
-/** Blur radius and offset, both as a fraction of the body unit. */
-const SHADOW_BLUR_K = 0.13;
-const SHADOW_OFFSET_K = 0.20;
+const SHADOW_SPREAD = 1.18;
+/** Blur radius, as a fraction of the body unit. The blob is a soft mass and
+ *  reads better with more falloff; the foot lines are thin strokes and turn to
+ *  mush past a much smaller radius, so each gets its own. */
+const SHADOW_BLUR_BODY_K = 0.22;
+const SHADOW_BLUR_LEG_K = 0.09;
 
 /**
  * Trunk centroid, area-weighted. The thorax alone sits too far forward on a
@@ -2137,54 +2236,70 @@ function trunkCentre(L) {
  * Local coordinates, so it rotates and scales with the bug like the rest.
  */
 function drawGroundShadow(ctx, L, phase) {
-  const off = L.unit * SHADOW_OFFSET_K;
-  // Local +x is the bug's front (screen up after the head-up rotate) and local
-  // +y is its right, so "down and right on screen" is (-x, +y) here.
-  const dx = -off * 0.72;
-  const dy = off;
-  const blur = clamp(L.unit * SHADOW_BLUR_K, 1.5, 14);
+  const blurLeg = clamp(L.unit * SHADOW_BLUR_LEG_K, 1, 10);
+  const blurBody = clamp(L.unit * SHADOW_BLUR_BODY_K, 1.5, 14);
   const centre = trunkCentre(L);
+  const size = L.half * 2;
 
-  ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  // ONE OF TWO ctx.filter blurs in this file (segmentCentreline is the other,
-  // and it clips to its segment so its blur cannot leave the silhouette). A
-  // ground shadow needs no clip at all — it is nothing
-  // but edge falloff, and a genuine blur is the tool for it. Guarded because the
-  // test recorder and any non-browser 2D context will not have the property.
-  if ('filter' in ctx) ctx.filter = `blur(${blur.toFixed(2)}px)`;
-
-  // Foot lines first, so the blob multiplies over their inner ends and they
-  // vanish into it rather than stopping at its rim.
-  ctx.strokeStyle = `rgba(${SHADOW_RGB},${(SHADOW_ALPHA * SHADOW_LINE_K).toFixed(3)})`;
-  ctx.lineCap = 'round';
-  for (const leg of L.legs) {
-    const { foot } = poseLeg(leg, phase);
-    ctx.lineWidth = Math.max(1, leg.w * 0.55);
-    ctx.beginPath();
-    ctx.moveTo(foot.x + dx, foot.y + dy);
-    ctx.lineTo(centre.x + dx, centre.y + dy);
-    ctx.stroke();
+  // Foot lines and the body blob are drawn onto a scratch canvas first, with
+  // plain source-over, so neither ever sees the other as "destination" — see
+  // the class doc above for why that matters. `document` is absent in the
+  // unit-test recorder (and any other non-browser 2D context), so that path
+  // falls back to drawing straight onto ctx with the old single-pass multiply;
+  // it loses the anti-stacking fix, but nothing exercises it for real pixels.
+  const scratch = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  if (scratch) { scratch.width = size; scratch.height = size; }
+  const sctx = scratch ? scratch.getContext('2d') : ctx;
+  if (scratch) {
+    sctx.translate(L.half, L.half);
+  } else {
+    sctx.save();
+    sctx.globalCompositeOperation = 'multiply';
   }
 
-  // The body blob: every trunk part plus the head, slightly swollen, filled as
-  // ONE path so the overlaps do not stack into a darker core.
-  ctx.beginPath();
+  // Foot lines first, so the blob covers their inner ends and they vanish
+  // into it rather than stopping at its rim. The OUTER end sits exactly on
+  // the animated foot — a contact shadow's far end cannot drift from the
+  // thing making contact — and only the inner end reaches for the centroid.
+  if ('filter' in sctx) sctx.filter = `blur(${blurLeg.toFixed(2)}px)`;
+  sctx.strokeStyle = `rgba(${SHADOW_RGB},${(SHADOW_ALPHA * SHADOW_LINE_K).toFixed(3)})`;
+  sctx.lineCap = 'round';
+  for (const leg of L.legs) {
+    const { foot } = poseLeg(leg, phase);
+    sctx.lineWidth = Math.max(1, leg.w * 0.55);
+    sctx.beginPath();
+    sctx.moveTo(foot.x, foot.y);
+    sctx.lineTo(centre.x, centre.y);
+    sctx.stroke();
+  }
+
+  // The body blob, dead centre under the trunk: every trunk part plus the
+  // head, slightly swollen, filled as ONE path so the overlaps do not stack
+  // into a darker core.
+  if ('filter' in sctx) sctx.filter = `blur(${blurBody.toFixed(2)}px)`;
+  sctx.beginPath();
   const masses = L.head ? [...L.parts, L.head] : L.parts;
   for (const p of masses) {
     const rx = Math.max(0.5, p.rx * SHADOW_SPREAD);
     const ry = Math.max(0.5, p.ry * SHADOW_SPREAD);
     // moveTo/closePath around each: ellipse() would otherwise chain a connecting
     // line from the previous subpath's end and leave a spur across the shape.
-    ctx.moveTo(p.x + dx + rx, p.y + dy);
-    ctx.ellipse(p.x + dx, p.y + dy, rx, ry, 0, 0, TAU);
-    ctx.closePath();
+    sctx.moveTo(p.x + rx, p.y);
+    sctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+    sctx.closePath();
   }
-  ctx.fillStyle = `rgba(${SHADOW_RGB},${SHADOW_ALPHA})`;
-  ctx.fill();
+  sctx.fillStyle = `rgba(${SHADOW_RGB},${SHADOW_ALPHA})`;
+  sctx.fill();
+  if ('filter' in sctx) sctx.filter = 'none';
 
-  if ('filter' in ctx) ctx.filter = 'none';
-  ctx.restore();
+  if (scratch) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(scratch, -L.half, -L.half);
+    ctx.restore();
+  } else {
+    sctx.restore();
+  }
 }
 
 /* ============================================================== render === */
@@ -2202,6 +2317,7 @@ export function drawBug(ctx, g, opts = {}) {
   const patMandible = surfacePattern(g, col, 'mandible');
   const breathe = state === 'idle' ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
   const lunge = state === 'attack' ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
+  const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
 
   ctx.save();
   ctx.rotate(-Math.PI / 2);                 // head up
@@ -2338,13 +2454,13 @@ export function drawBug(ctx, g, opts = {}) {
     // `elytra` is still the switch that suppresses the dark core — a shell cover
     // hides the joint — so segmentMass() is told which mass wants a crease.
     const creased = L.wingType === 'elytra' ? null : L.abdomen;
-    for (const p of trunk) segmentMass(ctx, p, col, p === creased);
+    for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments);
     drawElytra(ctx, L, col);                     // covers lie on the abdomen
   };
 
   /** The thorax. */
   const drawTrunkThorax = () => {
-    segmentMass(ctx, L.thorax, col);
+    segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments);
   };
 
   if (L.wingPairs > 0) {

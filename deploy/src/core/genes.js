@@ -42,8 +42,16 @@ export const GENE_SPECS = {
   // Trunk segments, head NOT counted. Segment 1 is always the thorax; every
   // segment past it is an abdominal segment. 1 therefore means "no abdomen".
   body_segments:      { min: 1, max: 10, integer: true, default: 2 },
-  body_length:        { min: 0, max: 1, default: 0.53 },
   body_width:         { min: 0, max: 1, default: 0.21 },
+  /**
+   * `body_length` IS GONE, and `body_size` is not a gene either — it never
+   * comes back as a stored value. It is a DERIVED coefficient, computed in
+   * morphology() from the width/length of the parts that actually exist
+   * (body_width plus every head/thorax/abdomen axis below): bigger parts,
+   * bigger hidden size. See bodySize() in stats.js. `body_length` used to be
+   * the same idea half-heartedly — a slider claiming to be "size" that no
+   * other gene had to agree with — so it is not migrated, it is replaced.
+   */
   body_mass:          { min: 0, max: 1, default: 0.75 },
   /**
    * PER-PART SIZE, TWO AXES EACH. `head_size` and `thorax_ratio` ARE GONE.
@@ -74,14 +82,24 @@ export const GENE_SPECS = {
   abdomen_width:      { min: 0, max: 1, default: 0.41 },
   abdomen_length:     { min: 0, max: 1, default: 0.41 },
   abdomen_taper:      { min: 0, max: 1, default: 0.51 },   // 0 round, 1 pointed
-  carapace_thickness: { min: 0, max: 1, default: 0.70 },
+  // `carapace_thickness` IS GONE. `body_mass` replaces it for every purpose it
+  // used to serve — shell volume, defense, health — see morphology() and
+  // computeStats() in stats.js. A separate "how thick is the shell" slider
+  // sitting next to "how heavy is the animal" invited a bug to be armoured
+  // without being heavy, which the density model underneath never actually
+  // supported; one gene now carries both readings honestly.
 
   /* ---- limbs ---- */
   leg_count:          { min: 2, max: 12, integer: true, step: 2, default: 6 },
   leg_length:         { min: 0, max: 1, default: 0.47 },
   leg_thickness:      { min: 0, max: 1, default: 1.00 },
   leg_spread:         { min: 0, max: 1, default: 0.75 },
-  leg_joints:         { min: 1, max: 5, integer: true, default: 2 },
+  // NARROWED 1-5 -> 0/1. A binary "does this leg carry a third joint",
+  // default off. It used to be a count nothing drew (see drawLegs in
+  // bugArt.js — the art was one arc whatever the value), so the middle of the
+  // range was indistinguishable from either end. 1 now draws a real, minimal
+  // extra bend in the leg curve; see LEG_JOINT_KINK in bugArt.js.
+  leg_joints:         { min: 0, max: 1, integer: true, default: 0 },
   // `foot_size` IS GONE. It was `claw_size` before that, and by the end it was a
   // slider whose only honest answer was "as big as possible": the foot pad is
   // punctuation at the end of a capsule leg, and every value under the maximum
@@ -152,7 +170,10 @@ export const GENE_SPECS = {
   // Discrete 3-level detail on the horn — the sketch's "0 SR / 1 SR / 2 SR".
   // Integer like leg_joints/body_segments, NOT a continuous 0–1 gene.
   horn_serration:     { min: 0, max: 2, integer: true, default: 0 },
-  spine_density:      { min: 0, max: 1, default: 0.44 },   // defensive spikes
+  // `spine_density` IS GONE — it fed defense and nothing else, with no art of
+  // its own (see the old `spines` part note in partLibrary.js). Its defense
+  // role folded into `body_mass`; its classification role (Centipede,
+  // Millipede) moved to `spikyness`, which is the same idea WITH art behind it.
   tail_length:        { min: 0, max: 1, default: 0 },      // cerci / metasoma
   stinger_size:       { min: 0, max: 1, default: 0 },
 
@@ -287,6 +308,12 @@ export const GENE_SPECS = {
   // out of GENE_SPECS, out of the archetype bias vectors, out of the camouflage
   // formula in stats.js, and out of classification's surface axis.
   translucency:       { min: 0, max: 1, default: 0.13 },
+  // A short, rounded spike off the left AND right of every trunk segment —
+  // thorax, each abdominal segment, each myriapod ring. Same flat fill and
+  // same colour mix as the segment it grows from (see drawSegmentSpikes in
+  // bugArt.js) — it is read as part of the shell, not a separate part painted
+  // on top. Default 0: opt-in, so an untouched genome is unchanged.
+  spikyness:          { min: 0, max: 1, default: 0 },
 };
 
 export const GENE_ORDER = Object.keys(GENE_SPECS);

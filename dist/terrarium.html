@@ -742,8 +742,16 @@
     // Trunk segments, head NOT counted. Segment 1 is always the thorax; every
     // segment past it is an abdominal segment. 1 therefore means "no abdomen".
     body_segments: { min: 1, max: 10, integer: true, default: 2 },
-    body_length: { min: 0, max: 1, default: 0.53 },
     body_width: { min: 0, max: 1, default: 0.21 },
+    /**
+     * `body_length` IS GONE, and `body_size` is not a gene either — it never
+     * comes back as a stored value. It is a DERIVED coefficient, computed in
+     * morphology() from the width/length of the parts that actually exist
+     * (body_width plus every head/thorax/abdomen axis below): bigger parts,
+     * bigger hidden size. See bodySize() in stats.js. `body_length` used to be
+     * the same idea half-heartedly — a slider claiming to be "size" that no
+     * other gene had to agree with — so it is not migrated, it is replaced.
+     */
     body_mass: { min: 0, max: 1, default: 0.75 },
     /**
      * PER-PART SIZE, TWO AXES EACH. `head_size` and `thorax_ratio` ARE GONE.
@@ -775,13 +783,23 @@
     abdomen_length: { min: 0, max: 1, default: 0.41 },
     abdomen_taper: { min: 0, max: 1, default: 0.51 },
     // 0 round, 1 pointed
-    carapace_thickness: { min: 0, max: 1, default: 0.7 },
+    // `carapace_thickness` IS GONE. `body_mass` replaces it for every purpose it
+    // used to serve — shell volume, defense, health — see morphology() and
+    // computeStats() in stats.js. A separate "how thick is the shell" slider
+    // sitting next to "how heavy is the animal" invited a bug to be armoured
+    // without being heavy, which the density model underneath never actually
+    // supported; one gene now carries both readings honestly.
     /* ---- limbs ---- */
     leg_count: { min: 2, max: 12, integer: true, step: 2, default: 6 },
     leg_length: { min: 0, max: 1, default: 0.47 },
     leg_thickness: { min: 0, max: 1, default: 1 },
     leg_spread: { min: 0, max: 1, default: 0.75 },
-    leg_joints: { min: 1, max: 5, integer: true, default: 2 },
+    // NARROWED 1-5 -> 0/1. A binary "does this leg carry a third joint",
+    // default off. It used to be a count nothing drew (see drawLegs in
+    // bugArt.js — the art was one arc whatever the value), so the middle of the
+    // range was indistinguishable from either end. 1 now draws a real, minimal
+    // extra bend in the leg curve; see LEG_JOINT_KINK in bugArt.js.
+    leg_joints: { min: 0, max: 1, integer: true, default: 0 },
     // `foot_size` IS GONE. It was `claw_size` before that, and by the end it was a
     // slider whose only honest answer was "as big as possible": the foot pad is
     // punctuation at the end of a capsule leg, and every value under the maximum
@@ -853,8 +871,10 @@
     // Discrete 3-level detail on the horn — the sketch's "0 SR / 1 SR / 2 SR".
     // Integer like leg_joints/body_segments, NOT a continuous 0–1 gene.
     horn_serration: { min: 0, max: 2, integer: true, default: 0 },
-    spine_density: { min: 0, max: 1, default: 0.44 },
-    // defensive spikes
+    // `spine_density` IS GONE — it fed defense and nothing else, with no art of
+    // its own (see the old `spines` part note in partLibrary.js). Its defense
+    // role folded into `body_mass`; its classification role (Centipede,
+    // Millipede) moved to `spikyness`, which is the same idea WITH art behind it.
     tail_length: { min: 0, max: 1, default: 0 },
     // cerci / metasoma
     stinger_size: { min: 0, max: 1, default: 0 },
@@ -994,7 +1014,13 @@
     // was a camouflage penalty attached to an invisible finish, so it went too:
     // out of GENE_SPECS, out of the archetype bias vectors, out of the camouflage
     // formula in stats.js, and out of classification's surface axis.
-    translucency: { min: 0, max: 1, default: 0.13 }
+    translucency: { min: 0, max: 1, default: 0.13 },
+    // A short, rounded spike off the left AND right of every trunk segment —
+    // thorax, each abdominal segment, each myriapod ring. Same flat fill and
+    // same colour mix as the segment it grows from (see drawSegmentSpikes in
+    // bugArt.js) — it is read as part of the shell, not a separate part painted
+    // on top. Default 0: opt-in, so an untouched genome is unchanged.
+    spikyness: { min: 0, max: 1, default: 0 }
   };
   var GENE_ORDER = Object.keys(GENE_SPECS);
   function clampGene(name, value) {
@@ -1056,6 +1082,18 @@
   var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   var clamp01 = (v) => clamp(v, 0, 1);
   var sig = (x, k = 6) => 1 / (1 + Math.exp(-k * (clamp01(x) - 0.5)));
+  function bodySize(g) {
+    const axes = [
+      g.body_width,
+      g.head_width,
+      g.head_length,
+      g.thorax_width,
+      g.thorax_length,
+      g.abdomen_width,
+      g.abdomen_length
+    ];
+    return clamp01(axes.reduce((a, v) => a + v, 0) / axes.length);
+  }
   function morphology(g) {
     const segments = g.body_segments;
     const bodyLen = 0.7 + 0.62 * Math.pow(Math.max(0, segments - 1), 0.75);
@@ -1063,8 +1101,10 @@
     const width = 0.18 + g.body_width * 1.32;
     const taper = 1 - 0.28 * g.abdomen_taper;
     const volume = bodyLen * width * width * taper;
-    const shellVolume = volume * (0.05 + g.carapace_thickness * 0.45);
-    const density = 0.5 + g.body_mass * 1.1;
+    const size = bodySize(g);
+    const massStat = clamp01(0.75 * g.body_mass + 0.25 * size);
+    const shellVolume = volume * (0.05 + massStat * 0.45);
+    const density = 0.5 + massStat * 1.1;
     const mass = volume * density + shellVolume * 1.4;
     const legLen = (0.3 + g.leg_length * 1.7) * length;
     const legs = g.leg_count;
@@ -1087,25 +1127,27 @@
       wingLoad,
       totalWing,
       segments,
-      taper
+      taper,
+      size,
+      massStat
     };
   }
   var FOOT_GRIP = 0.165;
   var FOOT_ATTACK = 0.045;
   function computeStats(g) {
     const m = morphology(g);
-    const grip = clamp(100 * sig(FOOT_GRIP + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
+    const grip = clamp(100 * sig(FOOT_GRIP + 0.3 * m.joints + 0.2 * g.leg_thickness, 5), 1, 100);
     const stride = m.legLen * (0.55 + 0.45 * Math.log2(m.legs) / Math.log2(10));
     const cadence = 1 / (0.35 + m.strideLoad * 0.55);
     const speed = clamp(stride * cadence * 19 * (0.82 + grip / 100 * 0.3), 1, 100);
     const agility = clamp(
-      100 * sig(0.55 * (1 - g.body_length) + 0.25 * g.leg_spread + 0.2 * (1 - g.body_mass), 5.5) * (0.6 + 0.4 * (1 - clamp01(g.carapace_thickness))),
+      100 * sig(0.55 * (1 - m.size) + 0.25 * g.leg_spread + 0.2 * (1 - m.massStat), 5.5) * (0.6 + 0.4 * (1 - m.massStat)),
       1,
       100
     );
     const coverage = m.shellVolume / (m.volume * 0.5 + 0.4);
     const defense = clamp(
-      100 * sig(coverage * 0.9 + g.carapace_thickness * 0.45 + g.spine_density * 0.35, 5),
+      100 * sig(coverage * 0.9 + m.massStat * 0.7, 5),
       1,
       100
     );
@@ -1118,9 +1160,9 @@
       100
     );
     const venom = g.stinger_size < 0.08 ? 0 : clamp(100 * sig(g.stinger_size * 0.85 + g.tail_length * 0.35, 5), 0, 100);
-    const attackRate = clamp(2.4 - g.mandible_size * 1.35 + (1 - g.body_mass) * 0.35, 0.45, 2.6);
+    const attackRate = clamp(2.4 - g.mandible_size * 1.35 + (1 - m.massStat) * 0.35, 0.45, 2.6);
     const health = clamp(
-      30 + m.volume * 26 + g.carapace_thickness * 34 + (m.segments - 2) * 5,
+      30 + m.volume * 26 + m.massStat * 34 + (m.segments - 2) * 5,
       10,
       100
     );
@@ -1285,13 +1327,13 @@
       // constrain the same gene in opposite directions, so a lineage crossing
       // between them must pass through a stretch of gene-space satisfying neither.
       window: {
-        carapace_thickness: [0.55, 1],
+        body_mass: [0.55, 1],
         horn_size: [0.5, 1],
         leg_length: [0, 0.45],
         wing_area: [0, 0.35]
       },
       locks: ["wing_area", "wing_beat"],
-      unlocks: ["spine_density", "leg_thickness"],
+      unlocks: ["spikyness", "leg_thickness"],
       specialty: null,
       blurb: "Shell first. Short legs, heavy front end, wings kept folded away."
     },
@@ -1303,8 +1345,8 @@
       clade: "hexapod",
       adjective: "Venom",
       status: "coded",
-      window: { wing_count: 4, stinger_size: [0.6, 1], carapace_thickness: [0, 0.3] },
-      locks: ["carapace_thickness", "body_mass"],
+      window: { wing_count: 4, stinger_size: [0.6, 1], body_mass: [0, 0.3] },
+      locks: ["body_mass"],
       unlocks: ["wing_beat", "tail_length"],
       specialty: null,
       blurb: "Four wings and a delivery system. Nothing spare anywhere else."
@@ -1335,8 +1377,10 @@
       status: "coded",
       // `foot_size` is gone (every bug now wears the maximum pad), so the reach
       // this window was really describing is stated with the two genes that still
-      // carry it: a long body on long legs, held in a wide stance.
-      window: { leg_spread: [0.7, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
+      // carry it: a wide stance on long legs. `body_length` is gone too — it was
+      // a stat-only slider, never a real body dimension — so the window no
+      // longer asks for it.
+      window: { leg_spread: [0.7, 1], leg_length: [0.6, 1] },
       locks: [],
       unlocks: ["leg_spread"],
       specialty: null,
@@ -1412,7 +1456,7 @@
         // y_shaped (was rostrum)
         horn_size: [0.35, 0.78],
         mandible_size: [0, 0.3],
-        carapace_thickness: [0.25, 0.65]
+        body_mass: [0.25, 0.65]
       },
       locks: ["horn_type"],
       unlocks: ["horn_size"],
@@ -1430,8 +1474,7 @@
       window: {
         leg_length: [0.7, 1],
         leg_thickness: [0.55, 1],
-        antenna_length: [0.45, 1],
-        body_length: [0.45, 1]
+        antenna_length: [0.45, 1]
       },
       locks: [],
       unlocks: ["leg_thickness", "leg_spread"],
@@ -1485,11 +1528,11 @@
       adjective: "Ironclad",
       status: "coded",
       window: {
-        carapace_thickness: [0.75, 1],
-        spine_density: [0.45, 1],
+        body_mass: [0.75, 1],
+        spikyness: [0.45, 1],
         leg_thickness: [0.5, 1]
       },
-      locks: ["body_length"],
+      locks: [],
       unlocks: ["horn_size"],
       specialty: { key: "armor_plating", name: "Armour Plating", mods: { defense: 1.15 } },
       blurb: "Shell thickened past the point of grace."
@@ -1502,7 +1545,7 @@
       clade: "hexapod",
       adjective: "Titanic",
       status: "coded",
-      window: { body_mass: [0.75, 1], leg_thickness: [0.6, 1], body_length: [0.5, 1] },
+      window: { body_mass: [0.75, 1], leg_thickness: [0.6, 1] },
       locks: ["antenna_length"],
       unlocks: ["leg_count", "body_segments"],
       specialty: {
@@ -1523,9 +1566,8 @@
       window: {
         horn_type: 0,
         horn_size: [0.85, 1],
-        body_mass: [0.7, 1],
+        body_mass: [0.7, 1]
         // nose (was rhino)
-        carapace_thickness: [0.6, 1]
       },
       locks: ["horn_type"],
       unlocks: ["horn_size", "body_mass"],
@@ -1545,7 +1587,7 @@
         mandible_size: [0.8, 1],
         mandible_serration: [0.5, 1],
         // pincer (was stag)
-        carapace_thickness: [0.4, 0.7]
+        body_mass: [0.4, 0.7]
       },
       locks: ["horn_type"],
       unlocks: ["mandible_size", "mandible_serration"],
@@ -1563,7 +1605,7 @@
       window: {
         saturation: [0.8, 1],
         lightness: [0.55, 0.85],
-        carapace_thickness: [0.3, 0.6]
+        body_mass: [0.3, 0.6]
       },
       locks: ["saturation"],
       unlocks: ["hue", "lightness"],
@@ -1591,7 +1633,7 @@
       window: {
         leg_length: [0.34, 0.45],
         aggression: [0.6, 1],
-        carapace_thickness: [0.55, 0.75]
+        body_mass: [0.55, 0.75]
       },
       locks: [],
       unlocks: ["leg_length", "aggression"],
@@ -1624,7 +1666,7 @@
       window: {
         wing_count: [2, 4],
         wing_type: 1,
-        carapace_thickness: [0, 0.35],
+        body_mass: [0, 0.35],
         pattern_contrast: [0.7, 1]
       },
       locks: [],
@@ -1641,7 +1683,7 @@
       adjective: "Spotted",
       status: "drafted",
       window: {
-        carapace_thickness: [0.4, 0.65],
+        body_mass: [0.4, 0.65],
         pattern_contrast: [0.8, 1],
         aggression: [0, 0.3]
       },
@@ -1670,7 +1712,7 @@
         horn_size: [0.72, 1],
         body_width: [0.42, 1],
         // y_shaped (was rostrum)
-        carapace_thickness: [0.52, 1]
+        body_mass: [0.52, 1]
       },
       locks: ["horn_type"],
       unlocks: ["horn_size"],
@@ -1687,7 +1729,7 @@
       adjective: "Envenomed",
       status: "coded",
       window: { stinger_size: [0.8, 1], tail_length: [0.6, 1] },
-      locks: ["carapace_thickness"],
+      locks: ["body_mass"],
       unlocks: ["aggression"],
       specialty: { key: "concentrated_venom", name: "Concentrated Venom", mods: { venom: 1.2 } },
       blurb: "The whole abdomen is a syringe."
@@ -1754,10 +1796,10 @@
         // actually made a scorpion a scorpion — armoured AND venomous at once.
         stinger_size: [0.7, 1],
         tail_length: [0.6, 1],
-        carapace_thickness: [0.5, 1]
+        body_mass: [0.5, 1]
       },
       locks: ["tail_length"],
-      unlocks: ["stinger_size", "carapace_thickness"],
+      unlocks: ["stinger_size", "body_mass"],
       specialty: { key: "pincer_and_tail", name: "Pincer and Tail", mods: { venom: 1.12, defense: 1.08 } },
       blurb: "Armoured and venomous at once, which is rare and unfair."
     },
@@ -1770,9 +1812,9 @@
       clade: "myriapod",
       adjective: "Rippling",
       status: "coded",
-      window: { spine_density: [0.65, 1], stinger_size: [0.15, 1] },
+      window: { spikyness: [0.65, 1], stinger_size: [0.15, 1] },
       locks: [],
-      unlocks: ["tail_length", "spine_density"],
+      unlocks: ["tail_length", "spikyness"],
       specialty: null,
       blurb: "Predatory and fast for something with that many legs to coordinate."
     },
@@ -1784,9 +1826,9 @@
       clade: "myriapod",
       adjective: "Coiling",
       status: "drafted",
-      window: { spine_density: [0.7, 1], stinger_size: [0, 0.1] },
+      window: { spikyness: [0.7, 1], stinger_size: [0, 0.1] },
       locks: ["stinger_size"],
-      unlocks: ["carapace_thickness"],
+      unlocks: ["body_mass"],
       specialty: { key: "curl", name: "Curl", mods: { defense: 1.14, speed: 0.92 } },
       blurb: "Defence-curl instead of venom. The inverse of a centipede."
     },
@@ -1830,7 +1872,7 @@
       clade: "hexapod",
       adjective: "Siege",
       status: "coded",
-      window: { carapace_thickness: [0.9, 1], horn_size: [0.8, 1], leg_count: [4, 6] },
+      window: { body_mass: [0.9, 1], horn_size: [0.8, 1], leg_count: [4, 6] },
       locks: [],
       unlocks: [],
       specialty: {
@@ -2344,6 +2386,10 @@
       shellClear: hsl(h, s, l, 0),
       seam: hsl(h, s * 1.05, Math.max(0.16, l - 0.2)),
       seamClear: hsl(h, s * 1.05, Math.max(0.16, l - 0.2), 0),
+      // The translucency border — same deep tone as the seam, at a low, fixed
+      // alpha, so it reads as a thin, less-opaque edge rather than an outline.
+      // See TRANSLUCENT_BORDER_ALPHA/THRESHOLD.
+      segBorder: hsl(h, s * 1.05, Math.max(0.16, l - 0.2), TRANSLUCENT_BORDER_ALPHA),
       limb: inkLimbs ? "#17161c" : hsl(h, s * 0.92, Math.max(0.24, l - 0.16)),
       limbLo: inkLimbs ? "#0e0d11" : hsl(h, s * 0.95, Math.max(0.18, l - 0.24)),
       accent: hsl(accentH, 0.72, 0.6),
@@ -2459,7 +2505,7 @@
     bump2(hornOriginX(L) + L.hornLen * 1.1, L.hornLen * 0.7);
     bump2(L.tailTip?.x ?? 0, L.tailTip?.y ?? 0);
     if (L.wingPairs > 0) bump2(L.wingSpan.x, L.wingSpan.y);
-    const shadowPad = unit * (SHADOW_OFFSET_K + SHADOW_BLUR_K * 1.5);
+    const shadowPad = unit * (SHADOW_SPREAD - 1 + SHADOW_BLUR_BODY_K * 1.5);
     L.half = Math.ceil(Math.max(maxX, maxY) + unit * 0.05 + shadowPad + 3);
     return L;
   }
@@ -2544,7 +2590,8 @@
           // per-leg to carry here any more — `footSize` is gone with its gene.
           len: len * lerp(1.05, 0.92, t),
           w,
-          fan
+          fan,
+          joints: g.leg_joints
         }));
       }
     }
@@ -2921,20 +2968,14 @@
     });
     return { knee: rel(leg.knee), foot: rel(leg.foot) };
   }
+  var LEG_JOINT_KINK = 0.22;
   function drawLegs(ctx, L, col, phase) {
     for (const leg of L.legs) {
       const { knee, foot } = poseLeg(leg, phase);
-      capsule(
-        ctx,
-        leg.attach.x,
-        leg.attach.y,
-        lerp(leg.attach.x, foot.x, 0.3),
-        lerp(knee.y, foot.y, 0.18),
-        foot.x,
-        foot.y,
-        leg.w,
-        col.limb
-      );
+      const kink = leg.joints >= 1 ? LEG_JOINT_KINK : 0;
+      const cx = lerp(leg.attach.x, foot.x, 0.3 + kink);
+      const cy = lerp(knee.y, foot.y, 0.18 - kink * 0.5);
+      capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, col.limb);
       const fr = leg.w * FOOT_PAD_R;
       fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limb);
     }
@@ -3259,7 +3300,37 @@
   var BLOB_R = 0.88;
   var ABDOMEN_BLOB_SKEW = -0.3;
   var CENTRELINE_RATIO = 1.18;
-  function segmentMass(ctx, p, col, crease = false) {
+  var SPIKE_MIN = 0.02;
+  var SPIKE_LEN = [0.18, 0.52];
+  var SPIKE_BASE = [0.16, 0.26];
+  var TRANSLUCENT_BORDER_THRESHOLD = 0.55;
+  var TRANSLUCENT_BORDER_ALPHA = 0.35;
+  function drawOneSpike(ctx, x, baseY, tipY, halfBase, col, translucent) {
+    ctx.beginPath();
+    ctx.moveTo(x - halfBase, baseY);
+    ctx.quadraticCurveTo(x, tipY, x + halfBase, baseY);
+    ctx.closePath();
+    ctx.fillStyle = col.shell;
+    ctx.fill();
+    if (translucent) {
+      ctx.lineWidth = Math.max(0.6, halfBase * 0.28);
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = col.segBorder;
+      ctx.stroke();
+    }
+  }
+  function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
+    if (!(spiky > SPIKE_MIN)) return;
+    const rx = Math.max(0.5, p.rx);
+    const ry = Math.max(0.5, p.ry);
+    const len = ry * lerp(SPIKE_LEN[0], SPIKE_LEN[1], spiky);
+    const halfBase = rx * lerp(SPIKE_BASE[0], SPIKE_BASE[1], spiky);
+    for (const side of [-1, 1]) {
+      const baseY = p.y + side * ry * 0.92;
+      drawOneSpike(ctx, p.x, baseY, baseY + side * len, halfBase, col, translucent);
+    }
+  }
+  function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false) {
     const rx = Math.max(0.5, p.rx);
     const ry = Math.max(0.5, p.ry);
     ctx.save();
@@ -3285,6 +3356,16 @@
     }
     ctx.restore();
     segmentCentreline(ctx, p, col, rx, ry, crease);
+    drawSegmentSpikes(ctx, p, col, spiky, translucent);
+    if (translucent) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+      ctx.lineWidth = Math.max(0.6, Math.min(rx, ry) * 0.045);
+      ctx.strokeStyle = col.segBorder;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
   var CREASE_HALF_L = 0.8;
   var CREASE_HALO_W = 0.085;
@@ -3339,10 +3420,10 @@
   }
   var SHADOW_RGB = "78,68,66";
   var SHADOW_ALPHA = 0.44;
-  var SHADOW_LINE_K = 0.5;
-  var SHADOW_SPREAD = 1.42;
-  var SHADOW_BLUR_K = 0.13;
-  var SHADOW_OFFSET_K = 0.2;
+  var SHADOW_LINE_K = 0.8;
+  var SHADOW_SPREAD = 1.18;
+  var SHADOW_BLUR_BODY_K = 0.22;
+  var SHADOW_BLUR_LEG_K = 0.09;
   function trunkCentre(L) {
     let wx = 0, wy = 0, wsum = 0;
     for (const p of L.parts) {
@@ -3354,37 +3435,54 @@
     return wsum > 0 ? { x: wx / wsum, y: wy / wsum } : { x: L.thorax?.x ?? 0, y: 0 };
   }
   function drawGroundShadow(ctx, L, phase) {
-    const off = L.unit * SHADOW_OFFSET_K;
-    const dx = -off * 0.72;
-    const dy = off;
-    const blur = clamp2(L.unit * SHADOW_BLUR_K, 1.5, 14);
+    const blurLeg = clamp2(L.unit * SHADOW_BLUR_LEG_K, 1, 10);
+    const blurBody = clamp2(L.unit * SHADOW_BLUR_BODY_K, 1.5, 14);
     const centre = trunkCentre(L);
-    ctx.save();
-    ctx.globalCompositeOperation = "multiply";
-    if ("filter" in ctx) ctx.filter = `blur(${blur.toFixed(2)}px)`;
-    ctx.strokeStyle = `rgba(${SHADOW_RGB},${(SHADOW_ALPHA * SHADOW_LINE_K).toFixed(3)})`;
-    ctx.lineCap = "round";
+    const size = L.half * 2;
+    const scratch = typeof document !== "undefined" ? document.createElement("canvas") : null;
+    if (scratch) {
+      scratch.width = size;
+      scratch.height = size;
+    }
+    const sctx = scratch ? scratch.getContext("2d") : ctx;
+    if (scratch) {
+      sctx.translate(L.half, L.half);
+    } else {
+      sctx.save();
+      sctx.globalCompositeOperation = "multiply";
+    }
+    if ("filter" in sctx) sctx.filter = `blur(${blurLeg.toFixed(2)}px)`;
+    sctx.strokeStyle = `rgba(${SHADOW_RGB},${(SHADOW_ALPHA * SHADOW_LINE_K).toFixed(3)})`;
+    sctx.lineCap = "round";
     for (const leg of L.legs) {
       const { foot } = poseLeg(leg, phase);
-      ctx.lineWidth = Math.max(1, leg.w * 0.55);
-      ctx.beginPath();
-      ctx.moveTo(foot.x + dx, foot.y + dy);
-      ctx.lineTo(centre.x + dx, centre.y + dy);
-      ctx.stroke();
+      sctx.lineWidth = Math.max(1, leg.w * 0.55);
+      sctx.beginPath();
+      sctx.moveTo(foot.x, foot.y);
+      sctx.lineTo(centre.x, centre.y);
+      sctx.stroke();
     }
-    ctx.beginPath();
+    if ("filter" in sctx) sctx.filter = `blur(${blurBody.toFixed(2)}px)`;
+    sctx.beginPath();
     const masses = L.head ? [...L.parts, L.head] : L.parts;
     for (const p of masses) {
       const rx = Math.max(0.5, p.rx * SHADOW_SPREAD);
       const ry = Math.max(0.5, p.ry * SHADOW_SPREAD);
-      ctx.moveTo(p.x + dx + rx, p.y + dy);
-      ctx.ellipse(p.x + dx, p.y + dy, rx, ry, 0, 0, TAU);
-      ctx.closePath();
+      sctx.moveTo(p.x + rx, p.y);
+      sctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+      sctx.closePath();
     }
-    ctx.fillStyle = `rgba(${SHADOW_RGB},${SHADOW_ALPHA})`;
-    ctx.fill();
-    if ("filter" in ctx) ctx.filter = "none";
-    ctx.restore();
+    sctx.fillStyle = `rgba(${SHADOW_RGB},${SHADOW_ALPHA})`;
+    sctx.fill();
+    if ("filter" in sctx) sctx.filter = "none";
+    if (scratch) {
+      ctx.save();
+      ctx.globalCompositeOperation = "multiply";
+      ctx.drawImage(scratch, -L.half, -L.half);
+      ctx.restore();
+    } else {
+      sctx.restore();
+    }
   }
   function drawBug(ctx, g, opts = {}) {
     const { phase = 0, state = "idle", ppu = 26 } = opts;
@@ -3394,6 +3492,7 @@
     const patMandible = surfacePattern(g, col, "mandible");
     const breathe = state === "idle" ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
     const lunge = state === "attack" ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
+    const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
     ctx.save();
     ctx.rotate(-Math.PI / 2);
     ctx.translate(lunge * L.unit * 0.12, 0);
@@ -3414,11 +3513,11 @@
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
       const creased = L.wingType === "elytra" ? null : L.abdomen;
-      for (const p of trunk) segmentMass(ctx, p, col, p === creased);
+      for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments);
       drawElytra(ctx, L, col);
     };
     const drawTrunkThorax = () => {
-      segmentMass(ctx, L.thorax, col);
+      segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments);
     };
     if (L.wingPairs > 0) {
       drawTrunkAbdomen();
@@ -4067,10 +4166,8 @@
       spread: 0.1,
       bias: {
         body_segments: 2,
-        body_length: 0.5,
         body_width: 0.72,
         body_mass: 0.8,
-        carapace_thickness: 0.88,
         head_width: 0.343,
         head_length: 0.343,
         thorax_width: 0.494,
@@ -4081,7 +4178,7 @@
         leg_count: 6,
         leg_length: 0.28,
         leg_thickness: 0.72,
-        leg_joints: 3,
+        leg_joints: 1,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.2,
@@ -4093,7 +4190,7 @@
         eye_type: 1,
         mandible_type: 0,
         crown_mark_style: 1,
-        spine_density: 0.3,
+        spikyness: 0.3,
         tail_length: 0.1,
         stinger_size: 0.02,
         eye_count: 2,
@@ -4114,10 +4211,8 @@
       spread: 0.1,
       bias: {
         body_segments: 2,
-        body_length: 0.62,
         body_width: 0.24,
         body_mass: 0.18,
-        carapace_thickness: 0.18,
         head_width: 0.363,
         head_length: 0.363,
         thorax_width: 0.431,
@@ -4128,7 +4223,7 @@
         leg_count: 6,
         leg_length: 0.55,
         leg_thickness: 0.22,
-        leg_joints: 3,
+        leg_joints: 1,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.8,
@@ -4145,7 +4240,7 @@
         horn_type: 4,
         eye_type: 0,
         mandible_type: 2,
-        spine_density: 0.1,
+        spikyness: 0.1,
         tail_length: 0.55,
         stinger_size: 0.9,
         eye_count: 2,
@@ -4174,10 +4269,8 @@
       spread: 0.06,
       bias: {
         body_segments: 2,
-        body_length: 0.42,
         body_width: 0.62,
         body_mass: 0.35,
-        carapace_thickness: 0.32,
         head_width: 0.262,
         head_length: 0.262,
         thorax_width: 0.369,
@@ -4188,7 +4281,7 @@
         leg_count: 8,
         leg_length: 0.92,
         leg_thickness: 0.28,
-        leg_joints: 3,
+        leg_joints: 1,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -4200,7 +4293,7 @@
         eye_type: 1,
         mandible_type: 2,
         crown_mark_style: 2,
-        spine_density: 0.25,
+        spikyness: 0.25,
         tail_length: 0.15,
         stinger_size: 0.55,
         eye_count: 8,
@@ -4221,10 +4314,8 @@
       spread: 0.11,
       bias: {
         body_segments: 3,
-        body_length: 0.68,
         body_width: 0.5,
         body_mass: 0.3,
-        carapace_thickness: 0.4,
         head_width: 0.228,
         head_length: 0.228,
         thorax_width: 0.4,
@@ -4235,7 +4326,7 @@
         leg_count: 6,
         leg_length: 0.62,
         leg_thickness: 0.35,
-        leg_joints: 3,
+        leg_joints: 1,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.35,
@@ -4246,7 +4337,7 @@
         horn_type: 3,
         eye_type: 2,
         mandible_type: 2,
-        spine_density: 0.45,
+        spikyness: 0.45,
         tail_length: 0.45,
         stinger_size: 0.05,
         eye_count: 2,
@@ -4269,10 +4360,8 @@
       spread: 0.1,
       bias: {
         body_segments: 3,
-        body_length: 0.92,
         body_width: 0.26,
         body_mass: 0.32,
-        carapace_thickness: 0.28,
         head_width: 0.316,
         head_length: 0.316,
         thorax_width: 0.62,
@@ -4286,7 +4375,7 @@
         leg_count: 6,
         leg_length: 0.78,
         leg_thickness: 0.32,
-        leg_joints: 3,
+        leg_joints: 1,
         leg_spread: 0.88,
         wing_count: 2,
         wing_type: 0,
@@ -4304,7 +4393,7 @@
         horn_type: 3,
         eye_type: 0,
         mandible_type: 2,
-        spine_density: 0.55,
+        spikyness: 0.55,
         tail_length: 0.25,
         stinger_size: 0.05,
         eye_count: 2,
@@ -4326,10 +4415,8 @@
       spread: 0.11,
       bias: {
         body_segments: 2,
-        body_length: 0.45,
         body_width: 0.45,
         body_mass: 0.15,
-        carapace_thickness: 0.1,
         head_width: 0.275,
         head_length: 0.275,
         thorax_width: 0.463,
@@ -4340,7 +4427,7 @@
         leg_count: 6,
         leg_length: 0.38,
         leg_thickness: 0.2,
-        leg_joints: 2,
+        leg_joints: 0,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.98,
@@ -4357,7 +4444,7 @@
         horn_type: 4,
         eye_type: 2,
         mandible_type: 2,
-        spine_density: 0.05,
+        spikyness: 0.05,
         tail_length: 0.2,
         stinger_size: 0.02,
         eye_count: 2,
@@ -4379,10 +4466,8 @@
       spread: 0.1,
       bias: {
         body_segments: 8,
-        body_length: 0.98,
         body_width: 0.2,
         body_mass: 0.28,
-        carapace_thickness: 0.22,
         head_width: 0.208,
         head_length: 0.208,
         thorax_width: 0.337,
@@ -4393,7 +4478,7 @@
         leg_count: 10,
         leg_length: 0.48,
         leg_thickness: 0.18,
-        leg_joints: 2,
+        leg_joints: 0,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -4404,7 +4489,7 @@
         horn_type: 1,
         eye_type: 2,
         mandible_type: 1,
-        spine_density: 0.8,
+        spikyness: 0.8,
         tail_length: 0.75,
         stinger_size: 0.65,
         eye_count: 4,
@@ -4425,11 +4510,12 @@
       blurb: "Small, round, absurdly long snout. Tanky for its size and hard to spot.",
       spread: 0.11,
       bias: {
+        // body_mass raised 0.55 -> 0.75: it now also carries the Weevil window's
+        // old carapace_thickness floor (>= 0.52), and 0.55 sat too close to that
+        // floor for an 11%-spread jitter to reliably clear it.
         body_segments: 2,
-        body_length: 0.3,
         body_width: 0.58,
-        body_mass: 0.55,
-        carapace_thickness: 0.7,
+        body_mass: 0.75,
         head_width: 0.262,
         head_length: 0.262,
         thorax_width: 0.4,
@@ -4440,7 +4526,7 @@
         leg_count: 6,
         leg_length: 0.3,
         leg_thickness: 0.45,
-        leg_joints: 2,
+        leg_joints: 0,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.15,
@@ -4451,7 +4537,7 @@
         horn_type: 2,
         eye_type: 1,
         mandible_type: 2,
-        spine_density: 0.35,
+        spikyness: 0.35,
         tail_length: 0.08,
         stinger_size: 0.02,
         eye_count: 2,

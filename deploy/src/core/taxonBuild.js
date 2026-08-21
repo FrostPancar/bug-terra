@@ -147,7 +147,14 @@ function disambiguate(genome, taxonId, keep, frozen) {
  * @returns {{ genome: object, base: string, window: object, conflicts: object[],
  *             satisfied: boolean, achieved: object, requested: string }}
  */
-export function buildForTaxon(taxonId, { seed = 7 } = {}) {
+// Seed 7 used to draw a 6-legged Beetle base from ARCHETYPES[0]; removing
+// `carapace_thickness` from GENE_ORDER shifted every later rng() draw the
+// archetype sampler makes for that seed (see the note on this in
+// core.test.js's archetype-distinguishability test — the same effect), and 7
+// now draws an 8-legged one instead. Only Larva notices: every other taxon's
+// clade pins leg_count explicitly, but Larva's window and clade are both
+// empty, so nothing overrides the archetype's own draw. 1 draws 6 legs.
+export function buildForTaxon(taxonId, { seed = 1 } = {}) {
   const node = CLASS_TREE[taxonId];
   if (!node) throw new Error(`unknown taxon: ${taxonId}`);
   const { window, conflicts, sources } = mergedWindow(taxonId);
