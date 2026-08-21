@@ -48,7 +48,7 @@ nothing here is in either.
 and it is not a search:
 
 1. **Intersect** every window from the root down to the taxon. `Rhinoceros
-   Beetle` inherits Beetle's `carapace_thickness ≥ 0.55` on top of its own.
+   Beetle` inherits Beetle's `body_mass ≥ 0.55` on top of its own.
 2. **Pick the closest archetype** — the one already missing the fewest
    constraints. A Stag Beetle built off the beetle plan looks like a beetle; one
    built off the moth plan looks like a mistake.
@@ -72,7 +72,7 @@ handing back the parent and letting you wonder why the taxon never sticks.
 
 Writing this catalogue turned up three live ones, all since fixed in
 `CLASS_TREE`: Ground Beetle asked for `leg_length ≥ 0.60` under a Beetle capped
-at `0.45`, Firefly for `carapace_thickness ≤ 0.35` under a Beetle floored at
+at `0.45`, Firefly for `body_mass ≤ 0.35` under a Beetle floored at
 `0.55`, and Butterfly for `setae ≤ 0.30` under a Moth floored at `0.75`. One was
 a window that belonged inside its parent's; the other two were concepts that
 negate their parent, and are now siblings that keep `order` while hanging off
@@ -98,13 +98,13 @@ the build button, and a **never** badge beside that taxon in the drift line.
 
 ### 2. The part library — `src/render/partLibrary.js`
 
-The **Part library** and **All 57 genes** tabs cut the same data two ways. The
+The **Part library** and **All 55 genes** tabs cut the same data two ways. The
 library is organised by *what you see on the bug* — 23 things the renderer can
 draw, each owning the two to six genes that shape it, with the threshold where
 it appears, a thumbnail per kind, and a grid tile framed on the part itself
 (`FOCUS` in `partLibrary.js` says how each one is framed: the pose is head-up,
 so a positive `y` brings the head into the tile and a negative one the tail). The gene tab is organised by *the vector* —
-all 57 in `GENE_ORDER`, including the eight that reach no part of the sprite, each
+all 55 in `GENE_ORDER`, including the three that reach no part of the sprite, each
 saying which parts it feeds. Start in the library when you are building a bug;
 go to the genes when you need one specific dial, or the ones no part exposes.
 
@@ -158,7 +158,6 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | **Mandibles** | `mandible_size ≥ 0.10` | `mandible_size`, `mandible_type`, `mandible_serration`, `pattern_mandible`, `pattern_mandible_hue`, `pattern_scale`, `pattern_contrast` |
 | **Tail** | `tail_length × 0.44 > 0.08  →  tail_length > 0.182` | `tail_length`, `stinger_size` |
 | **Stinger** | `stinger_size > 0.18, and the tail must be drawn at all` | `stinger_size`, `tail_length` |
-| **Defensive spines** _(stats only)_ | `never drawn — spine_density reaches stats and classification only` | `spine_density` |
 
 ### Sensory — eyes and antennae
 
@@ -178,21 +177,24 @@ stat-only gene and is not — it stretches the whole body through `morphology()`
 | **Horn & jaw pattern** | `a horn or a mandible has to be drawn (horn_size ≥ 0.12 or mandible_size ≥ 0.10); mode = min(4, floor(pattern_horn × 5)) for the horn, the same over pattern_mandible for the jaws` | `pattern_horn`, `pattern_mandible`, `pattern_scale`, `pattern_contrast` |
 | **Segment lighting** | always drawn (core) | `light_hue`, `lighting_lightness`, `lighting_saturation`, `lightness` (as the floor only), `body_segments` |
 | **Setae** | `setae ≥ 0.35` | `setae` |
+| **Segment spikes** | `spikyness > 0.02` | `spikyness`, `translucency` |
 
 #### Genes that move numbers, not pixels
 
-Eight of the 57 reach no part of the sprite. The builder badges them rather
+Three of the 55 reach no part of the sprite. The builder badges them rather
 than leaving you to wonder why the slider does nothing:
 
-`body_length` · `body_mass` · `carapace_thickness` · `leg_joints` ·
-`spine_density` · `metabolism` · `aggression` · `translucency`
+`body_mass` · `metabolism` · `aggression`
 
-Three genes left this list in the horn pass. `mandible_serration` now cuts
-teeth into the blade mandibles as well as multiplying the bite, and
-`pattern_scale` and `pattern_contrast` drive the horn-and-jaw surface treatment
-instead of nothing at all. `foot_size` left the list in the other direction — it
-left the genome entirely, because the foot is drawn at one fixed size now. `spine_density` is still the odd one out: required by
-the Centipede and Millipede windows while being invisible on the bug.
+`carapace_thickness`, `spine_density` and `body_length` are gone outright —
+not merged into this list, removed from the genome entirely. `body_mass` now
+carries carapace_thickness's old defense/health/shell role as well as its own,
+blended a minority share with a derived body-size coefficient (see
+`bodySize()` in `stats.js`); `spine_density`'s defense role folded the same
+way and its classification role (Centipede, Millipede) moved to `spikyness`,
+which is the same idea with real art behind it — see **Segment spikes** above.
+`body_length` was never a body dimension to begin with; `body_size` replaces
+it as a value derived from the actual part genes, not a gene of its own.
 
 ### 3. Export
 

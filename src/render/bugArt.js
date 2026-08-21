@@ -254,6 +254,10 @@ export function palette(g) {
     shellClear:  hsl(h, s, l, 0),
     seam:      hsl(h, s * 1.05, Math.max(0.16, l - 0.20)),
     seamClear: hsl(h, s * 1.05, Math.max(0.16, l - 0.20), 0),
+    // The translucency border — same deep tone as the seam, at a low, fixed
+    // alpha, so it reads as a thin, less-opaque edge rather than an outline.
+    // See TRANSLUCENT_BORDER_ALPHA/THRESHOLD.
+    segBorder: hsl(h, s * 1.05, Math.max(0.16, l - 0.20), TRANSLUCENT_BORDER_ALPHA),
     limb:    inkLimbs ? '#17161c' : hsl(h, s * 0.92, Math.max(0.24, l - 0.16)),
     limbLo:  inkLimbs ? '#0e0d11' : hsl(h, s * 0.95, Math.max(0.18, l - 0.24)),
     accent:  hsl(accentH, 0.72, 0.60),
@@ -672,6 +676,7 @@ function buildLegs(L) {
         // The foot pad is a fixed size now (FOOT_PAD_R), so there is nothing
         // per-leg to carry here any more — `footSize` is gone with its gene.
         len: len * lerp(1.05, 0.92, t), w, fan,
+        joints: g.leg_joints,
       }));
     }
   }
@@ -1396,13 +1401,26 @@ function poseLeg(leg, phase) {
   return { knee: rel(leg.knee), foot: rel(leg.foot) };
 }
 
+/**
+ * `leg_joints` IS BINARY NOW (0/1, see genes.js) and 1 draws a real, minimal
+ * kink at the knee instead of the single smooth arc every leg used to get.
+ * `KINK` nudges the knee OUTWARD from the smooth curve's own control point,
+ * still along a single round-capped stroke (one capsule call, unchanged), so
+ * the bend stays a subtle crease rather than a visible two-segment leg —
+ * "very slightly sharper, very rounded corners" per the design note, not a
+ * jointed limb. 0 renders byte-for-byte the old curve.
+ */
+const LEG_JOINT_KINK = 0.22;
+
 function drawLegs(ctx, L, col, phase) {
   for (const leg of L.legs) {
     const { knee, foot } = poseLeg(leg, phase);
 
-    capsule(ctx, leg.attach.x, leg.attach.y,
-            lerp(leg.attach.x, foot.x, 0.30), lerp(knee.y, foot.y, 0.18),
-            foot.x, foot.y, leg.w, col.limb);
+    const kink = leg.joints >= 1 ? LEG_JOINT_KINK : 0;
+    const cx = lerp(leg.attach.x, foot.x, 0.30 + kink);
+    const cy = lerp(knee.y, foot.y, 0.18 - kink * 0.5);
+
+    capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, col.limb);
 
     // Foot: a round pad at the tip, FIXED at the maximum the old `foot_size`
     // gene could reach. The gene is gone (see genes.js): every value under this
@@ -1898,6 +1916,58 @@ const ABDOMEN_BLOB_SKEW = -0.30;
 const CENTRELINE_RATIO = 1.18;
 
 /**
+ * SEGMENT SPIKES — `spikyness`. A short, rounded spike off the LEFT and RIGHT
+ * of every trunk segment (thorax, each abdominal segment, each myriapod
+ * ring), flush against the segment's own side wall. Filled with `col.shell`,
+ * the segment's own flat colour and nothing else — no bloom, no gradient — so
+ * a spike reads as part of the shell rather than a separate part stuck on.
+ * The apex is a quadratic curve, not a straight point, which is what keeps it
+ * "rounded" rather than a thorn.
+ */
+const SPIKE_MIN = 0.02;          // below this, nothing is drawn at all
+const SPIKE_LEN = [0.18, 0.52];  // fraction of ry, at spikyness 0 / 1
+const SPIKE_BASE = [0.16, 0.26]; // fraction of rx, at spikyness 0 / 1
+
+/**
+ * The translucency border. Past `TRANSLUCENT_BORDER_THRESHOLD`, every segment
+ * — and the spikes growing off it — takes a thin, low-opacity stroke of the
+ * segment's own deep tone (`col.segBorder`), so the shape reads as slightly
+ * see-through rather than gaining a hard outline. The threshold matches the
+ * `camouflaged` trait's own translucency floor in classification.js, so the
+ * two readings — "this bug is see-through" as a trait and as a render — agree.
+ */
+const TRANSLUCENT_BORDER_THRESHOLD = 0.55;
+const TRANSLUCENT_BORDER_ALPHA = 0.35;
+
+/** One spike, apex pointing away from the segment along its lateral axis. */
+function drawOneSpike(ctx, x, baseY, tipY, halfBase, col, translucent) {
+  ctx.beginPath();
+  ctx.moveTo(x - halfBase, baseY);
+  ctx.quadraticCurveTo(x, tipY, x + halfBase, baseY);
+  ctx.closePath();
+  ctx.fillStyle = col.shell;
+  ctx.fill();
+  if (translucent) {
+    ctx.lineWidth = Math.max(0.6, halfBase * 0.28);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = col.segBorder;
+    ctx.stroke();
+  }
+}
+
+function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
+  if (!(spiky > SPIKE_MIN)) return;
+  const rx = Math.max(0.5, p.rx);
+  const ry = Math.max(0.5, p.ry);
+  const len = ry * lerp(SPIKE_LEN[0], SPIKE_LEN[1], spiky);
+  const halfBase = rx * lerp(SPIKE_BASE[0], SPIKE_BASE[1], spiky);
+  for (const side of [-1, 1]) {
+    const baseY = p.y + side * ry * 0.92;
+    drawOneSpike(ctx, p.x, baseY, baseY + side * len, halfBase, col, translucent);
+  }
+}
+
+/**
  * One trunk mass — thorax, abdominal segment, or myriapod ring.
  *
  * FLAT, not a shaded ball. A solid `shell` fill with a soft warm blob dropped
@@ -1907,8 +1977,12 @@ const CENTRELINE_RATIO = 1.18;
  *
  * NOTE the head does NOT come through here, and no longer has an equivalent of
  * its own: it is a single flat `col.shell` fill in drawBug(), with no lighting.
+ *
+ * `spiky` (from `spikyness`) and `translucent` (from `translucency` past its
+ * threshold) are read once per call, off the genome, by drawBug() — see the
+ * trunk-drawing closures there.
  */
-function segmentMass(ctx, p, col, crease = false) {
+function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false) {
   const rx = Math.max(0.5, p.rx);
   const ry = Math.max(0.5, p.ry);
 
@@ -1942,6 +2016,17 @@ function segmentMass(ctx, p, col, crease = false) {
   ctx.restore();
 
   segmentCentreline(ctx, p, col, rx, ry, crease);
+  drawSegmentSpikes(ctx, p, col, spiky, translucent);
+
+  if (translucent) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+    ctx.lineWidth = Math.max(0.6, Math.min(rx, ry) * 0.045);
+    ctx.strokeStyle = col.segBorder;
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 /**
@@ -2202,6 +2287,7 @@ export function drawBug(ctx, g, opts = {}) {
   const patMandible = surfacePattern(g, col, 'mandible');
   const breathe = state === 'idle' ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
   const lunge = state === 'attack' ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
+  const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
 
   ctx.save();
   ctx.rotate(-Math.PI / 2);                 // head up
@@ -2338,13 +2424,13 @@ export function drawBug(ctx, g, opts = {}) {
     // `elytra` is still the switch that suppresses the dark core — a shell cover
     // hides the joint — so segmentMass() is told which mass wants a crease.
     const creased = L.wingType === 'elytra' ? null : L.abdomen;
-    for (const p of trunk) segmentMass(ctx, p, col, p === creased);
+    for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments);
     drawElytra(ctx, L, col);                     // covers lie on the abdomen
   };
 
   /** The thorax. */
   const drawTrunkThorax = () => {
-    segmentMass(ctx, L.thorax, col);
+    segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments);
   };
 
   if (L.wingPairs > 0) {

@@ -14,26 +14,49 @@ const sig = (x, k = 6) => 1 / (1 + Math.exp(-k * (clamp01(x) - 0.5)));
  * consistent units. Kept separate from stats so both the renderer and the
  * stat formulas can read the same derived body.
  */
+/**
+ * BODY SIZE — derived, not stored. `body_length` used to be a gene claiming to
+ * be "how big is this bug" that no other gene had to agree with. This is the
+ * honest version: the mean of `body_width` and every head/thorax/abdomen
+ * width/length axis. Bigger parts, bigger size — by construction, since it is
+ * built from the same numbers that build the parts.
+ */
+function bodySize(g) {
+  const axes = [
+    g.body_width,
+    g.head_width, g.head_length,
+    g.thorax_width, g.thorax_length,
+    g.abdomen_width, g.abdomen_length,
+  ];
+  return clamp01(axes.reduce((a, v) => a + v, 0) / axes.length);
+}
+
 export function morphology(g) {
-  // LENGTH IS SEGMENT COUNT NOW. `body_length` used to set the trunk extent and
-  // body_segments merely stretched it; that made two genes fight over one
-  // dimension and left the renderer unable to say how many masses a bug has.
-  // Length is derived from the segment count alone (head excluded, segment 1 is
-  // the thorax), so the drawn skeleton and the stats agree by construction.
-  // body_length survives as a pure stat gene — see computeStats()'s agility.
+  // LENGTH IS SEGMENT COUNT NOW. body_segments alone sets the trunk extent, so
+  // the drawn skeleton and the stats agree by construction — see bodySize()
+  // above for the separate "how big are the parts" reading.
   const segments = g.body_segments;
-  // 0.70 with no abdomen at all, 1.32 for the common two-segment bug (which is
-  // where the old body_length=0.5 / segments=3 genome landed, so the stat
-  // formulas keep their calibration), rising with diminishing returns to ~3.9
-  // for a ten-segment myriapod.
+  // 0.70 with no abdomen at all, 1.32 for the common two-segment bug, rising
+  // with diminishing returns to ~3.9 for a ten-segment myriapod.
   const bodyLen = 0.70 + 0.62 * Math.pow(Math.max(0, segments - 1), 0.75);
   const length = bodyLen;
   const width = 0.18 + g.body_width * 1.32;        // 0.18 .. 1.50 (widened both ends)
   // A tapered abdomen carries less volume than a round one of the same extent.
   const taper = 1 - 0.28 * g.abdomen_taper;
   const volume = bodyLen * width * width * taper;  // rough ellipsoid proxy
-  const shellVolume = volume * (0.05 + g.carapace_thickness * 0.45);
-  const density = 0.5 + g.body_mass * 1.1;         // 0.5 .. 1.6
+  const size = bodySize(g);
+  /**
+   * MASS STAT — `body_mass` blended with `size`. Size can supply at most 25%
+   * of the reading; the rest is `body_mass` itself, which never touches the
+   * renderer (see SIM_ONLY in partLibrary.js) — so a lineage can be bred
+   * heavier or lighter almost entirely independently of what it looks like.
+   * `carapace_thickness` IS GONE; this single value now drives everything it
+   * used to (shell volume, defense, health) as well as everything body_mass
+   * always drove (density, attack, recovery) — see computeStats() below.
+   */
+  const massStat = clamp01(0.75 * g.body_mass + 0.25 * size);
+  const shellVolume = volume * (0.05 + massStat * 0.45);
+  const density = 0.5 + massStat * 1.1;            // 0.5 .. 1.6
   const mass = volume * density + shellVolume * 1.4;
   const legLen = (0.3 + g.leg_length * 1.7) * length;
   const legs = g.leg_count;
@@ -47,6 +70,7 @@ export function morphology(g) {
   return {
     length: bodyLen, width, volume, shellVolume, density, mass,
     legLen, legs, joints, strideLoad, wingLoad, totalWing, segments, taper,
+    size, massStat,
   };
 }
 
@@ -77,12 +101,13 @@ const FOOT_ATTACK = 0.045;
 export function computeStats(g) {
   const m = morphology(g);
 
-  // GRIP — traction. An extra leg joint and a thicker leg let a bug push off
-  // harder. The foot term is now a CONSTANT: `foot_size` (`claw_size` before
-  // that) is gone and every bug wears the same pad, so it cannot distinguish
-  // anything. See FOOT_GRIP for why it is calibrated at the old gene's default
-  // rather than at the maximum the pad is actually drawn at.
-  const grip = clamp(100 * sig(FOOT_GRIP + 0.25 * (m.joints - 2)
+  // GRIP — traction. `leg_joints` is binary now (0/1, see genes.js): a third
+  // joint is a flat bonus, not a count. A thicker leg still helps too. The
+  // foot term is now a CONSTANT: `foot_size` (`claw_size` before that) is gone
+  // and every bug wears the same pad, so it cannot distinguish anything. See
+  // FOOT_GRIP for why it is calibrated at the old gene's default rather than
+  // at the maximum the pad is actually drawn at.
+  const grip = clamp(100 * sig(FOOT_GRIP + 0.30 * m.joints
                              + 0.20 * g.leg_thickness, 5), 1, 100);
 
   // SPEED — long legs and more of them move you faster; mass per leg drags,
@@ -91,19 +116,22 @@ export function computeStats(g) {
   const cadence = 1 / (0.35 + m.strideLoad * 0.55);
   const speed = clamp(stride * cadence * 19 * (0.82 + grip / 100 * 0.30), 1, 100);
 
-  // AGILITY — turning and acceleration. Short bodies, wide stance, low mass.
-  // This is the one place `body_length` still lands: it no longer sets the
-  // silhouette, it reads as how much of that silhouette is committed forward.
+  // AGILITY — turning and acceleration. A small derived body, wide stance, low
+  // mass. `body_size` (see morphology()) is what `body_length` used to stand
+  // in for; `massStat` is what `carapace_thickness` used to stand in for
+  // alongside `body_mass` itself — see the note on `massStat`.
   const agility = clamp(
-    (100 * sig(0.55 * (1 - g.body_length) + 0.25 * g.leg_spread + 0.20 * (1 - g.body_mass), 5.5)) *
-      (0.6 + 0.4 * (1 - clamp01(g.carapace_thickness))),
+    (100 * sig(0.55 * (1 - m.size) + 0.25 * g.leg_spread + 0.20 * (1 - m.massStat), 5.5)) *
+      (0.6 + 0.4 * (1 - m.massStat)),
     1, 100
   );
 
-  // DEFENSE — carapace over surface area, plus spines that punish contact.
+  // DEFENSE — shell coverage over surface area. `spine_density` is gone; its
+  // weight folded into `massStat`, which now carries the whole defense read
+  // `carapace_thickness` used to (see the note on `massStat` in morphology()).
   const coverage = m.shellVolume / (m.volume * 0.5 + 0.4);
   const defense = clamp(
-    100 * sig(coverage * 0.9 + g.carapace_thickness * 0.45 + g.spine_density * 0.35, 5),
+    100 * sig(coverage * 0.9 + m.massStat * 0.70, 5),
     1, 100
   );
 
@@ -125,11 +153,11 @@ export function computeStats(g) {
     : clamp(100 * sig(g.stinger_size * 0.85 + g.tail_length * 0.35, 5), 0, 100);
 
   // ATTACK SPEED — bites per second. Big jaws swing slower.
-  const attackRate = clamp(2.4 - g.mandible_size * 1.35 + (1 - g.body_mass) * 0.35, 0.45, 2.6);
+  const attackRate = clamp(2.4 - g.mandible_size * 1.35 + (1 - m.massStat) * 0.35, 0.45, 2.6);
 
   // HEALTH — bulk plus shell; extra segments are extra body to damage.
   const health = clamp(
-    30 + m.volume * 26 + g.carapace_thickness * 34 + (m.segments - 2) * 5, 10, 100
+    30 + m.volume * 26 + m.massStat * 34 + (m.segments - 2) * 5, 10, 100
   );
 
   // STAMINA — energy pool. Mass helps store it, metabolism burns it.

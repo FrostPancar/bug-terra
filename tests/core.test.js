@@ -28,9 +28,9 @@ test('random genomes are always in range and legal', () => {
 });
 
 test('out-of-range input is clamped, not accepted', () => {
-  const g = normalizeGenome({ leg_length: 99, carapace_thickness: -4, leg_count: 33 });
+  const g = normalizeGenome({ leg_length: 99, leg_joints: 5, leg_count: 33 });
   assert.equal(g.leg_length, 1);
-  assert.equal(g.carapace_thickness, 0);
+  assert.equal(g.leg_joints, 1);   // leg_joints is binary (0/1) now
   assert.equal(g.leg_count, 12);   // leg_count range widened to 2..12
 });
 
@@ -152,10 +152,6 @@ test('new genes drive their stats', () => {
   const stung = computeStats({ ...base, stinger_size: 0.9, tail_length: 0.8 });
   assert.ok(stung.venom > 50, 'a big stinger must deliver venom');
 
-  const bare = computeStats({ ...base, spine_density: 0 });
-  const spiky = computeStats({ ...base, spine_density: 1 });
-  assert.ok(spiky.defense > bare.defense, 'spines must raise defense');
-
   const hornless = computeStats({ ...base, horn_size: 0 });
   const horned = computeStats({ ...base, horn_size: 1 });
   assert.ok(horned.attack > hornless.attack, 'a horn must raise attack');
@@ -169,9 +165,9 @@ test('new genes drive their stats', () => {
   const thinLeg = computeStats({ ...base, leg_thickness: 0 });
   const thickLeg = computeStats({ ...base, leg_thickness: 1 });
   assert.ok(thickLeg.grip > thinLeg.grip, 'a thicker leg must raise grip');
-  const twoJoints = computeStats({ ...base, leg_joints: 2 });
-  const fourJoints = computeStats({ ...base, leg_joints: 4 });
-  assert.ok(fourJoints.grip > twoJoints.grip, 'more leg joints must raise grip');
+  const noJoint = computeStats({ ...base, leg_joints: 0 });
+  const thirdJoint = computeStats({ ...base, leg_joints: 1 });
+  assert.ok(thirdJoint.grip > noJoint.grip, 'the third leg joint must raise grip');
 
   const twoEyes = computeStats({ ...base, eye_count: 2 });
   const eightEyes = computeStats({ ...base, eye_count: 8 });
@@ -187,9 +183,9 @@ test('new genes drive their stats', () => {
 
 test('stat formulas respond monotonically to their driving gene', () => {
   const base = normalizeGenome({});
-  const thin = computeStats({ ...base, carapace_thickness: 0.05 });
-  const thick = computeStats({ ...base, carapace_thickness: 0.95 });
-  assert.ok(thick.defense > thin.defense, 'thicker carapace must raise defense');
+  const light = computeStats({ ...base, body_mass: 0.05 });
+  const heavy = computeStats({ ...base, body_mass: 0.95 });
+  assert.ok(heavy.defense > light.defense, 'body_mass (carapace_thickness\'s replacement) must raise defense');
 
   const small = computeStats({ ...base, mandible_size: 0.05 });
   const big = computeStats({ ...base, mandible_size: 0.95 });

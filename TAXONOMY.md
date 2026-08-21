@@ -115,16 +115,16 @@ Tier 0 · **Larva** — everything starts here and most things stay here.
 
 | Taxon | Order | Window |
 |---|---|---|
-| Beetle | Coleoptera | `carapace ≥.55`, `horn ≥.50`, `leg_length ≤.45`, **`wing_area ≤.35`** |
-| Wasp | Hymenoptera | `wing_count = 4`, `stinger ≥.60`, `carapace ≤.30` |
+| Beetle | Coleoptera | `body_mass ≥.55`, `horn ≥.50`, `leg_length ≤.45`, **`wing_area ≤.35`** |
+| Wasp | Hymenoptera | `wing_count = 4`, `stinger ≥.60`, `body_mass ≤.30` |
 | Roach | Blattodea | `antenna ≥.75`, `pattern_leg ≥.7`, `aggression ≤.4` |
-| Mantis | Mantodea | `leg_spread ≥.70`, `body_length ≥.75`, `leg_length ≥.60` |
+| Mantis | Mantodea | `leg_spread ≥.70`, `leg_length ≥.60` |
 | Moth | Lepidoptera | `wing_area ≥.85`, `setae ≥.75`, `mandible ≤.20` |
 | Dragonfly | Odonata | `wing_area ≥.7`, `eye_count ≥6`, `eye_size ≥.6`, `aggression ≥.5` |
 | Fly | Diptera | `wing_count = 2`, `wing_beat ≥.72`, `body_mass ≤.30`, `mandible ≤.25` |
-| True Bug | Hemiptera | `horn_type = y_shaped`, `horn .35–.78`, `mandible ≤.30`, `carapace .25–.65` |
-| Grasshopper | Orthoptera | `leg_length ≥.70`, `leg_thickness ≥.55`, `antenna ≥.45`, `body_length ≥.45` |
-| Firefly | Coleoptera | `wing_count 2–4`, `wing_type = elytra`, `carapace ≤.35`, `pattern_contrast ≥.7` |
+| True Bug | Hemiptera | `horn_type = y_shaped`, `horn .35–.78`, `mandible ≤.30`, `body_mass .25–.65` |
+| Grasshopper | Orthoptera | `leg_length ≥.70`, `leg_thickness ≥.55`, `antenna ≥.45` |
+| Firefly | Coleoptera | `wing_count 2–4`, `wing_type = elytra`, `body_mass ≤.35`, `pattern_contrast ≥.7` |
 | Butterfly | Lepidoptera | `wing_area ≥.85`, `mandible ≤.20`, `setae ≤.30`, `pattern_contrast ≥.75`, `saturation ≥.65` |
 
 The last two are here rather than under Beetle and Moth because each one is the
@@ -195,7 +195,7 @@ Winged is scoped on purpose: a winged wasp is not a remarkable fact about a wasp
 | Arachnid/Myriapod windowed too narrowly | **Redefined as pure `leg_count` brackets.** Spider and Centipede moved down to Tier 2 beneath them. |
 | Pill Bug is a crustacean | **Left out.** It does not share a root with Larva, and inventing a second root for one unwindowed taxon is not worth it yet. |
 | Ground Beetle asked for `leg_length ≥.60` under a Beetle capped at `.45` | **Narrowed the child to `[0.34, 0.45]`.** Carabidae is a beetle family — the Weevil call above applies unchanged — and the blurb already said "quick *for a beetle*". Long-for-a-beetle is the top of Beetle's range, not a mantis's legs. |
-| Firefly asked for `carapace ≤.35` under a Beetle floored at `.55` | **Re-parented to Larva**, keeping `order: Coleoptera`. Its whole idea is "gave up its shell" and Beetle's single defining gene is its shell; narrowing it deletes the concept, loosening Beetle deletes Beetle. |
+| Firefly asked for `body_mass ≤.35` under a Beetle floored at `.55` | **Re-parented to Larva**, keeping `order: Coleoptera`. Its whole idea is "gave up its shell" and Beetle's single defining gene is its shell; narrowing it deletes the concept, loosening Beetle deletes Beetle. |
 | Butterfly asked for `setae ≤.30` under a Moth floored at `.75` | **Re-parented to Larva**, keeping `order: Lepidoptera`. "Same chassis, opposite surface" is now *stated* — `wing_area` and `mandible_size` are copied onto the node — rather than inherited from a parent that also demands fur. |
 
 All three were **unreachable**: `classify()` only reaches a node when every

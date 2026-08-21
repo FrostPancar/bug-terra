@@ -163,7 +163,7 @@ test('crossing from Beetle to Moth requires passing through neither', () => {
   // Walk wing_area up from a Beetle to a Moth and confirm there is a stretch
   // in between that satisfies no chassis on that line — the metamorphosis gap.
   const beetleish = normalizeGenome({
-    carapace_thickness: 0.8, horn_size: 0.7, leg_length: 0.3, wing_area: 0.2,
+    body_mass: 0.8, horn_size: 0.7, leg_length: 0.3, wing_area: 0.2,
     setae: 0.8, mandible_size: 0.1,
   });
   assert.ok(matchesWindow(beetleish, CLASS_TREE.beetle.window));
@@ -180,7 +180,7 @@ test('crossing from Beetle to Moth requires passing through neither', () => {
 
 test('breeding a Beetle up to eight legs makes an Armoured Arachnid, not a Spider', () => {
   const beetle = normalizeGenome({
-    carapace_thickness: 0.85, horn_size: 0.7, leg_length: 0.3, wing_area: 0.2,
+    body_mass: 0.85, horn_size: 0.7, leg_length: 0.3, wing_area: 0.2,
     leg_count: 6, eye_count: 2, wing_count: 2,
   });
   const before = classify(beetle);
@@ -217,7 +217,7 @@ test('the Winged trait only fires on chassis that normally stay down', () => {
 
 test('specialties multiply stats without ever touching genes', () => {
   const g = normalizeGenome({
-    carapace_thickness: 0.95, spine_density: 0.6, leg_thickness: 0.7,
+    body_mass: 0.95, spikyness: 0.6, leg_thickness: 0.7,
     horn_size: 0.9, leg_length: 0.3, wing_area: 0.1, leg_count: 6,
   });
   const frozen = JSON.stringify(g);
@@ -232,8 +232,8 @@ test('specialties multiply stats without ever touching genes', () => {
 
 test('a tier-3 specialty replaces its parent rather than stacking', () => {
   const siege = normalizeGenome({
-    carapace_thickness: 1, horn_size: 0.95, horn_type: 0, leg_count: 6,
-    spine_density: 0.8, leg_thickness: 0.8, leg_length: 0.2, wing_area: 0.1,
+    body_mass: 1, horn_size: 0.95, horn_type: 0, leg_count: 6,
+    spikyness: 0.8, leg_thickness: 0.8, leg_length: 0.2, wing_area: 0.1,
   });
   const c = classify(siege);
   assert.equal(c.id, 'siege_tank_rhinoceros');

@@ -167,7 +167,7 @@ export const PARTS = [
       { gene: 'leg_length', effect: 'reach, 0.55–1.85 of the body unit (halved on myriapods)' },
       { gene: 'leg_thickness', effect: 'capsule width, 2.2px floor so it never reads as hair' },
       { gene: 'leg_spread', effect: 'how far the fan splays front to back' },
-      { gene: 'leg_joints', effect: 'grip and speed — the art draws one arc either way', art: false },
+      { gene: 'leg_joints', effect: '1 adds a slightly sharper, minimally rounded bend at the knee, and a small grip bonus' },
     ],
   },
   {
@@ -330,17 +330,18 @@ export const PARTS = [
     ],
   },
   {
-    id: 'spines',
-    group: 'weapons',
-    name: 'Defensive spines',
-    blurb: 'Feeds defense and the Centipede and Millipede windows. The renderer has no art for it yet.',
-    art: false,
-    gate: 'never drawn — spine_density reaches stats and classification only',
-    present: (g) => g.spine_density >= 0.45,
-    on: { spine_density: 0.8 },
-    off: { spine_density: 0.1 },
+    id: 'spikes',
+    group: 'body',
+    name: 'Segment spikes',
+    blurb: 'A short, rounded spike off the left and right of every trunk segment — thorax, each abdominal segment, each myriapod ring — in the segment\'s own flat colour. `spine_density` is gone; this is its replacement, and it actually draws.',
+    drawnBy: 'segmentMass() → drawSegmentSpikes()',
+    gate: 'spikyness > 0.02',
+    present: (g) => g.spikyness > 0.02,
+    on: { spikyness: 0.7 },
+    off: { spikyness: 0 },
     genes: [
-      { gene: 'spine_density', effect: 'raises defense; required ≥ 0.65 for Centipede, ≥ 0.70 for Millipede', art: false },
+      { gene: 'spikyness', effect: 'length and base width of the spike pair on every trunk segment; also required ≥ 0.65 for Centipede, ≥ 0.70 for Millipede' },
+      { gene: 'translucency', effect: 'above 0.55, every segment and its spikes gain a faint thin border' },
     ],
   },
 
@@ -523,7 +524,8 @@ export const PARTS = [
  * null means the part IS the whole silhouette; frame all of it.
  */
 const FOCUS = {
-  plan: null, colour: null, spines: null,
+  plan: null, colour: null,
+  spikes:    { zoom: 1.45, y: -0.10 },
   abdomen:   { zoom: 1.45, y: -0.26 },
   thorax:    { zoom: 2.00, y: 0.02 },
   head:      { zoom: 2.40, y: 0.46 },
@@ -620,19 +622,14 @@ export function setVariant(genome, id, index) {
  * moves numbers, not pixels" rather than leaving the player to wonder.
  */
 export const SIM_ONLY = {
-  body_length: 'no longer shapes the bug at all — the trunk is built from body_segments. It survives as an agility input only.',
-  body_mass: 'density → mass. Raises attack, drags speed and agility, slows recovery.',
-  carapace_thickness: 'the single biggest defense input, and it costs agility.',
-  leg_joints: 'a third joint improves grip, which gates speed.',
-  spine_density: 'adds to defense. Required by the Centipede and Millipede windows.',
+  body_mass: 'density → mass. Raises attack, drags speed and agility, slows recovery, and — since carapace_thickness is gone — replaces it as the defense/health/shell input too. Blended a minority share (up to 25%) with the derived body-size coefficient; the raw gene itself never touches rendering.',
   metabolism: 'burn rate: high recovery, low stamina.',
   aggression: 'biases the AI state machine only. It is not a combat stat.',
-  translucency: 'helps camouflage. The renderer does not draw see-through cuticle yet.',
 };
 
 /**
  * gene → every part it touches. Built once, so the parameter panel can answer
- * "what does this slider move" for all 57 genes without a search.
+ * "what does this slider move" for all 55 genes without a search.
  */
 export const GENE_INFO = (() => {
   const map = {};

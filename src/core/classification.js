@@ -191,21 +191,21 @@ export const CLASS_TREE = {
     // constrain the same gene in opposite directions, so a lineage crossing
     // between them must pass through a stretch of gene-space satisfying neither.
     window: {
-      carapace_thickness: [0.55, 1],
+      body_mass: [0.55, 1],
       horn_size: [0.50, 1],
       leg_length: [0, 0.45],
       wing_area: [0, 0.35],
     },
     locks: ['wing_area', 'wing_beat'],
-    unlocks: ['spine_density', 'leg_thickness'],
+    unlocks: ['spikyness', 'leg_thickness'],
     specialty: null,
     blurb: 'Shell first. Short legs, heavy front end, wings kept folded away.',
   },
   wasp: {
     taxon: 'Wasp', tier: 1, parent: 'larva', order: 'Hymenoptera',
     clade: 'hexapod', adjective: 'Venom', status: 'coded',
-    window: { wing_count: 4, stinger_size: [0.60, 1], carapace_thickness: [0, 0.30] },
-    locks: ['carapace_thickness', 'body_mass'],
+    window: { wing_count: 4, stinger_size: [0.60, 1], body_mass: [0, 0.30] },
+    locks: ['body_mass'],
     unlocks: ['wing_beat', 'tail_length'],
     specialty: null,
     blurb: 'Four wings and a delivery system. Nothing spare anywhere else.',
@@ -224,8 +224,10 @@ export const CLASS_TREE = {
     clade: 'hexapod', adjective: 'Hooked', status: 'coded',
     // `foot_size` is gone (every bug now wears the maximum pad), so the reach
     // this window was really describing is stated with the two genes that still
-    // carry it: a long body on long legs, held in a wide stance.
-    window: { leg_spread: [0.70, 1], body_length: [0.75, 1], leg_length: [0.60, 1] },
+    // carry it: a wide stance on long legs. `body_length` is gone too — it was
+    // a stat-only slider, never a real body dimension — so the window no
+    // longer asks for it.
+    window: { leg_spread: [0.70, 1], leg_length: [0.60, 1] },
     locks: [], unlocks: ['leg_spread'], specialty: null,
     blurb: 'Reach as a weapon. Waits, then closes the distance once.',
   },
@@ -266,7 +268,7 @@ export const CLASS_TREE = {
       horn_type: 2,                      // y_shaped (was rostrum)
       horn_size: [0.35, 0.78],
       mandible_size: [0, 0.30],
-      carapace_thickness: [0.25, 0.65],
+      body_mass: [0.25, 0.65],
     },
     locks: ['horn_type'], unlocks: ['horn_size'], specialty: null,
     blurb: 'A beak instead of jaws. Feeds without ever opening its mouth.',
@@ -276,7 +278,7 @@ export const CLASS_TREE = {
     clade: 'hexapod', adjective: 'Springing', status: 'drafted',
     window: {
       leg_length: [0.70, 1], leg_thickness: [0.55, 1],
-      antenna_length: [0.45, 1], body_length: [0.45, 1],
+      antenna_length: [0.45, 1],
     },
     locks: [], unlocks: ['leg_thickness', 'leg_spread'], specialty: null,
     blurb: 'Back legs loaded like a spring. Travels in jumps, not steps.',
@@ -307,16 +309,16 @@ export const CLASS_TREE = {
     taxon: 'Armoured Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Ironclad', status: 'coded',
     window: {
-      carapace_thickness: [0.75, 1], spine_density: [0.45, 1], leg_thickness: [0.50, 1],
+      body_mass: [0.75, 1], spikyness: [0.45, 1], leg_thickness: [0.50, 1],
     },
-    locks: ['body_length'], unlocks: ['horn_size'],
+    locks: [], unlocks: ['horn_size'],
     specialty: { key: 'armor_plating', name: 'Armour Plating', mods: { defense: 1.15 } },
     blurb: 'Shell thickened past the point of grace.',
   },
   thorax_goliath: {
     taxon: 'Thorax Goliath', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Titanic', status: 'coded',
-    window: { body_mass: [0.75, 1], leg_thickness: [0.60, 1], body_length: [0.50, 1] },
+    window: { body_mass: [0.75, 1], leg_thickness: [0.60, 1] },
     locks: ['antenna_length'], unlocks: ['leg_count', 'body_segments'],
     specialty: {
       key: 'overwhelming_mass', name: 'Overwhelming Mass',
@@ -329,7 +331,6 @@ export const CLASS_TREE = {
     clade: 'hexapod', adjective: 'Horned', status: 'drafted',
     window: {
       horn_type: 0, horn_size: [0.85, 1], body_mass: [0.70, 1],    // nose (was rhino)
-      carapace_thickness: [0.60, 1],
     },
     locks: ['horn_type'], unlocks: ['horn_size', 'body_mass'],
     specialty: { key: 'leverage', name: 'Leverage', mods: { attack: 1.12 } },
@@ -340,7 +341,7 @@ export const CLASS_TREE = {
     clade: 'hexapod', adjective: 'Antlered', status: 'drafted',
     window: {
       horn_type: 1, mandible_size: [0.80, 1], mandible_serration: [0.5, 1],   // pincer (was stag)
-      carapace_thickness: [0.4, 0.7],
+      body_mass: [0.4, 0.7],
     },
     locks: ['horn_type'], unlocks: ['mandible_size', 'mandible_serration'],
     specialty: { key: 'locking_jaws', name: 'Locking Jaws', mods: { attack: 1.14, attackRate: 0.92 } },
@@ -350,7 +351,7 @@ export const CLASS_TREE = {
     taxon: 'Jewel Beetle', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Radiant', status: 'drafted',
     window: {
-      saturation: [0.80, 1], lightness: [0.55, 0.85], carapace_thickness: [0.3, 0.6],
+      saturation: [0.80, 1], lightness: [0.55, 0.85], body_mass: [0.3, 0.6],
     },
     locks: ['saturation'], unlocks: ['hue', 'lightness'],
     specialty: { key: 'dazzle', name: 'Dazzle', mods: { agility: 1.08, camouflage: 0.88 } },
@@ -370,7 +371,7 @@ export const CLASS_TREE = {
     // [0.55, 1] down to a 0.05-wide slice — legal, but so narrow that nothing
     // would ever breed into it. Widened to a real "moderate armour" band.
     window: {
-      leg_length: [0.34, 0.45], aggression: [0.6, 1], carapace_thickness: [0.55, 0.75],
+      leg_length: [0.34, 0.45], aggression: [0.6, 1], body_mass: [0.55, 0.75],
     },
     locks: [], unlocks: ['leg_length', 'aggression'],
     specialty: { key: 'run_down', name: 'Run Down', mods: { speed: 1.10 } },
@@ -395,7 +396,7 @@ export const CLASS_TREE = {
     taxon: 'Firefly', tier: 1, parent: 'larva', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Glimmering', status: 'drafted',
     window: {
-      wing_count: [2, 4], wing_type: 1, carapace_thickness: [0, 0.35],
+      wing_count: [2, 4], wing_type: 1, body_mass: [0, 0.35],
       pattern_contrast: [0.7, 1],
     },
     locks: [], unlocks: ['pattern_contrast', 'wing_area'],
@@ -406,7 +407,7 @@ export const CLASS_TREE = {
     taxon: 'Ladybird', tier: 2, parent: 'beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Spotted', status: 'drafted',
     window: {
-      carapace_thickness: [0.4, 0.65], pattern_contrast: [0.8, 1], aggression: [0, 0.3],
+      body_mass: [0.4, 0.65], pattern_contrast: [0.8, 1], aggression: [0, 0.3],
     },
     // Spotted: the surface treatments, both of them, on their own genes now.
     locks: ['pattern_contrast'], unlocks: ['pattern_horn', 'pattern_mandible'],
@@ -424,7 +425,7 @@ export const CLASS_TREE = {
     // the thing it was drawn for.
     window: {
       horn_type: 2, horn_size: [0.72, 1], body_width: [0.42, 1],   // y_shaped (was rostrum)
-      carapace_thickness: [0.52, 1],
+      body_mass: [0.52, 1],
     },
     locks: ['horn_type'], unlocks: ['horn_size'],
     specialty: { key: 'boring_snout', name: 'Boring Snout', mods: { attack: 1.06, defense: 1.06 } },
@@ -436,7 +437,7 @@ export const CLASS_TREE = {
     taxon: 'Venom Striker', tier: 2, parent: 'wasp', order: 'Hymenoptera',
     clade: 'hexapod', adjective: 'Envenomed', status: 'coded',
     window: { stinger_size: [0.80, 1], tail_length: [0.60, 1] },
-    locks: ['carapace_thickness'], unlocks: ['aggression'],
+    locks: ['body_mass'], unlocks: ['aggression'],
     specialty: { key: 'concentrated_venom', name: 'Concentrated Venom', mods: { venom: 1.20 } },
     blurb: 'The whole abdomen is a syringe.',
   },
@@ -476,9 +477,9 @@ export const CLASS_TREE = {
       // `foot_size` dropped with the gene. The remaining three are what
       // actually made a scorpion a scorpion — armoured AND venomous at once.
       stinger_size: [0.7, 1], tail_length: [0.6, 1],
-      carapace_thickness: [0.5, 1],
+      body_mass: [0.5, 1],
     },
-    locks: ['tail_length'], unlocks: ['stinger_size', 'carapace_thickness'],
+    locks: ['tail_length'], unlocks: ['stinger_size', 'body_mass'],
     specialty: { key: 'pincer_and_tail', name: 'Pincer and Tail', mods: { venom: 1.12, defense: 1.08 } },
     blurb: 'Armoured and venomous at once, which is rare and unfair.',
   },
@@ -487,15 +488,15 @@ export const CLASS_TREE = {
   centipede: {
     taxon: 'Centipede', tier: 2, parent: 'myriapod', order: 'Myriapoda',
     clade: 'myriapod', adjective: 'Rippling', status: 'coded',
-    window: { spine_density: [0.65, 1], stinger_size: [0.15, 1] },
-    locks: [], unlocks: ['tail_length', 'spine_density'], specialty: null,
+    window: { spikyness: [0.65, 1], stinger_size: [0.15, 1] },
+    locks: [], unlocks: ['tail_length', 'spikyness'], specialty: null,
     blurb: 'Predatory and fast for something with that many legs to coordinate.',
   },
   diplopoda: {
     taxon: 'Millipede', tier: 2, parent: 'myriapod', order: 'Myriapoda',
     clade: 'myriapod', adjective: 'Coiling', status: 'drafted',
-    window: { spine_density: [0.7, 1], stinger_size: [0, 0.1] },
-    locks: ['stinger_size'], unlocks: ['carapace_thickness'],
+    window: { spikyness: [0.7, 1], stinger_size: [0, 0.1] },
+    locks: ['stinger_size'], unlocks: ['body_mass'],
     specialty: { key: 'curl', name: 'Curl', mods: { defense: 1.14, speed: 0.92 } },
     blurb: 'Defence-curl instead of venom. The inverse of a centipede.',
   },
@@ -527,7 +528,7 @@ export const CLASS_TREE = {
   siege_tank_rhinoceros: {
     taxon: 'Siege-Tank Rhinoceros', tier: 3, parent: 'armored_beetle', order: 'Coleoptera',
     clade: 'hexapod', adjective: 'Siege', status: 'coded',
-    window: { carapace_thickness: [0.90, 1], horn_size: [0.80, 1], leg_count: [4, 6] },
+    window: { body_mass: [0.90, 1], horn_size: [0.80, 1], leg_count: [4, 6] },
     locks: [], unlocks: [],
     specialty: {
       key: 'siege_plating', name: 'Siege Plating',

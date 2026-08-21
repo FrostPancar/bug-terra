@@ -106,7 +106,7 @@ test('an unremarkable bug produces very little to say', () => {
 
 test('an extreme bug is loud about the thing it is extreme at', () => {
   const brick = normalizeGenome({
-    carapace_thickness: 1, spine_density: 1, body_mass: 1, body_width: 1,
+    body_mass: 1, spikyness: 1, body_width: 1,
     leg_length: 0.05, leg_count: 6,
   });
   const top = allImpressions(brick)[0];

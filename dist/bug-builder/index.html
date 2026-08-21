@@ -77,6 +77,10 @@ h1,h2,h3{margin:0}
 .note{color:var(--muted);font-size:12.5px;margin:8px 0 0}
 .note b{color:var(--text)}
 
+.statsCard .eyebrow{cursor:pointer;user-select:none}
+.statsCard .eyebrow::after{content:"–";float:right;font-size:13px}
+.statsCard.min .eyebrow::after{content:"+"}
+.statsCard.min .stats{display:none}
 .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:7px 14px}
 .stat{display:grid;grid-template-columns:1fr auto;gap:2px 6px;align-items:center}
 .stat .k{font:700 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -188,11 +192,42 @@ select,input[type=text]{font:700 13px/1 var(--font);padding:9px 10px;border-radi
 .gname{font:700 12px/1 var(--mono);letter-spacing:.02em}
 .gval{font:700 12px/1 var(--mono);color:var(--ink);background:var(--paper-2);
   padding:4px 7px;border-radius:6px;min-width:52px;text-align:right}
-.gene input[type=range]{width:100%;margin:8px 0 2px;accent-color:var(--ink)}
-.drives{font-size:11.5px;color:var(--muted)}
-.drives em{font-style:normal;color:var(--text)}
-.simonly{display:inline-block;font:700 9px/1 var(--mono);letter-spacing:.1em;
-  text-transform:uppercase;background:var(--purple);color:#fff;padding:4px 6px;border-radius:5px}
+/* Sliders: a plain pill track by default, a tapered wedge for anything that
+   adjusts a physical size (thicker toward the high end — a visual echo of
+   what the slider actually does), and a ticked track for anything that snaps
+   to discrete notches rather than gliding continuously. Colour genes swap the
+   flat track for a gradient sampled from the actual palette, so the track
+   itself previews what the slider is about to do. The thumb is always a
+   plain circle; a thick, generously rounded one, same as the track under it. */
+.gene input[type=range]{-webkit-appearance:none;appearance:none;width:100%;
+  margin:12px 0 2px;height:26px;background:none;cursor:pointer}
+.gene input[type=range]::-webkit-slider-runnable-track{height:22px;border-radius:999px;
+  background:var(--paper-2)}
+.gene input[type=range]::-moz-range-track{height:22px;border-radius:999px;background:var(--paper-2)}
+.gene input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:26px;height:26px;border-radius:50%;background:var(--ink);margin-top:-2px;
+  border:3px solid var(--paper);box-shadow:var(--drop-sm)}
+.gene input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;
+  background:var(--ink);border:3px solid var(--paper);box-shadow:var(--drop-sm)}
+/* The wedge: thin end near-round, thick end near-round, tapering between —
+   a rounded-capped trapezoid rather than a sharp-cornered one. Extra points
+   at each end approximate the round instead of cutting a hard vertical edge. */
+.gene input[type=range].sizeSlider::-webkit-slider-runnable-track{
+  clip-path:polygon(5% 30%,95% 4%,98% 6%,100% 12%,100% 88%,98% 94%,95% 96%,5% 70%,2% 66%,0 58%,0 42%,2% 34%)}
+.gene input[type=range].sizeSlider::-moz-range-track{
+  clip-path:polygon(5% 30%,95% 4%,98% 6%,100% 12%,100% 88%,98% 94%,95% 96%,5% 70%,2% 66%,0 58%,0 42%,2% 34%)}
+.gene input[type=range].stepped::-webkit-slider-runnable-track{
+  background-image:repeating-linear-gradient(90deg,var(--ink) 0 3px,var(--paper-2) 3px calc(100%/var(--notches,8)))}
+.gene input[type=range].stepped::-moz-range-track{
+  background-image:repeating-linear-gradient(90deg,var(--ink) 0 3px,var(--paper-2) 3px calc(100%/var(--notches,8)))}
+.gene input[type=range].stepped::-webkit-slider-thumb{box-shadow:0 0 0 3px var(--yellow),var(--drop-sm)}
+.gene input[type=range].stepped::-moz-range-thumb{box-shadow:0 0 0 3px var(--yellow),var(--drop-sm)}
+/* Colour genes: the gradient comes in as an inline style (it depends on the
+   rest of the genome), so these just clear the flat fallback out of the way. */
+.gene input[type=range].colorSlider::-webkit-slider-runnable-track{background:var(--track-bg,var(--paper-2))}
+.gene input[type=range].colorSlider::-moz-range-track{background:var(--track-bg,var(--paper-2))}
+.gene input[type=range].colorSlider::-webkit-slider-thumb{box-shadow:0 0 0 3px var(--paper),var(--drop-sm)}
+.gene input[type=range].colorSlider::-moz-range-thumb{box-shadow:0 0 0 3px var(--paper),var(--drop-sm)}
 
 /* ----------------------------------------------------------------- export */
 pre{margin:10px 0 0;padding:12px;background:var(--ink);color:var(--cream);
@@ -208,10 +243,32 @@ pre b{color:var(--yellow);font-weight:600}
 /* Below the two-column breakpoint the library sits under the preview, so the
    bug scrolls off the moment you start tapping parts. This follows you down. */
 .mini{position:fixed;right:10px;top:10px;width:92px;height:92px;padding:0;z-index:20;
-  border-radius:var(--r-md);background:var(--dirt-deep);box-shadow:var(--drop);overflow:hidden}
-.mini canvas{width:100%;height:100%;display:block}
+  border-radius:var(--r-md);background:var(--dirt-deep);box-shadow:var(--drop);overflow:hidden;
+  touch-action:none;cursor:grab}
+.mini.dragging{opacity:.85}
+.mini canvas{width:100%;height:100%;display:block;pointer-events:none}
 .mini b{position:absolute;left:0;right:0;bottom:0;background:rgba(23,17,13,.62);
-  color:var(--cream);font:700 8.5px/1.9 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+  color:var(--cream);font:700 8.5px/1.9 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  pointer-events:none}
+/* ONE resize grab zone — whichever corner of the box currently faces the
+   centre of the screen (the opposite corner from whatever screen edge the
+   box is snapped against), since that is the only corner a thumb can reach
+   without the hand covering the preview. Flush against the box's own two
+   edges, not inset, and its outer corner takes the SAME radius as the box
+   (`--r-md`) so it reads as a rounded piece of the frame rather than a
+   square patch dropped on top of it. */
+.mini i.corner{position:absolute;width:38px;height:38px;touch-action:none;
+  background:rgba(239,226,201,.24)}
+.mini i.corner::after{content:"";position:absolute;width:14px;height:14px;
+  border:3px solid var(--cream);opacity:.85}
+.mini i.corner[data-corner=tl]{left:0;top:0;border-radius:var(--r-md) 0 0 0}
+.mini i.corner[data-corner=tl]::after{left:9px;top:9px;border-right:0;border-bottom:0;border-top-left-radius:5px}
+.mini i.corner[data-corner=tr]{right:0;top:0;border-radius:0 var(--r-md) 0 0}
+.mini i.corner[data-corner=tr]::after{right:9px;top:9px;border-left:0;border-bottom:0;border-top-right-radius:5px}
+.mini i.corner[data-corner=bl]{left:0;bottom:0;border-radius:0 0 0 var(--r-md)}
+.mini i.corner[data-corner=bl]::after{left:9px;bottom:9px;border-right:0;border-top:0;border-bottom-left-radius:5px}
+.mini i.corner[data-corner=br]{right:0;bottom:0;border-radius:0 0 var(--r-md) 0}
+.mini i.corner[data-corner=br]::after{right:9px;bottom:9px;border-left:0;border-top:0;border-bottom-right-radius:5px}
 @media(min-width:1000px){.mini{display:none!important}}
 </style>
 </head><body>
@@ -236,8 +293,8 @@ pre b{color:var(--yellow);font-weight:600}
       </div>
     </div>
 
-    <div class="card">
-      <div class="eyebrow">Stats — a pure read off the genes</div>
+    <div class="card statsCard" id="statsCard">
+      <div class="eyebrow" id="statsToggle">Stats — a pure read off the genes</div>
       <div class="stats" id="stats"></div>
     </div>
   </section>
@@ -252,7 +309,7 @@ pre b{color:var(--yellow);font-weight:600}
     <div class="deskBottom">
       <div class="tabs" id="tabs">
         <button data-tab="library" aria-pressed="true">Part library</button>
-        <button data-tab="genes" aria-pressed="false">All 57 genes</button>
+        <button data-tab="genes" aria-pressed="false">All 55 genes</button>
         <button data-tab="start" aria-pressed="false">Start from</button>
         <button data-tab="export" aria-pressed="false">Export</button>
       </div>
@@ -263,9 +320,10 @@ pre b{color:var(--yellow);font-weight:600}
   </section>
 </div>
 
-<button class="mini" id="mini" hidden type="button" aria-label="back to the preview">
+<div class="mini" id="mini" hidden role="button" tabindex="0" aria-label="drag to move, tap to jump to the preview">
   <canvas id="miniPreview"></canvas><b id="miniTag">—</b>
-</button>
+  <i class="corner" id="miniCorner" data-corner="bl"></i>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -334,8 +392,16 @@ pre b{color:var(--yellow);font-weight:600}
     // Trunk segments, head NOT counted. Segment 1 is always the thorax; every
     // segment past it is an abdominal segment. 1 therefore means "no abdomen".
     body_segments: { min: 1, max: 10, integer: true, default: 2 },
-    body_length: { min: 0, max: 1, default: 0.53 },
     body_width: { min: 0, max: 1, default: 0.21 },
+    /**
+     * `body_length` IS GONE, and `body_size` is not a gene either — it never
+     * comes back as a stored value. It is a DERIVED coefficient, computed in
+     * morphology() from the width/length of the parts that actually exist
+     * (body_width plus every head/thorax/abdomen axis below): bigger parts,
+     * bigger hidden size. See bodySize() in stats.js. `body_length` used to be
+     * the same idea half-heartedly — a slider claiming to be "size" that no
+     * other gene had to agree with — so it is not migrated, it is replaced.
+     */
     body_mass: { min: 0, max: 1, default: 0.75 },
     /**
      * PER-PART SIZE, TWO AXES EACH. `head_size` and `thorax_ratio` ARE GONE.
@@ -367,13 +433,23 @@ pre b{color:var(--yellow);font-weight:600}
     abdomen_length: { min: 0, max: 1, default: 0.41 },
     abdomen_taper: { min: 0, max: 1, default: 0.51 },
     // 0 round, 1 pointed
-    carapace_thickness: { min: 0, max: 1, default: 0.7 },
+    // `carapace_thickness` IS GONE. `body_mass` replaces it for every purpose it
+    // used to serve — shell volume, defense, health — see morphology() and
+    // computeStats() in stats.js. A separate "how thick is the shell" slider
+    // sitting next to "how heavy is the animal" invited a bug to be armoured
+    // without being heavy, which the density model underneath never actually
+    // supported; one gene now carries both readings honestly.
     /* ---- limbs ---- */
     leg_count: { min: 2, max: 12, integer: true, step: 2, default: 6 },
     leg_length: { min: 0, max: 1, default: 0.47 },
     leg_thickness: { min: 0, max: 1, default: 1 },
     leg_spread: { min: 0, max: 1, default: 0.75 },
-    leg_joints: { min: 1, max: 5, integer: true, default: 2 },
+    // NARROWED 1-5 -> 0/1. A binary "does this leg carry a third joint",
+    // default off. It used to be a count nothing drew (see drawLegs in
+    // bugArt.js — the art was one arc whatever the value), so the middle of the
+    // range was indistinguishable from either end. 1 now draws a real, minimal
+    // extra bend in the leg curve; see LEG_JOINT_KINK in bugArt.js.
+    leg_joints: { min: 0, max: 1, integer: true, default: 0 },
     // `foot_size` IS GONE. It was `claw_size` before that, and by the end it was a
     // slider whose only honest answer was "as big as possible": the foot pad is
     // punctuation at the end of a capsule leg, and every value under the maximum
@@ -445,8 +521,10 @@ pre b{color:var(--yellow);font-weight:600}
     // Discrete 3-level detail on the horn — the sketch's "0 SR / 1 SR / 2 SR".
     // Integer like leg_joints/body_segments, NOT a continuous 0–1 gene.
     horn_serration: { min: 0, max: 2, integer: true, default: 0 },
-    spine_density: { min: 0, max: 1, default: 0.44 },
-    // defensive spikes
+    // `spine_density` IS GONE — it fed defense and nothing else, with no art of
+    // its own (see the old `spines` part note in partLibrary.js). Its defense
+    // role folded into `body_mass`; its classification role (Centipede,
+    // Millipede) moved to `spikyness`, which is the same idea WITH art behind it.
     tail_length: { min: 0, max: 1, default: 0 },
     // cerci / metasoma
     stinger_size: { min: 0, max: 1, default: 0 },
@@ -586,7 +664,13 @@ pre b{color:var(--yellow);font-weight:600}
     // was a camouflage penalty attached to an invisible finish, so it went too:
     // out of GENE_SPECS, out of the archetype bias vectors, out of the camouflage
     // formula in stats.js, and out of classification's surface axis.
-    translucency: { min: 0, max: 1, default: 0.13 }
+    translucency: { min: 0, max: 1, default: 0.13 },
+    // A short, rounded spike off the left AND right of every trunk segment —
+    // thorax, each abdominal segment, each myriapod ring. Same flat fill and
+    // same colour mix as the segment it grows from (see drawSegmentSpikes in
+    // bugArt.js) — it is read as part of the shell, not a separate part painted
+    // on top. Default 0: opt-in, so an untouched genome is unchanged.
+    spikyness: { min: 0, max: 1, default: 0 }
   };
   var GENE_ORDER = Object.keys(GENE_SPECS);
   function clampGene(name, value) {
@@ -674,10 +758,8 @@ pre b{color:var(--yellow);font-weight:600}
       spread: 0.1,
       bias: {
         body_segments: 2,
-        body_length: 0.5,
         body_width: 0.72,
         body_mass: 0.8,
-        carapace_thickness: 0.88,
         head_width: 0.343,
         head_length: 0.343,
         thorax_width: 0.494,
@@ -688,7 +770,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_count: 6,
         leg_length: 0.28,
         leg_thickness: 0.72,
-        leg_joints: 3,
+        leg_joints: 1,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.2,
@@ -700,7 +782,7 @@ pre b{color:var(--yellow);font-weight:600}
         eye_type: 1,
         mandible_type: 0,
         crown_mark_style: 1,
-        spine_density: 0.3,
+        spikyness: 0.3,
         tail_length: 0.1,
         stinger_size: 0.02,
         eye_count: 2,
@@ -721,10 +803,8 @@ pre b{color:var(--yellow);font-weight:600}
       spread: 0.1,
       bias: {
         body_segments: 2,
-        body_length: 0.62,
         body_width: 0.24,
         body_mass: 0.18,
-        carapace_thickness: 0.18,
         head_width: 0.363,
         head_length: 0.363,
         thorax_width: 0.431,
@@ -735,7 +815,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_count: 6,
         leg_length: 0.55,
         leg_thickness: 0.22,
-        leg_joints: 3,
+        leg_joints: 1,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.8,
@@ -752,7 +832,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 4,
         eye_type: 0,
         mandible_type: 2,
-        spine_density: 0.1,
+        spikyness: 0.1,
         tail_length: 0.55,
         stinger_size: 0.9,
         eye_count: 2,
@@ -781,10 +861,8 @@ pre b{color:var(--yellow);font-weight:600}
       spread: 0.06,
       bias: {
         body_segments: 2,
-        body_length: 0.42,
         body_width: 0.62,
         body_mass: 0.35,
-        carapace_thickness: 0.32,
         head_width: 0.262,
         head_length: 0.262,
         thorax_width: 0.369,
@@ -795,7 +873,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_count: 8,
         leg_length: 0.92,
         leg_thickness: 0.28,
-        leg_joints: 3,
+        leg_joints: 1,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -807,7 +885,7 @@ pre b{color:var(--yellow);font-weight:600}
         eye_type: 1,
         mandible_type: 2,
         crown_mark_style: 2,
-        spine_density: 0.25,
+        spikyness: 0.25,
         tail_length: 0.15,
         stinger_size: 0.55,
         eye_count: 8,
@@ -828,10 +906,8 @@ pre b{color:var(--yellow);font-weight:600}
       spread: 0.11,
       bias: {
         body_segments: 3,
-        body_length: 0.68,
         body_width: 0.5,
         body_mass: 0.3,
-        carapace_thickness: 0.4,
         head_width: 0.228,
         head_length: 0.228,
         thorax_width: 0.4,
@@ -842,7 +918,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_count: 6,
         leg_length: 0.62,
         leg_thickness: 0.35,
-        leg_joints: 3,
+        leg_joints: 1,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.35,
@@ -853,7 +929,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 3,
         eye_type: 2,
         mandible_type: 2,
-        spine_density: 0.45,
+        spikyness: 0.45,
         tail_length: 0.45,
         stinger_size: 0.05,
         eye_count: 2,
@@ -876,10 +952,8 @@ pre b{color:var(--yellow);font-weight:600}
       spread: 0.1,
       bias: {
         body_segments: 3,
-        body_length: 0.92,
         body_width: 0.26,
         body_mass: 0.32,
-        carapace_thickness: 0.28,
         head_width: 0.316,
         head_length: 0.316,
         thorax_width: 0.62,
@@ -893,7 +967,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_count: 6,
         leg_length: 0.78,
         leg_thickness: 0.32,
-        leg_joints: 3,
+        leg_joints: 1,
         leg_spread: 0.88,
         wing_count: 2,
         wing_type: 0,
@@ -911,7 +985,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 3,
         eye_type: 0,
         mandible_type: 2,
-        spine_density: 0.55,
+        spikyness: 0.55,
         tail_length: 0.25,
         stinger_size: 0.05,
         eye_count: 2,
@@ -933,10 +1007,8 @@ pre b{color:var(--yellow);font-weight:600}
       spread: 0.11,
       bias: {
         body_segments: 2,
-        body_length: 0.45,
         body_width: 0.45,
         body_mass: 0.15,
-        carapace_thickness: 0.1,
         head_width: 0.275,
         head_length: 0.275,
         thorax_width: 0.463,
@@ -947,7 +1019,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_count: 6,
         leg_length: 0.38,
         leg_thickness: 0.2,
-        leg_joints: 2,
+        leg_joints: 0,
         wing_count: 4,
         wing_type: 0,
         wing_area: 0.98,
@@ -964,7 +1036,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 4,
         eye_type: 2,
         mandible_type: 2,
-        spine_density: 0.05,
+        spikyness: 0.05,
         tail_length: 0.2,
         stinger_size: 0.02,
         eye_count: 2,
@@ -986,10 +1058,8 @@ pre b{color:var(--yellow);font-weight:600}
       spread: 0.1,
       bias: {
         body_segments: 8,
-        body_length: 0.98,
         body_width: 0.2,
         body_mass: 0.28,
-        carapace_thickness: 0.22,
         head_width: 0.208,
         head_length: 0.208,
         thorax_width: 0.337,
@@ -1000,7 +1070,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_count: 10,
         leg_length: 0.48,
         leg_thickness: 0.18,
-        leg_joints: 2,
+        leg_joints: 0,
         wing_count: 0,
         wing_type: 0,
         wing_area: 0,
@@ -1011,7 +1081,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 1,
         eye_type: 2,
         mandible_type: 1,
-        spine_density: 0.8,
+        spikyness: 0.8,
         tail_length: 0.75,
         stinger_size: 0.65,
         eye_count: 4,
@@ -1032,11 +1102,12 @@ pre b{color:var(--yellow);font-weight:600}
       blurb: "Small, round, absurdly long snout. Tanky for its size and hard to spot.",
       spread: 0.11,
       bias: {
+        // body_mass raised 0.55 -> 0.75: it now also carries the Weevil window's
+        // old carapace_thickness floor (>= 0.52), and 0.55 sat too close to that
+        // floor for an 11%-spread jitter to reliably clear it.
         body_segments: 2,
-        body_length: 0.3,
         body_width: 0.58,
-        body_mass: 0.55,
-        carapace_thickness: 0.7,
+        body_mass: 0.75,
         head_width: 0.262,
         head_length: 0.262,
         thorax_width: 0.4,
@@ -1047,7 +1118,7 @@ pre b{color:var(--yellow);font-weight:600}
         leg_count: 6,
         leg_length: 0.3,
         leg_thickness: 0.45,
-        leg_joints: 2,
+        leg_joints: 0,
         wing_count: 2,
         wing_type: 1,
         wing_area: 0.15,
@@ -1058,7 +1129,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_type: 2,
         eye_type: 1,
         mandible_type: 2,
-        spine_density: 0.35,
+        spikyness: 0.35,
         tail_length: 0.08,
         stinger_size: 0.02,
         eye_count: 2,
@@ -1155,6 +1226,18 @@ pre b{color:var(--yellow);font-weight:600}
   var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   var clamp01 = (v) => clamp(v, 0, 1);
   var sig = (x, k = 6) => 1 / (1 + Math.exp(-k * (clamp01(x) - 0.5)));
+  function bodySize(g) {
+    const axes = [
+      g.body_width,
+      g.head_width,
+      g.head_length,
+      g.thorax_width,
+      g.thorax_length,
+      g.abdomen_width,
+      g.abdomen_length
+    ];
+    return clamp01(axes.reduce((a, v) => a + v, 0) / axes.length);
+  }
   function morphology(g) {
     const segments = g.body_segments;
     const bodyLen = 0.7 + 0.62 * Math.pow(Math.max(0, segments - 1), 0.75);
@@ -1162,8 +1245,10 @@ pre b{color:var(--yellow);font-weight:600}
     const width = 0.18 + g.body_width * 1.32;
     const taper = 1 - 0.28 * g.abdomen_taper;
     const volume = bodyLen * width * width * taper;
-    const shellVolume = volume * (0.05 + g.carapace_thickness * 0.45);
-    const density = 0.5 + g.body_mass * 1.1;
+    const size = bodySize(g);
+    const massStat = clamp01(0.75 * g.body_mass + 0.25 * size);
+    const shellVolume = volume * (0.05 + massStat * 0.45);
+    const density = 0.5 + massStat * 1.1;
     const mass = volume * density + shellVolume * 1.4;
     const legLen = (0.3 + g.leg_length * 1.7) * length;
     const legs = g.leg_count;
@@ -1186,25 +1271,27 @@ pre b{color:var(--yellow);font-weight:600}
       wingLoad,
       totalWing,
       segments,
-      taper
+      taper,
+      size,
+      massStat
     };
   }
   var FOOT_GRIP = 0.165;
   var FOOT_ATTACK = 0.045;
   function computeStats(g) {
     const m = morphology(g);
-    const grip = clamp(100 * sig(FOOT_GRIP + 0.25 * (m.joints - 2) + 0.2 * g.leg_thickness, 5), 1, 100);
+    const grip = clamp(100 * sig(FOOT_GRIP + 0.3 * m.joints + 0.2 * g.leg_thickness, 5), 1, 100);
     const stride = m.legLen * (0.55 + 0.45 * Math.log2(m.legs) / Math.log2(10));
     const cadence = 1 / (0.35 + m.strideLoad * 0.55);
     const speed = clamp(stride * cadence * 19 * (0.82 + grip / 100 * 0.3), 1, 100);
     const agility = clamp(
-      100 * sig(0.55 * (1 - g.body_length) + 0.25 * g.leg_spread + 0.2 * (1 - g.body_mass), 5.5) * (0.6 + 0.4 * (1 - clamp01(g.carapace_thickness))),
+      100 * sig(0.55 * (1 - m.size) + 0.25 * g.leg_spread + 0.2 * (1 - m.massStat), 5.5) * (0.6 + 0.4 * (1 - m.massStat)),
       1,
       100
     );
     const coverage = m.shellVolume / (m.volume * 0.5 + 0.4);
     const defense = clamp(
-      100 * sig(coverage * 0.9 + g.carapace_thickness * 0.45 + g.spine_density * 0.35, 5),
+      100 * sig(coverage * 0.9 + m.massStat * 0.7, 5),
       1,
       100
     );
@@ -1217,9 +1304,9 @@ pre b{color:var(--yellow);font-weight:600}
       100
     );
     const venom = g.stinger_size < 0.08 ? 0 : clamp(100 * sig(g.stinger_size * 0.85 + g.tail_length * 0.35, 5), 0, 100);
-    const attackRate = clamp(2.4 - g.mandible_size * 1.35 + (1 - g.body_mass) * 0.35, 0.45, 2.6);
+    const attackRate = clamp(2.4 - g.mandible_size * 1.35 + (1 - m.massStat) * 0.35, 0.45, 2.6);
     const health = clamp(
-      30 + m.volume * 26 + g.carapace_thickness * 34 + (m.segments - 2) * 5,
+      30 + m.volume * 26 + m.massStat * 34 + (m.segments - 2) * 5,
       10,
       100
     );
@@ -1445,13 +1532,13 @@ pre b{color:var(--yellow);font-weight:600}
       // constrain the same gene in opposite directions, so a lineage crossing
       // between them must pass through a stretch of gene-space satisfying neither.
       window: {
-        carapace_thickness: [0.55, 1],
+        body_mass: [0.55, 1],
         horn_size: [0.5, 1],
         leg_length: [0, 0.45],
         wing_area: [0, 0.35]
       },
       locks: ["wing_area", "wing_beat"],
-      unlocks: ["spine_density", "leg_thickness"],
+      unlocks: ["spikyness", "leg_thickness"],
       specialty: null,
       blurb: "Shell first. Short legs, heavy front end, wings kept folded away."
     },
@@ -1463,8 +1550,8 @@ pre b{color:var(--yellow);font-weight:600}
       clade: "hexapod",
       adjective: "Venom",
       status: "coded",
-      window: { wing_count: 4, stinger_size: [0.6, 1], carapace_thickness: [0, 0.3] },
-      locks: ["carapace_thickness", "body_mass"],
+      window: { wing_count: 4, stinger_size: [0.6, 1], body_mass: [0, 0.3] },
+      locks: ["body_mass"],
       unlocks: ["wing_beat", "tail_length"],
       specialty: null,
       blurb: "Four wings and a delivery system. Nothing spare anywhere else."
@@ -1495,8 +1582,10 @@ pre b{color:var(--yellow);font-weight:600}
       status: "coded",
       // `foot_size` is gone (every bug now wears the maximum pad), so the reach
       // this window was really describing is stated with the two genes that still
-      // carry it: a long body on long legs, held in a wide stance.
-      window: { leg_spread: [0.7, 1], body_length: [0.75, 1], leg_length: [0.6, 1] },
+      // carry it: a wide stance on long legs. `body_length` is gone too — it was
+      // a stat-only slider, never a real body dimension — so the window no
+      // longer asks for it.
+      window: { leg_spread: [0.7, 1], leg_length: [0.6, 1] },
       locks: [],
       unlocks: ["leg_spread"],
       specialty: null,
@@ -1572,7 +1661,7 @@ pre b{color:var(--yellow);font-weight:600}
         // y_shaped (was rostrum)
         horn_size: [0.35, 0.78],
         mandible_size: [0, 0.3],
-        carapace_thickness: [0.25, 0.65]
+        body_mass: [0.25, 0.65]
       },
       locks: ["horn_type"],
       unlocks: ["horn_size"],
@@ -1590,8 +1679,7 @@ pre b{color:var(--yellow);font-weight:600}
       window: {
         leg_length: [0.7, 1],
         leg_thickness: [0.55, 1],
-        antenna_length: [0.45, 1],
-        body_length: [0.45, 1]
+        antenna_length: [0.45, 1]
       },
       locks: [],
       unlocks: ["leg_thickness", "leg_spread"],
@@ -1645,11 +1733,11 @@ pre b{color:var(--yellow);font-weight:600}
       adjective: "Ironclad",
       status: "coded",
       window: {
-        carapace_thickness: [0.75, 1],
-        spine_density: [0.45, 1],
+        body_mass: [0.75, 1],
+        spikyness: [0.45, 1],
         leg_thickness: [0.5, 1]
       },
-      locks: ["body_length"],
+      locks: [],
       unlocks: ["horn_size"],
       specialty: { key: "armor_plating", name: "Armour Plating", mods: { defense: 1.15 } },
       blurb: "Shell thickened past the point of grace."
@@ -1662,7 +1750,7 @@ pre b{color:var(--yellow);font-weight:600}
       clade: "hexapod",
       adjective: "Titanic",
       status: "coded",
-      window: { body_mass: [0.75, 1], leg_thickness: [0.6, 1], body_length: [0.5, 1] },
+      window: { body_mass: [0.75, 1], leg_thickness: [0.6, 1] },
       locks: ["antenna_length"],
       unlocks: ["leg_count", "body_segments"],
       specialty: {
@@ -1683,9 +1771,8 @@ pre b{color:var(--yellow);font-weight:600}
       window: {
         horn_type: 0,
         horn_size: [0.85, 1],
-        body_mass: [0.7, 1],
+        body_mass: [0.7, 1]
         // nose (was rhino)
-        carapace_thickness: [0.6, 1]
       },
       locks: ["horn_type"],
       unlocks: ["horn_size", "body_mass"],
@@ -1705,7 +1792,7 @@ pre b{color:var(--yellow);font-weight:600}
         mandible_size: [0.8, 1],
         mandible_serration: [0.5, 1],
         // pincer (was stag)
-        carapace_thickness: [0.4, 0.7]
+        body_mass: [0.4, 0.7]
       },
       locks: ["horn_type"],
       unlocks: ["mandible_size", "mandible_serration"],
@@ -1723,7 +1810,7 @@ pre b{color:var(--yellow);font-weight:600}
       window: {
         saturation: [0.8, 1],
         lightness: [0.55, 0.85],
-        carapace_thickness: [0.3, 0.6]
+        body_mass: [0.3, 0.6]
       },
       locks: ["saturation"],
       unlocks: ["hue", "lightness"],
@@ -1751,7 +1838,7 @@ pre b{color:var(--yellow);font-weight:600}
       window: {
         leg_length: [0.34, 0.45],
         aggression: [0.6, 1],
-        carapace_thickness: [0.55, 0.75]
+        body_mass: [0.55, 0.75]
       },
       locks: [],
       unlocks: ["leg_length", "aggression"],
@@ -1784,7 +1871,7 @@ pre b{color:var(--yellow);font-weight:600}
       window: {
         wing_count: [2, 4],
         wing_type: 1,
-        carapace_thickness: [0, 0.35],
+        body_mass: [0, 0.35],
         pattern_contrast: [0.7, 1]
       },
       locks: [],
@@ -1801,7 +1888,7 @@ pre b{color:var(--yellow);font-weight:600}
       adjective: "Spotted",
       status: "drafted",
       window: {
-        carapace_thickness: [0.4, 0.65],
+        body_mass: [0.4, 0.65],
         pattern_contrast: [0.8, 1],
         aggression: [0, 0.3]
       },
@@ -1830,7 +1917,7 @@ pre b{color:var(--yellow);font-weight:600}
         horn_size: [0.72, 1],
         body_width: [0.42, 1],
         // y_shaped (was rostrum)
-        carapace_thickness: [0.52, 1]
+        body_mass: [0.52, 1]
       },
       locks: ["horn_type"],
       unlocks: ["horn_size"],
@@ -1847,7 +1934,7 @@ pre b{color:var(--yellow);font-weight:600}
       adjective: "Envenomed",
       status: "coded",
       window: { stinger_size: [0.8, 1], tail_length: [0.6, 1] },
-      locks: ["carapace_thickness"],
+      locks: ["body_mass"],
       unlocks: ["aggression"],
       specialty: { key: "concentrated_venom", name: "Concentrated Venom", mods: { venom: 1.2 } },
       blurb: "The whole abdomen is a syringe."
@@ -1914,10 +2001,10 @@ pre b{color:var(--yellow);font-weight:600}
         // actually made a scorpion a scorpion — armoured AND venomous at once.
         stinger_size: [0.7, 1],
         tail_length: [0.6, 1],
-        carapace_thickness: [0.5, 1]
+        body_mass: [0.5, 1]
       },
       locks: ["tail_length"],
-      unlocks: ["stinger_size", "carapace_thickness"],
+      unlocks: ["stinger_size", "body_mass"],
       specialty: { key: "pincer_and_tail", name: "Pincer and Tail", mods: { venom: 1.12, defense: 1.08 } },
       blurb: "Armoured and venomous at once, which is rare and unfair."
     },
@@ -1930,9 +2017,9 @@ pre b{color:var(--yellow);font-weight:600}
       clade: "myriapod",
       adjective: "Rippling",
       status: "coded",
-      window: { spine_density: [0.65, 1], stinger_size: [0.15, 1] },
+      window: { spikyness: [0.65, 1], stinger_size: [0.15, 1] },
       locks: [],
-      unlocks: ["tail_length", "spine_density"],
+      unlocks: ["tail_length", "spikyness"],
       specialty: null,
       blurb: "Predatory and fast for something with that many legs to coordinate."
     },
@@ -1944,9 +2031,9 @@ pre b{color:var(--yellow);font-weight:600}
       clade: "myriapod",
       adjective: "Coiling",
       status: "drafted",
-      window: { spine_density: [0.7, 1], stinger_size: [0, 0.1] },
+      window: { spikyness: [0.7, 1], stinger_size: [0, 0.1] },
       locks: ["stinger_size"],
-      unlocks: ["carapace_thickness"],
+      unlocks: ["body_mass"],
       specialty: { key: "curl", name: "Curl", mods: { defense: 1.14, speed: 0.92 } },
       blurb: "Defence-curl instead of venom. The inverse of a centipede."
     },
@@ -1990,7 +2077,7 @@ pre b{color:var(--yellow);font-weight:600}
       clade: "hexapod",
       adjective: "Siege",
       status: "coded",
-      window: { carapace_thickness: [0.9, 1], horn_size: [0.8, 1], leg_count: [4, 6] },
+      window: { body_mass: [0.9, 1], horn_size: [0.8, 1], leg_count: [4, 6] },
       locks: [],
       unlocks: [],
       specialty: {
@@ -2285,7 +2372,7 @@ pre b{color:var(--yellow);font-weight:600}
     }
     return g;
   }
-  function buildForTaxon(taxonId, { seed = 7 } = {}) {
+  function buildForTaxon(taxonId, { seed = 1 } = {}) {
     const node = CLASS_TREE[taxonId];
     if (!node) throw new Error(`unknown taxon: ${taxonId}`);
     const { window, conflicts, sources } = mergedWindow(taxonId);
@@ -2496,6 +2583,10 @@ pre b{color:var(--yellow);font-weight:600}
       shellClear: hsl(h, s, l, 0),
       seam: hsl(h, s * 1.05, Math.max(0.16, l - 0.2)),
       seamClear: hsl(h, s * 1.05, Math.max(0.16, l - 0.2), 0),
+      // The translucency border — same deep tone as the seam, at a low, fixed
+      // alpha, so it reads as a thin, less-opaque edge rather than an outline.
+      // See TRANSLUCENT_BORDER_ALPHA/THRESHOLD.
+      segBorder: hsl(h, s * 1.05, Math.max(0.16, l - 0.2), TRANSLUCENT_BORDER_ALPHA),
       limb: inkLimbs ? "#17161c" : hsl(h, s * 0.92, Math.max(0.24, l - 0.16)),
       limbLo: inkLimbs ? "#0e0d11" : hsl(h, s * 0.95, Math.max(0.18, l - 0.24)),
       accent: hsl(accentH, 0.72, 0.6),
@@ -2697,7 +2788,8 @@ pre b{color:var(--yellow);font-weight:600}
           // per-leg to carry here any more — `footSize` is gone with its gene.
           len: len * lerp(1.05, 0.92, t),
           w,
-          fan
+          fan,
+          joints: g.leg_joints
         }));
       }
     }
@@ -3074,20 +3166,14 @@ pre b{color:var(--yellow);font-weight:600}
     });
     return { knee: rel(leg.knee), foot: rel(leg.foot) };
   }
+  var LEG_JOINT_KINK = 0.22;
   function drawLegs(ctx, L, col, phase) {
     for (const leg of L.legs) {
       const { knee, foot } = poseLeg(leg, phase);
-      capsule(
-        ctx,
-        leg.attach.x,
-        leg.attach.y,
-        lerp(leg.attach.x, foot.x, 0.3),
-        lerp(knee.y, foot.y, 0.18),
-        foot.x,
-        foot.y,
-        leg.w,
-        col.limb
-      );
+      const kink = leg.joints >= 1 ? LEG_JOINT_KINK : 0;
+      const cx = lerp(leg.attach.x, foot.x, 0.3 + kink);
+      const cy = lerp(knee.y, foot.y, 0.18 - kink * 0.5);
+      capsule(ctx, leg.attach.x, leg.attach.y, cx, cy, foot.x, foot.y, leg.w, col.limb);
       const fr = leg.w * FOOT_PAD_R;
       fillEllipse(ctx, foot.x, foot.y, fr, fr, col.limb);
     }
@@ -3412,7 +3498,37 @@ pre b{color:var(--yellow);font-weight:600}
   var BLOB_R = 0.88;
   var ABDOMEN_BLOB_SKEW = -0.3;
   var CENTRELINE_RATIO = 1.18;
-  function segmentMass(ctx, p, col, crease = false) {
+  var SPIKE_MIN = 0.02;
+  var SPIKE_LEN = [0.18, 0.52];
+  var SPIKE_BASE = [0.16, 0.26];
+  var TRANSLUCENT_BORDER_THRESHOLD = 0.55;
+  var TRANSLUCENT_BORDER_ALPHA = 0.35;
+  function drawOneSpike(ctx, x, baseY, tipY, halfBase, col, translucent) {
+    ctx.beginPath();
+    ctx.moveTo(x - halfBase, baseY);
+    ctx.quadraticCurveTo(x, tipY, x + halfBase, baseY);
+    ctx.closePath();
+    ctx.fillStyle = col.shell;
+    ctx.fill();
+    if (translucent) {
+      ctx.lineWidth = Math.max(0.6, halfBase * 0.28);
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = col.segBorder;
+      ctx.stroke();
+    }
+  }
+  function drawSegmentSpikes(ctx, p, col, spiky, translucent) {
+    if (!(spiky > SPIKE_MIN)) return;
+    const rx = Math.max(0.5, p.rx);
+    const ry = Math.max(0.5, p.ry);
+    const len = ry * lerp(SPIKE_LEN[0], SPIKE_LEN[1], spiky);
+    const halfBase = rx * lerp(SPIKE_BASE[0], SPIKE_BASE[1], spiky);
+    for (const side of [-1, 1]) {
+      const baseY = p.y + side * ry * 0.92;
+      drawOneSpike(ctx, p.x, baseY, baseY + side * len, halfBase, col, translucent);
+    }
+  }
+  function segmentMass(ctx, p, col, crease = false, spiky = 0, translucent = false) {
     const rx = Math.max(0.5, p.rx);
     const ry = Math.max(0.5, p.ry);
     ctx.save();
@@ -3438,6 +3554,16 @@ pre b{color:var(--yellow);font-weight:600}
     }
     ctx.restore();
     segmentCentreline(ctx, p, col, rx, ry, crease);
+    drawSegmentSpikes(ctx, p, col, spiky, translucent);
+    if (translucent) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU);
+      ctx.lineWidth = Math.max(0.6, Math.min(rx, ry) * 0.045);
+      ctx.strokeStyle = col.segBorder;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
   var CREASE_HALF_L = 0.8;
   var CREASE_HALO_W = 0.085;
@@ -3547,6 +3673,7 @@ pre b{color:var(--yellow);font-weight:600}
     const patMandible = surfacePattern(g, col, "mandible");
     const breathe = state === "idle" ? 1 + Math.sin(phase * TAU) * 0.018 : 1;
     const lunge = state === "attack" ? Math.sin(Math.min(1, phase) * Math.PI) : 0;
+    const translucentSegments = g.translucency >= TRANSLUCENT_BORDER_THRESHOLD;
     ctx.save();
     ctx.rotate(-Math.PI / 2);
     ctx.translate(lunge * L.unit * 0.12, 0);
@@ -3567,11 +3694,11 @@ pre b{color:var(--yellow);font-weight:600}
     const trunk = L.parts.filter((p) => p !== L.thorax);
     const drawTrunkAbdomen = () => {
       const creased = L.wingType === "elytra" ? null : L.abdomen;
-      for (const p of trunk) segmentMass(ctx, p, col, p === creased);
+      for (const p of trunk) segmentMass(ctx, p, col, p === creased, g.spikyness, translucentSegments);
       drawElytra(ctx, L, col);
     };
     const drawTrunkThorax = () => {
-      segmentMass(ctx, L.thorax, col);
+      segmentMass(ctx, L.thorax, col, false, g.spikyness, translucentSegments);
     };
     if (L.wingPairs > 0) {
       drawTrunkAbdomen();
@@ -3761,7 +3888,7 @@ pre b{color:var(--yellow);font-weight:600}
         { gene: "leg_length", effect: "reach, 0.55\u20131.85 of the body unit (halved on myriapods)" },
         { gene: "leg_thickness", effect: "capsule width, 2.2px floor so it never reads as hair" },
         { gene: "leg_spread", effect: "how far the fan splays front to back" },
-        { gene: "leg_joints", effect: "grip and speed \u2014 the art draws one arc either way", art: false }
+        { gene: "leg_joints", effect: "1 adds a slightly sharper, minimally rounded bend at the knee, and a small grip bonus" }
       ]
     },
     {
@@ -3921,17 +4048,18 @@ pre b{color:var(--yellow);font-weight:600}
       ]
     },
     {
-      id: "spines",
-      group: "weapons",
-      name: "Defensive spines",
-      blurb: "Feeds defense and the Centipede and Millipede windows. The renderer has no art for it yet.",
-      art: false,
-      gate: "never drawn \u2014 spine_density reaches stats and classification only",
-      present: (g) => g.spine_density >= 0.45,
-      on: { spine_density: 0.8 },
-      off: { spine_density: 0.1 },
+      id: "spikes",
+      group: "body",
+      name: "Segment spikes",
+      blurb: "A short, rounded spike off the left and right of every trunk segment \u2014 thorax, each abdominal segment, each myriapod ring \u2014 in the segment's own flat colour. `spine_density` is gone; this is its replacement, and it actually draws.",
+      drawnBy: "segmentMass() \u2192 drawSegmentSpikes()",
+      gate: "spikyness > 0.02",
+      present: (g) => g.spikyness > 0.02,
+      on: { spikyness: 0.7 },
+      off: { spikyness: 0 },
       genes: [
-        { gene: "spine_density", effect: "raises defense; required \u2265 0.65 for Centipede, \u2265 0.70 for Millipede", art: false }
+        { gene: "spikyness", effect: "length and base width of the spike pair on every trunk segment; also required \u2265 0.65 for Centipede, \u2265 0.70 for Millipede" },
+        { gene: "translucency", effect: "above 0.55, every segment and its spikes gain a faint thin border" }
       ]
     },
     /* ------------------------------------------------------------- sensory -- */
@@ -4105,7 +4233,7 @@ pre b{color:var(--yellow);font-weight:600}
   var FOCUS = {
     plan: null,
     colour: null,
-    spines: null,
+    spikes: { zoom: 1.45, y: -0.1 },
     abdomen: { zoom: 1.45, y: -0.26 },
     thorax: { zoom: 2, y: 0.02 },
     head: { zoom: 2.4, y: 0.46 },
@@ -4172,14 +4300,9 @@ pre b{color:var(--yellow);font-weight:600}
     return applyPatch(genome, patch);
   }
   var SIM_ONLY = {
-    body_length: "no longer shapes the bug at all \u2014 the trunk is built from body_segments. It survives as an agility input only.",
-    body_mass: "density \u2192 mass. Raises attack, drags speed and agility, slows recovery.",
-    carapace_thickness: "the single biggest defense input, and it costs agility.",
-    leg_joints: "a third joint improves grip, which gates speed.",
-    spine_density: "adds to defense. Required by the Centipede and Millipede windows.",
+    body_mass: "density \u2192 mass. Raises attack, drags speed and agility, slows recovery, and \u2014 since carapace_thickness is gone \u2014 replaces it as the defense/health/shell input too. Blended a minority share (up to 25%) with the derived body-size coefficient; the raw gene itself never touches rendering.",
     metabolism: "burn rate: high recovery, low stamina.",
-    aggression: "biases the AI state machine only. It is not a combat stat.",
-    translucency: "helps camouflage. The renderer does not draw see-through cuticle yet."
+    aggression: "biases the AI state machine only. It is not a combat stat."
   };
   var GENE_INFO = (() => {
     const map = {};
@@ -4253,7 +4376,7 @@ if (!M) try {
 const {
   GENE_SPECS, GENE_ORDER, normalizeGenome, clampGene, randomGenome, genomeId, genomeName,
   ARCHETYPES, genomeFromArchetype, computeStats, classify, CLASS_TREE,
-  CLADE_LABEL, TRAITS, buildForTaxon, TAXON_MENU, drawBug, layout, bodyPlan,
+  CLADE_LABEL, TRAITS, buildForTaxon, TAXON_MENU, drawBug, layout, bodyPlan, palette,
   PARTS, PART_GROUPS, partById, partsInGroup, isPresent, addPart, removePart,
   setVariant, variantOf, applyPatch, GENE_INFO, isSimOnly, makeRng,
 } = M;
@@ -4282,7 +4405,7 @@ const push = (next) => {
 
 /* ------------------------------------------------- share codes in the URL */
 
-// One byte per gene over its own range, in GENE_ORDER — 57 genes, base64-encoded.
+// One byte per gene over its own range, in GENE_ORDER — 55 genes, base64-encoded.
 function encodeGenome(g) {
   const bytes = GENE_ORDER.map((k) => {
     const s = GENE_SPECS[k];
@@ -4345,15 +4468,164 @@ requestAnimationFrame(frame);
 const bugbox = document.querySelector('.bugbox');
 function syncMini() { mini.hidden = bugbox.getBoundingClientRect().bottom > 60; }
 addEventListener('scroll', syncMini, { passive: true });
-addEventListener('resize', syncMini);
 syncMini();
 
-mini.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+/* -------------------------------------------------- mini preview: drag/resize */
+
+/**
+ * On mobile the pinned mini preview used to be a plain fixed-position button:
+ * top-right, one size, tap to jump back to the stage. It now moves by
+ * dragging its centre and resizes by dragging a corner, and a drag that
+ * actually moved something snaps the box flush to whichever screen corner it
+ * ends up nearest — a tap that never moved still jumps to the stage, same as
+ * before.
+ */
+const MINI_MARGIN = 10;
+const MINI_MIN = 64, MINI_MAX = 220;
+let miniSize = { w: 92, h: 92 };
+let miniPos = null;      // null = let the CSS default (top-right) hold
+let activeCorner = 'bl'; // the box's own corner facing the screen centre —
+                          // opposite whichever screen edge it's snapped to;
+                          // 'bl' matches the CSS default (screen top-right)
+const miniCorner = document.getElementById('miniCorner');
+
+function placeMini() {
+  mini.style.width = miniSize.w + 'px';
+  mini.style.height = miniSize.h + 'px';
+  if (!miniPos) return;
+  mini.style.left = miniPos.left + 'px';
+  mini.style.top = miniPos.top + 'px';
+  mini.style.right = 'auto';
+}
+
+/**
+ * Snap {left,top} to whichever of the four viewport corners is nearest, and
+ * point the resize handle at the corner of the BOX that now faces the
+ * screen's centre — the only one a thumb can reach without covering the
+ * preview itself. The other three corners get no handle at all.
+ */
+function nearestMiniCorner(left, top) {
+  const cx = left + miniSize.w / 2, cy = top + miniSize.h / 2;
+  const right = cx > innerWidth / 2, bottom = cy > innerHeight / 2;
+  activeCorner = (bottom ? 't' : 'b') + (right ? 'l' : 'r');
+  miniCorner.dataset.corner = activeCorner;
+  return {
+    left: right ? innerWidth - miniSize.w - MINI_MARGIN : MINI_MARGIN,
+    top: bottom ? innerHeight - miniSize.h - MINI_MARGIN : MINI_MARGIN,
+  };
+}
+
+/** Shared pointer-drag plumbing for both the move and the resize handle. */
+function miniDrag(e, onMove, onTap) {
+  e.preventDefault();
+  const startX = e.clientX, startY = e.clientY;
+  const r = mini.getBoundingClientRect();
+  const start = { left: r.left, top: r.top, w: r.width, h: r.height };
+  mini.setPointerCapture(e.pointerId);
+  mini.classList.add('dragging');
+  let moved = false;
+  const move = (ev) => {
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+    onMove(dx, dy, start);
+  };
+  const up = () => {
+    mini.classList.remove('dragging');
+    mini.removeEventListener('pointermove', move);
+    mini.removeEventListener('pointerup', up);
+    mini.removeEventListener('pointercancel', up);
+    if (!moved) { onTap?.(); return; }
+    const r2 = mini.getBoundingClientRect();
+    miniPos = nearestMiniCorner(r2.left, r2.top);
+    placeMini();
+  };
+  mini.addEventListener('pointermove', move);
+  mini.addEventListener('pointerup', up);
+  mini.addEventListener('pointercancel', up);
+}
+
+// Dragging the body (not the resize handle) moves the whole box.
+mini.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.corner')) return;
+  miniDrag(e, (dx, dy, s) => {
+    miniPos = { left: s.left + dx, top: s.top + dy };
+    placeMini();
+  }, () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+});
+
+// Dragging the handle resizes, anchored at the OPPOSITE corner so the box
+// grows outward from the handle under the finger rather than sliding under it.
+miniCorner.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  const corner = miniCorner.dataset.corner;
+  miniDrag(e, (dx, dy, s) => {
+    const growX = corner.endsWith('r') ? dx : -dx;
+    const growY = corner.endsWith('b') ? dy : -dy;
+    const w = Math.max(MINI_MIN, Math.min(MINI_MAX, s.w + growX));
+    const h = Math.max(MINI_MIN, Math.min(MINI_MAX, s.h + growY));
+    miniPos = {
+      left: corner.endsWith('r') ? s.left : s.left + (s.w - w),
+      top: corner.endsWith('b') ? s.top : s.top + (s.h - h),
+    };
+    miniSize = { w, h };
+    placeMini();
+  });
+});
+
+addEventListener('resize', () => {
+  syncMini();
+  if (miniPos) { miniPos = nearestMiniCorner(miniPos.left, miniPos.top); placeMini(); }
+});
 
 /* -------------------------------------------------------------- the stage */
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** snake_case / SCREAMING_SNAKE -> "Title case", for anything user-facing. */
+const friendly = (s) => String(s).toLowerCase().replace(/_/g, ' ')
+  .replace(/\b\w/g, (c) => c.toUpperCase());
+
+/* --------------------------------------------------------- slider styling */
+
+/** Sliders that adjust a physical size get a track that tapers thicker toward
+ *  the high end — a visual echo of what turning them up actually does. */
+const SIZE_GENES = new Set(GENE_ORDER.filter((k) =>
+  /width|length|size|thick|area|mass/i.test(k) || k === 'spikyness'));
+
+/* -------------------------------------------------- one-slider-per-gene -- */
+
+/**
+ * The part editor used to show a gene wherever ANY part happened to list it,
+ * so `body_width` had three identical sliders (abdomen, thorax, head) and
+ * every `_type` gene had a slider sitting right next to the visual picker
+ * that already sets it. One gene, one slider, on whichever part is the most
+ * appropriate home for it.
+ *
+ * `VARIANT_GENES` — anything a part's own swatch/kind picker already sets —
+ * is hidden everywhere, not just on that part, since a raw slider next to a
+ * five-button picker for the same value is the definition of a dupe.
+ * `pattern_mandible` rides along: `hornpattern`'s picker sets it too, even
+ * though it isn't formally that part's `variantGene`.
+ */
+const VARIANT_GENES = new Set(PARTS.filter((p) => p.variantGene).map((p) => p.variantGene));
+const HIDDEN_GENES = new Set([...VARIANT_GENES, 'pattern_mandible']);
+const FORCE_OWNER = {
+  body_width: 'plan', body_segments: 'plan', leg_count: 'legs',
+  pattern_scale: 'hornpattern', pattern_contrast: 'hornpattern',
+};
+const EXTRA_FOR_PART = { plan: ['body_width'] };
+const GENE_OWNER = {};
+for (const part of PARTS) for (const e of part.genes) {
+  if (!(e.gene in GENE_OWNER)) GENE_OWNER[e.gene] = part.id;
+}
+for (const [gene, owner] of Object.entries(FORCE_OWNER)) GENE_OWNER[gene] = owner;
+
+function ownedGenesFor(part) {
+  const names = new Set(part.genes.map((e) => e.gene));
+  for (const g of (EXTRA_FOR_PART[part.id] ?? [])) names.add(g);
+  return [...names].filter((g) => !HIDDEN_GENES.has(g) && GENE_OWNER[g] === part.id);
+}
 
 const STAT_ROWS = [
   ['speed', 100], ['agility', 100], ['attack', 100], ['defense', 100],
@@ -4477,6 +4749,10 @@ document.getElementById('tabs').addEventListener('click', (e) => {
   paintPanel({ toTop: true });
 });
 
+document.getElementById('statsToggle').addEventListener('click', () => {
+  document.getElementById('statsCard').classList.toggle('min');
+});
+
 document.getElementById('poses').addEventListener('click', (e) => {
   const el = e.target.closest('[data-state]');
   if (!el) return;
@@ -4497,18 +4773,18 @@ function partTile(part) {
   const vi = part.variants ? variantOf(part, g) : -1;
   // The caption carries the one thing the picture can't: which kind is fitted.
   // "on"/"off" would only repeat the pill and the hatching, so it stays blank.
-  const kind = part.variants?.[vi]?.name ?? (part.art === false ? 'stats only' : '');
+  const kind = part.variants?.[vi]?.name ?? '';
   const pill = part.core ? '<i class="t-pill core">●</i>'
     : part.art === false ? `<i class="t-pill noart" data-act="${on ? 'remove' : 'add'}">●</i>`
     : on ? '<i class="t-pill on" data-act="remove">−</i>'
          : '<i class="t-pill" data-act="add">+</i>';
 
   return `<button class="tile" data-id="${part.id}" data-on="${on}"
-                  aria-expanded="${open}" type="button" title="${esc(part.blurb)}">
+                  aria-expanded="${open}" type="button" title="${esc(part.name)}">
     <canvas data-thumb="${part.id}"></canvas>
     ${pill}
     <span class="t-name">${esc(part.name)}</span>
-    ${kind ? `<span class="t-kind">${esc(kind)}</span>` : ''}
+    ${kind ? `<span class="t-kind">${esc(friendly(kind))}</span>` : ''}
   </button>`;
 }
 
@@ -4526,20 +4802,15 @@ function partDetail(part) {
     <div class="phead">
       <i class="dot"></i>
       <span><span class="pname">${esc(part.name)}</span>
-        ${part.variants ? `<span class="pkind">${esc(part.variants[vi]?.name ?? '')}</span>` : ''}
-        ${part.art === false ? '<span class="pkind" style="color:var(--purple)">stats only</span>' : ''}</span>
+        ${part.variants ? `<span class="pkind">${esc(friendly(part.variants[vi]?.name ?? ''))}</span>` : ''}</span>
       ${action}
     </div>
     <div class="pbody">
-      <p class="blurb">${esc(part.blurb)}</p>
       ${part.variants ? `<div class="vars">${part.variants.map((v) => `
-        <button class="var" data-var="${v.index}" aria-pressed="${v.index === vi}" title="${esc(v.blurb)}">
-          <canvas data-thumb="${part.id}:${v.index}"></canvas><b>${esc(v.name)}</b>
-        </button>`).join('')}</div>
-        <p class="vhint">${esc(part.variants[vi]?.blurb ?? '')}</p>` : ''}
-      ${part.genes.map((entry) => geneRow(entry.gene, entry.effect)).join('')}
-      ${part.gate ? `<div class="gate">appears when · ${esc(part.gate)}</div>` : ''}
-      ${part.drawnBy ? `<div class="gate">drawn by · ${esc(part.drawnBy)}</div>` : ''}
+        <button class="var" data-var="${v.index}" aria-pressed="${v.index === vi}" title="${esc(friendly(v.name))}">
+          <canvas data-thumb="${part.id}:${v.index}"></canvas><b>${esc(friendly(v.name))}</b>
+        </button>`).join('')}</div>` : ''}
+      ${ownedGenesFor(part).map((gene) => geneRow(gene)).join('')}
     </div>
   </article>`;
 }
@@ -4579,40 +4850,95 @@ function paintThumbs() {
 
 /* ------------------------------------------------------------- gene rows  */
 
-function geneRow(name, effect) {
+/**
+ * Colour genes get a track sampled from the real palette instead of a flat
+ * fill, so the track previews what turning the slider does to the bug.
+ *
+ * `hue` is 12 hard-edged bands — the same swatches the shell-colour and
+ * horn/jaw pattern pickers already index into — rather than a smooth wheel,
+ * because the gene itself is a swatch INDEX, not a continuous hue; a smooth
+ * rainbow would show colours the gene can never actually land on between
+ * bands. `saturation`/`lightness` stay smooth, since those genes really are
+ * continuous multipliers on whichever swatch `hue` picked.
+ */
+function hueTrackGradient() {
+  const n = 12;
+  const stops = [];
+  for (let i = 0; i < n; i++) {
+    const c = palette({ ...state.genome, hue: (i + 0.5) / n }).shell;
+    stops.push(`${c} ${(i / n * 100).toFixed(3)}%`, `${c} ${((i + 1) / n * 100).toFixed(3)}%`);
+  }
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
+}
+function toneTrackGradient(name) {
+  const n = 6;
+  const stops = [];
+  for (let i = 0; i <= n; i++) stops.push(palette({ ...state.genome, [name]: i / n }).shell);
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
+}
+const COLOR_TRACK = { hue: hueTrackGradient, saturation: () => toneTrackGradient('saturation'),
+  lightness: () => toneTrackGradient('lightness') };
+
+/** The slider itself: a circular thumb, a wedge track for size genes, a
+ *  ticked track for anything that snaps to notches, a palette-sampled
+ *  gradient for colour genes. Shared by both tabs. */
+function sliderInput(name) {
   const spec = GENE_SPECS[name];
   const v = state.genome[name];
   const step = spec.integer ? (spec.step ?? 1) : 0.01;
+  const isColor = name in COLOR_TRACK;
+  const notches = !isColor && spec.integer ? Math.round((spec.max - spec.min) / step) : 0;
+  const cls = [SIZE_GENES.has(name) ? 'sizeSlider' : '', notches > 0 ? 'stepped' : '',
+    isColor ? 'colorSlider' : ''].filter(Boolean).join(' ');
+  const style = isColor ? ` style="--track-bg:${COLOR_TRACK[name]()}"`
+    : notches > 0 ? ` style="--notches:${notches}"` : '';
+  return `<input type="range" min="${spec.min}" max="${spec.max}" step="${step}" value="${v}"
+           class="${cls}"${style} data-slider="${name}" aria-label="${esc(friendly(name))}">`;
+}
+
+/** Minimal row for the part editor — name, value, slider. Nothing else. */
+function geneRow(name) {
+  const spec = GENE_SPECS[name];
+  const v = state.genome[name];
+  return `<div class="gene" data-gene="${name}">
+    <div class="gtop"><span class="gname">${esc(friendly(name))}</span>
+      <span class="gval" data-val="${name}">${spec.integer ? v : v.toFixed(2)}</span></div>
+    ${sliderInput(name)}
+  </div>`;
+}
+
+/** The fuller row for the "All genes" tab — it exists precisely to say what
+ *  a slider does, so it keeps that text; only the naming gets friendlier. */
+function geneRowFull(name) {
+  const spec = GENE_SPECS[name];
+  const v = state.genome[name];
   const info = GENE_INFO[name];
-  const drives = effect
-    ? `<em>${esc(effect)}</em>`
-    : info.parts.length
-      ? info.parts.map((p) => `<em>${esc(p.partName)}</em> ${esc(p.effect)}`).join(' · ')
-      : '';
+  const drives = info.parts.length
+    ? info.parts.map((p) => `<em>${esc(p.partName)}</em> ${esc(p.effect)}`).join(' · ')
+    : '';
   const badge = isSimOnly(name) ? '<span class="simonly">stats only</span> ' : '';
   return `<div class="gene" data-gene="${name}">
-    <div class="gtop"><span class="gname">${name}</span>
+    <div class="gtop"><span class="gname">${esc(friendly(name))}</span>
       <span class="gval" data-val="${name}">${spec.integer ? v : v.toFixed(2)}</span></div>
-    <input type="range" min="${spec.min}" max="${spec.max}" step="${step}" value="${v}"
-           data-slider="${name}" aria-label="${name}">
+    ${sliderInput(name)}
     <div class="drives">${badge}${drives}${info.simOnly && isSimOnly(name) ? ' ' + esc(info.simOnly) : ''}</div>
   </div>`;
 }
 
 const GENE_GROUPS = [
-  ['Body plan', GENE_ORDER.slice(0, 8)],
-  ['Limbs', GENE_ORDER.slice(8, 14)],
-  ['Wings', GENE_ORDER.slice(14, 18)],
-  ['Weapons and defence', GENE_ORDER.slice(18, 27)],
-  ['Sensory', GENE_ORDER.slice(27, 31)],
-  ['Physiology and behaviour', GENE_ORDER.slice(31, 33)],
-  ['Surface and colour', GENE_ORDER.slice(33)],
+  ['Body plan', GENE_ORDER.slice(0, 10)],
+  ['Limbs', GENE_ORDER.slice(10, 15)],
+  ['Wings', GENE_ORDER.slice(15, 24)],
+  ['Weapons and defence', GENE_ORDER.slice(24, 32)],
+  ['Sensory', GENE_ORDER.slice(32, 36)],
+  ['Physiology and behaviour', GENE_ORDER.slice(36, 38)],
+  ['Surface and colour', GENE_ORDER.slice(38)],
 ];
 
 function paintGenes() {
   document.getElementById('panel').innerHTML = GENE_GROUPS.map(([label, keys]) => `
     <div class="grouphead"><h3>${esc(label)}</h3><span>${keys.length} genes</span></div>
-    ${keys.map((k) => geneRow(k, null)).join('')}`).join('');
+    ${keys.map((k) => geneRowFull(k)).join('')}`).join('');
 }
 
 /* ----------------------------------------------------------------- export */
@@ -4694,9 +5020,9 @@ function paintExport() {
  * tapping "add" on a part near the bottom of the library would throw you back to
  * the top. Hold the offset across the rebuild unless the tab itself changed.
  */
-/** The two browsing tabs cut the same 57 genes two ways — say which is which. */
+/** The two browsing tabs cut the same 55 genes two ways — say which is which. */
 const TAB_HINT = {
-  genes: 'All 57 genes in GENE_ORDER, including the ten that move stats but ' +
+  genes: 'All 55 genes in GENE_ORDER, including the three that move stats but ' +
          'draw nothing. Every slider says which parts it feeds.',
   export: 'The build you have made, as code you can paste back into the project.',
 };
